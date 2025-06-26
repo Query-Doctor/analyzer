@@ -117,7 +117,7 @@ SELECT
     cl.reltuples,
     cl.relpages,
     cl.relallvisible,
-    cl.relallfrozen,
+    -- cl.relallfrozen,
     n.nspname as "schemaName",
     json_agg(
       json_build_object(
@@ -143,10 +143,10 @@ SELECT
             'correlation', s.correlation,
             'most_common_elems', s.most_common_elems,
             'most_common_elem_freqs', s.most_common_elem_freqs,
-            'elem_count_histogram', s.elem_count_histogram,
-            'range_length_histogram', s.range_length_histogram,
-            'range_empty_frac', s.range_empty_frac,
-            'range_bounds_histogram', s.range_bounds_histogram
+            'elem_count_histogram', s.elem_count_histogram
+            -- 'range_length_histogram', s.range_length_histogram,
+            -- 'range_empty_frac', s.range_empty_frac,
+            -- 'range_bounds_histogram', s.range_bounds_histogram
           )
             from pg_stats s
           where
@@ -168,7 +168,7 @@ WHERE
     and n.nspname <> 'information_schema'
     and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
 GROUP BY
-    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, cl.relallfrozen, n.nspname; -- @qd_introspection
+    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname; -- @qd_introspection
 `;
   }
 }

@@ -43,7 +43,7 @@ export class IndexOptimizer {
             const indexName = `__qd_${schema}_${table}_${columns.join("_")}`;
             const indexDefinition = `${schema}.${table}(${columns
               .map((c) => `"${c}"`)
-              .join(",")})`;
+              .join(", ")})`;
             const sqlString = `create index ${indexName} on ${indexDefinition};`;
             triedIndexes.set(indexName, {
               schema,
@@ -105,7 +105,7 @@ export class IndexOptimizer {
         }
       }
     );
-    // console.dir(finalExplain, { depth: null });
+    console.dir(finalExplain, { depth: null });
     console.log(
       "Final cost",
       finalExplain["Total Cost"],

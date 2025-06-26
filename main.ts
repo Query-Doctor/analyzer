@@ -8,6 +8,8 @@ import postgres from "postgresjs";
 import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
+import { time } from "node:console";
+import dedent from "dedent";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -115,6 +117,7 @@ async function main() {
       ) {
         continue;
       }
+      console.time("computation");
       matching++;
       const query = parsed["Query Text"];
       const rawParams = parsed["Query Parameters"];
@@ -130,11 +133,21 @@ async function main() {
       const stats = new Statistics(pg);
       const tables = await stats.dumpStats();
       const indexes = analyzer.deriveIndexes(tables, indexesToCheck);
-      await optimizer.run(query, params, indexes, tables);
+      const out = await optimizer.run(query, params, indexes, tables);
+      console.log(dedent`
+        Optimized cost from ${out.baseCost} to ${out.finalCost}
+        Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
+        New indexes: ${Array.from(
+          out.newIndexes,
+          (n) => out.triedIndexes.get(n)?.definition
+        ).join(", ")}
+      `);
+      console.timeEnd("computation");
     }
   }
   await output.status;
   console.log(`Ran ${matching} queries`);
+  Deno.exit(0);
 }
 
 const paramPattern = /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
