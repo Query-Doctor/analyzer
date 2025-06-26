@@ -1,0 +1,17 @@
+# code=yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/github-action.json
+
+name: "Query Doctor"
+description: "Query Doctor"
+
+inputs:
+  log-path:
+    description: "Path to the Postgres logs"
+    required: true
+  postgres-url:
+    description: "Postgres URL"
+    required: true
+
+runs:
+  using: "docker"
+  image: "Dockerfile"

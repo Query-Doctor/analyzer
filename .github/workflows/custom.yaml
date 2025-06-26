@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/github-workflow.json
+name: Run with Postgres
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18beta1-alpine
+        env:
+          POSTGRES_PASSWORD: 123
+          POSTGRES_DB: testing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+          --name postgres
+          --entrypoint /usr/local/bin/postgres_custom.sh
+        volumes:
+          - /tmp/postgres_logs:/var/log/postgresql
+          - ./postgres_custom.sh:/usr/local/bin
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Wait for Postgres
+        run: |
+          until pg_isready -h localhost -U postgres; do sleep 1; done
+
+      - name: Apply SQL file
+        run: |
+          psql -h localhost -U postgres -d testing -f bootstrap.sql
+        env:
+          PGPASSWORD: 123
+
+      - name: Copy Postgres logs
+        run: |
+          docker cp postgres:/var/log/postgresql/postgres.log /tmp/postgres.log
+
+      - name: Run local GitHub Action
+        uses: ./Dockerfile
+        with:
+          POSTGRES_URL: http://postgres:123@postgres:5432/testing
+          log-path: /tmp/postgres.log
