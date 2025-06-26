@@ -5,10 +5,13 @@ name: "Query Doctor"
 description: "Query Doctor"
 
 inputs:
-  log-path:
+  begin_date:
+    description: "Begin date to start analyzing logs"
+    required: false
+  log_path:
     description: "Path to the Postgres logs"
     required: true
-  postgres-url:
+  postgres_url:
     description: "Postgres URL"
     required: true
 

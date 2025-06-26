@@ -28,8 +28,11 @@ function prettyLog(query: string, params: unknown[]) {
 }
 
 async function main() {
-  console.log([...Deno.readDirSync("/tmp/postgres_logs")]);
-  console.log(`Hello ${core.getInput("name")}!`);
+  console.log(process.env.GITHUB_WORKSPACE);
+  console.log([...Deno.readDirSync(process.env.GITHUB_WORKSPACE!)]);
+  const beginDate = process.env.BEGIN_DATE || core.getInput("begin_date");
+  const logPath = process.env.LOG_PATH || core.getInput("log_path");
+  const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
   // core.setOutput("time", new Date().toLocaleTimeString());
   const command = new Deno.Command("pgbadger", {
     stdout: "piped",
@@ -41,8 +44,7 @@ async function main() {
       // "12",
       "--begin",
       "2025-06-24 10:00:00",
-      // "/app/postgres_logs/postgres.log",
-      "/tmp/postgres_logs/postgres.log",
+      logPath,
     ],
   });
   const child = command.spawn();
@@ -84,6 +86,7 @@ async function main() {
         break;
       }
     }
+    let matching = 0;
     if (isJSONOutput) {
       const json = plan
         .slice(i)
@@ -110,33 +113,24 @@ async function main() {
       ) {
         continue;
       }
+      matching++;
       const query = parsed["Query Text"];
       const rawParams = parsed["Query Parameters"];
       const params = rawParams ? extractParams(rawParams) : [];
-      // console.dir(parsed.Plan, { depth: null });
-      // prettyLog(
-      //   parsed["Query Text"],
-      //   // TODO: not correct to do this
-      //   parsed["Query Parameters"]?.split(", ")
-      //   // .map((s) => s.match(/\$\d+ = (.+)/)?.[1])
-      // );
       const analyzer = new Analyzer();
       const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
         formatQuery(query),
         params
-        // .map((s) => s.match(/\$\d+ = (.+)/)?.[1])
       );
       console.log(ansiHighlightedQuery);
-      const pg = postgres(
-        process.env.POSTGRES_URL ||
-          "http://postgres:123@localhost:5432/hatira_dev"
-      );
+      const pg = postgres(postgresUrl);
       const optimizer = new IndexOptimizer(pg);
       const stats = new Statistics(pg);
       const tables = await stats.dumpStats();
       const indexes = analyzer.deriveIndexes(tables, indexesToCheck);
       await optimizer.run(query, params, indexes, tables);
     }
+    console.log(`Found ${matching} matching queries`);
   }
   child.stderr.pipeTo(Deno.stderr.writable);
 }
