@@ -16,5 +16,47 @@ inputs:
     required: true
 
 runs:
-  using: "docker"
-  image: "Dockerfile"
+  using: "composite"
+  steps:
+    # Setup Deno environment
+    - name: Install Deno
+      uses: denoland/setup-deno@v2
+      with:
+        cache: true
+        deno-version: v2.x
+
+    # Install pgbadger dependencies (using apt for Ubuntu runners)
+    - name: Install pgBadger Dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y perl make wget
+
+    # Download, build, and install pgBadger
+    - name: Download and Install pgBadger
+      shell: bash
+      run: |
+        PGBADGER_VERSION=13.1
+        cd /tmp
+        wget https://github.com/darold/pgbadger/archive/v${PGBADGER_VERSION}.tar.gz -O pgbadger.tar.gz
+        tar -xzf pgbadger.tar.gz
+        cd pgbadger-${PGBADGER_VERSION}
+        perl Makefile.PL
+        sudo make install # Use sudo to install globally
+        cd ${{ github.action_path }} # Return to action directory
+
+    # Compile the Deno application into a single executable
+    - name: Compile Analyzer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        deno compile --allow-run --allow-read --allow-write --allow-env --allow-net -o analyzer main.ts
+
+    # Run the compiled application
+    - name: Run Analyzer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: ./analyzer
+      env:
+        INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
+        INPUT_LOG_PATH: ${{ inputs.log_path }}

@@ -33,6 +33,8 @@ async function main() {
   const beginDate = process.env.BEGIN_DATE || core.getInput("begin_date");
   const logPath = process.env.LOG_PATH || core.getInput("log_path");
   const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
+  console.log(logPath);
+  console.log(postgresUrl);
   // core.setOutput("time", new Date().toLocaleTimeString());
   const command = new Deno.Command("pgbadger", {
     stdout: "piped",

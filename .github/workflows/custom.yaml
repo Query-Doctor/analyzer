@@ -33,17 +33,19 @@ jobs:
           sudo systemctl start postgresql.service
           sudo -u postgres createuser -s -d -r -w query_doctor
           sudo -u postgres createdb testing
+          sudo chmod 666 /var/log/postgresql/postgres.log
 
       - name: Apply SQL file
         run: |
           psql -h localhost -U query_doctor -d testing -f bootstrap.sql
 
-      - name: Copy Postgres logs
-        run: |
-          sudo cp /var/log/postgresql/postgres.log ${{ github.workspace }}/postgres.log
+      # - name: Copy Postgres logs
+      #   run: |
+      #     sudo cp /var/log/postgresql/postgres.log ${{ github.workspace }}/postgres.log
+      #     chmod 666 ${{ github.workspace }}/postgres.log
 
       - name: Run local GitHub Action
         uses: ./
         with:
-          postgres_url: http://query_doctor@host.docker.internal:5432/testing
-          log_path: ${{ github.workspace }}/postgres.log
+          postgres_url: http://query_doctor@localhost:5432/testing
+          log_path: /var/log/postgresql/postgres.log
