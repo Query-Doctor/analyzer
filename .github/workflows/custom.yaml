@@ -3,49 +3,72 @@ name: Run with Postgres
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   run:
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:18beta1-alpine
-        env:
-          POSTGRES_PASSWORD: 123
-          POSTGRES_DB: testing
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-          --name postgres
-          --entrypoint /usr/local/bin/postgres_custom.sh
-        volumes:
-          - /tmp/postgres_logs:/var/log/postgresql
-          - ./postgres_custom.sh:/usr/local/bin
-
+    runs-on: ubuntu-24.04
+    # services:
+    #   postgres:
+    #     image: ghcr.io/query-doctor/postgres:18beta1-alpine
+    #     env:
+    #       POSTGRES_USER: postgres
+    #       POSTGRES_PASSWORD: 123
+    #       POSTGRES_DB: testing
+    #     ports:
+    #       - 5432:5432
+    #     options: >-
+    #       --health-cmd="pg_isready"
+    #       --health-interval=10s
+    #       --health-timeout=5s
+    #       --health-retries=5
+    #       --name postgres
+    #     # volumes:
+    #     #   - /tmp/postgres_logs:/var/log/postgresql
+    #     # - ${{ github.workspace }}/postgres/postgresql.conf:/var/lib/postgresql/data/postgresql.conf
     steps:
       - uses: actions/checkout@v3
+      # - name: Install Docker
+      #   uses: docker/setup-buildx-action@v3
 
-      - name: Wait for Postgres
+      - name: Run Postgres
         run: |
-          until pg_isready -h localhost -U postgres; do sleep 1; done
+          sudo cat /etc/postgresql/16/main/postgresql.conf
+          sudo tee -a /etc/postgresql/16/main/postgresql.conf <<EOF
+            shared_preload_libraries = 'auto_explain'
+            auto_explain.log_min_duration = 0
+            auto_explain.log_analyze = true
+            auto_explain.log_verbose = true
+            auto_explain.log_buffers = true
+            auto_explain.log_format = 'json'
+            logging_collector = on
+            log_directory = '/var/log/postgresql'
+            log_filename = 'postgres.log'
+          EOF
+          sudo tee /etc/postgresql/16/main/pg_hba.conf > /dev/null <<EOF
+            host all all 127.0.0.1/32 trust
+            host all all ::1/128 trust
+            local all all peer
+          EOF
+          sudo systemctl start postgresql.service
+          pg_isready
+          sudo -u postgres createuser -s -d -r -w query_doctor
+          sudo -u postgres createdb testing
+          sudo -u postgres psql -c "SHOW config_file;"
 
       - name: Apply SQL file
         run: |
-          psql -h localhost -U postgres -d testing -f bootstrap.sql
-        env:
-          PGPASSWORD: 123
+          psql -h localhost -U query_doctor -d testing -f bootstrap.sql
 
       - name: Copy Postgres logs
         run: |
-          docker cp postgres:/var/log/postgresql/postgres.log /tmp/postgres.log
+          ls /var/log/postgresql
+          sudo cat /var/log/postgresql/postgres.log
 
       - name: Run local GitHub Action
-        uses: ./Dockerfile
+        uses: ./
         with:
           POSTGRES_URL: http://postgres:123@postgres:5432/testing
           log-path: /tmp/postgres.log

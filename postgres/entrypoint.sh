@@ -1,4 +1,6 @@
-postgres \
+#!/bin/sh
+docker-entrypoint.sh \
+  postgres \
   -c shared_preload_libraries=auto_explain \
   -c auto_explain.log_min_duration=0 \
   -c auto_explain.log_analyze=true \
