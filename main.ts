@@ -1,10 +1,10 @@
 import * as core from "@actions/core";
 import csv from "fast-csv";
-import { Readable as NodeReadable } from "node:stream";
+import { Readable as NodeReadable, Readable } from "node:stream";
 import { format } from "sql-formatter";
 import { highlight } from "sql-highlight";
 import { Analyzer } from "./analyzer.ts";
-import postgres from "https://deno.land/x/postgresjs@v3.4.7/mod.js";
+import postgres from "postgresjs";
 import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
@@ -29,7 +29,7 @@ function prettyLog(query: string, params: unknown[]) {
 
 async function main() {
   console.log(process.env.GITHUB_WORKSPACE);
-  console.log([...Deno.readDirSync(process.env.GITHUB_WORKSPACE!)]);
+  // console.log([...Deno.readDirSync(process.env.GITHUB_WORKSPACE!)]);
   const beginDate = process.env.BEGIN_DATE || core.getInput("begin_date");
   const logPath = process.env.LOG_PATH || core.getInput("log_path");
   const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
@@ -40,17 +40,18 @@ async function main() {
     args: [
       "--dump-raw-csv",
       "--no-progressbar",
-      // "-j",
-      // "12",
-      "--begin",
-      "2025-06-24 10:00:00",
+      // "--begin",
+      // "2025-06-24 10:00:00",
       logPath,
     ],
   });
-  const child = command.spawn();
-  const stream = csv.parseStream(NodeReadable.from(child.stdout), {
+  const output = command.spawn();
+  output.stderr.pipeTo(Deno.stderr.writable);
+  const stream = csv.parseStream(Readable.from(output.stdout), {
     headers: false,
   });
+
+  let matching = 0;
   for await (const chunk of stream) {
     const [
       _timestamp,
@@ -86,7 +87,6 @@ async function main() {
         break;
       }
     }
-    let matching = 0;
     if (isJSONOutput) {
       const json = plan
         .slice(i)
@@ -130,9 +130,9 @@ async function main() {
       const indexes = analyzer.deriveIndexes(tables, indexesToCheck);
       await optimizer.run(query, params, indexes, tables);
     }
-    console.log(`Found ${matching} matching queries`);
   }
-  child.stderr.pipeTo(Deno.stderr.writable);
+  await output.status;
+  console.log(`Ran ${matching} queries`);
 }
 
 const paramPattern = /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
@@ -153,5 +153,5 @@ function extractParams(logLine: string) {
 }
 
 if (import.meta.main) {
-  main();
+  await main();
 }

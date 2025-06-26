@@ -45,5 +45,5 @@ jobs:
       - name: Run local GitHub Action
         uses: ./
         with:
-          postgres_url: http://query_doctor@localhost:5432/testing
+          postgres_url: http://query_doctor@host.docker.internal:5432/testing
           log_path: ${{ github.workspace }}/postgres.log

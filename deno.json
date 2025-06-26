@@ -15,6 +15,7 @@
     "pgsql-deparser": "npm:pgsql-deparser@^17.8.1",
     "pgsql-parser": "npm:pgsql-parser@^17.7.2",
     "sql-formatter": "npm:sql-formatter@^15.6.5",
-    "sql-highlight": "npm:sql-highlight@^6.1.0"
+    "sql-highlight": "npm:sql-highlight@^6.1.0",
+    "postgresjs": "https://deno.land/x/postgresjs@v3.4.7/mod.js"
   }
 }

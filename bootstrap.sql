@@ -295,6 +295,11 @@ CREATE INDEX timeline_cursor_idx ON public.assets USING btree (event_id, visible
 ALTER TABLE ONLY public.assets
     ADD CONSTRAINT assets_uploader_id_fkey FOREIGN KEY (uploader_id) REFERENCES public.guests(id);
 
+SET search_path = 'public';
+
+select "guests"."id", "guests"."session_id", "guests"."username", "guests"."avatar_path", "guests"."color", "guests"."side", "guests"."audio_recording_path", "guests"."audio_recording_public", "guests"."memo", "guests"."memo_public", "guests"."setup_at", "guests"."last_upload", "guests"."inserted_at", "guests"."updated_at", "userAssets"."id", "userAssets"."kind", "userAssets"."event_id", "userAssets"."uploader_id", "userAssets"."uploader_ip", "userAssets"."path", "userAssets"."file_size", "userAssets"."width", "userAssets"."height", "userAssets"."visible_at", "userAssets"."deleted_at", "userAssets"."inserted_at", "userAssets"."updated_at" from "guests" cross join lateral (select "id", "kind", "event_id", "uploader_id", "uploader_ip", "path", "file_size", "width", "height", "visible_at", "deleted_at", "inserted_at", "updated_at" from "assets" where ("assets"."event_id" = (select "id" from "events" where "events"."event_key" = '01JKCVP4M2CH34SVTQGHSW4Y5G')
+and "assets"."uploader_id" = "guests"."id") order by "assets"."visible_at" limit 100) "userAssets" where ("guests"."last_upload", "guests"."id") < ('Sun Jun 22 2025 17:22:49', '4') order by "guests"."last_upload" DESC NULLS LAST, "guests"."id" desc limit 10;
+
 --
 -- PostgreSQL database dump complete
 --

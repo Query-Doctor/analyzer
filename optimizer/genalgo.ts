@@ -1,4 +1,4 @@
-import postgres from "https://deno.land/x/postgresjs@v3.4.7/mod.js";
+import postgres from "postgresjs";
 import { TableMetadata } from "./statistics.ts";
 
 type IndexRecommendation = PermutedIndexCandidate & {
