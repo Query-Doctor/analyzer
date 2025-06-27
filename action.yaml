@@ -39,6 +39,7 @@ runs:
     # Cache pgBadger build
     - name: Cache pgBadger
       uses: actions/cache@v4
+      id: pgbadger-cache
       with:
         path: /usr/local/bin/pgbadger
         key: pgbadger-${{ runner.os }}-v13.1
@@ -46,6 +47,7 @@ runs:
     # Install pgbadger dependencies (using apt for Ubuntu runners)
     - name: Install pgBadger Dependencies
       shell: bash
+      if: steps.pgbadger-cache.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
         sudo apt-get install -y perl make wget
@@ -53,6 +55,7 @@ runs:
     # Download, build, and install pgBadger
     - name: Download and Install pgBadger
       shell: bash
+      if: steps.pgbadger-cache.outputs.cache-hit != 'true'
       run: |
         PGBADGER_VERSION=13.1
         cd /tmp
