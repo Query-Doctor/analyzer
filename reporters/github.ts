@@ -4,13 +4,17 @@ import dedent from "dedent";
 export class GithubReporter {
   private static readonly REVIEW_COMMENT_SUFFIX = "<!-- qd-review-comment -->";
   prNumber?: number;
-  constructor(private readonly githubToken: string) {
+  constructor(private readonly githubToken?: string) {
     this.prNumber = github.context.payload.pull_request?.number;
   }
 
   async report(ctx: ReportContext) {
     if (typeof this.prNumber === "undefined") {
       console.warn(`Not a PR, skipping report...`);
+      return;
+    }
+    if (!this.githubToken) {
+      console.warn(`No GitHub token provided, skipping report...`);
       return;
     }
     const octokit = github.getOctokit(this.githubToken);
@@ -32,10 +36,13 @@ export class GithubReporter {
       <details>
       <summary>Optimized query cost (${r.baseCost} -> ${
         r.optimizedCost
-      }) by <b>${(((r.baseCost - r.optimizedCost) / r.baseCost) * 100).toFixed(
-        2
-      )}%</b></summary>
+      }) by <strong>${(
+        ((r.baseCost - r.optimizedCost) / r.baseCost) *
+        100
+      ).toFixed(2)}%</strong></summary>
+      \`\`\`sql
       ${r.formattedQuery}
+      \`\`\`
 
       Base cost: ${r.baseCost}
       Optimized cost: ${r.optimizedCost}
@@ -65,8 +72,7 @@ export class GithubReporter {
     `;
     } else {
       review = dedent`
-      # Your queries are already optimized!
-      We didn't find any queries that could be optimized. Keep up the good work!
+      # Your queries are optimized!
       ${GithubReporter.REVIEW_COMMENT_SUFFIX}
     `;
     }

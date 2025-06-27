@@ -383,7 +383,7 @@ from
       "assets"."inserted_at" desc
     limit
       100
-  ) "userAssets"
+  ) "userAssets";
 
 --
 -- PostgreSQL database dump complete

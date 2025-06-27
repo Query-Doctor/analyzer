@@ -41,7 +41,7 @@ export class IndexOptimizer {
           console.log(
             `index definition already exists, skipping: ${existingIndex.index_name}`
           );
-          iter = permutations.next(SKIP);
+          iter = permutations.next(PROCEED);
           console.log("--------------------------------");
           continue;
         }

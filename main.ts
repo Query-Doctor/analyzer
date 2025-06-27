@@ -23,8 +23,6 @@ function formatQuery(query: string) {
 }
 
 async function main() {
-  console.log(process.env.GITHUB_WORKSPACE);
-  // console.log([...Deno.readDirSync(process.env.GITHUB_WORKSPACE!)]);
   const logPath = process.env.LOG_PATH || core.getInput("log_path");
   const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
   console.log(logPath);
@@ -184,9 +182,7 @@ async function main() {
       }
     }
   }
-  const reporter = new GithubReporter(
-    core.getInput("github_token", { required: true })
-  );
+  const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
   await reporter.report({ recommendations });
   console.timeEnd("total");
   await output.status;
