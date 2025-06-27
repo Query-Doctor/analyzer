@@ -1,5 +1,9 @@
 import * as github from "@actions/github";
 
+function pluralize(count: number, word: string, plural: string) {
+  return count === 1 ? `${count} ${word}` : `${count} ${plural}`;
+}
+
 export class GithubReporter {
   private static readonly REVIEW_COMMENT_SUFFIX = "<!-- qd-review-comment -->";
   prNumber?: number;
@@ -29,40 +33,57 @@ export class GithubReporter {
     // use ejs or whatever
     const percentage = (r: ReportIndexRecommendation) =>
       (((r.baseCost - r.optimizedCost) / r.baseCost) * 100).toFixed(2);
-    const recommendations = ctx.recommendations.map((r) =>
+    const recommendations = ctx.recommendations.map((r, i) =>
       [
-        `<h2>Optimized query cost (${r.baseCost} -> ${
+        `<h2>Query ${i + 1} cost reduced <code>${r.baseCost} -> ${
           r.optimizedCost
-        }) by <strong>${percentage(r)}%</strong></h2>`,
-        "<h2>Missing indexes</h2>",
+        }</code> by <strong>${percentage(r)}%</strong></h2>`,
+        `<h3>Missing ${pluralize(
+          r.proposedIndexes.length,
+          "index",
+          "indexes"
+        )}</h3>`,
         "<ul>",
         r.proposedIndexes
           .map((index) => `<li><code>${index}</code></li>`)
           .join("\n"),
         "</ul>",
         "<details>",
-        "<summary>Query</summary>",
+        "<summary>Full query</summary>",
         "",
         "```sql",
         r.formattedQuery,
         "```",
         "",
         "</details>",
-        "<dl>",
-        "<dt>Current cost</dt>",
-        `<dd><code>${r.baseCost}</code></dd>`,
-        "<dt>Cost with new indexes</dt>",
-        `<dd><code>${r.optimizedCost}</code></dd>`,
-        "<dt>Existing indexes</dt>",
-        `<dd>
-        <ul>
-        ${r.existingIndexes.map((i) => `<li><code>${i}</code></li>`).join("\n")}
-        </ul>
-        </dd>`,
-        "</dl>",
         "",
+        "<table>",
+        "<thead>",
+        "<tr>",
+        "<th>Cost with existing indexes</th>",
+        "<th>Cost with new indexes</th>",
+        "</tr>",
+        "</thead>",
+        "<tbody>",
+        "<tr>",
+        `<td><code>${r.baseCost}</code></td>`,
+        `<td><code>${r.optimizedCost}</code></td>`,
+        "</tr>",
+        "</tbody>",
+        "</table>",
+        "",
+        "<h4>Existing indexes</h4>",
+        "<ul>",
+        r.existingIndexes.map((i) => `<li><code>${i}</code></li>`).join("\n"),
+        "</ul>",
       ].join("\n")
     );
+    const explanation = [
+      "<details>",
+      "<summary>What does cost mean?</summary>",
+      "Cost is an arbitrary amount value representing the amount of work postgres decided it needs to do to execute a query. <br />We use cost to look for improvements when checking if an index helps optimize a query in CI as the full production dataset is simply not available to work with.",
+      "</details>",
+    ].join("\n");
     let review: string;
     const metadata = [
       "<details>",
@@ -77,8 +98,13 @@ export class GithubReporter {
     ].join("\n");
     if (recommendations.length > 0) {
       review = [
-        `# Found ${recommendations.length} queries that could be optimized`,
+        `# Found ${pluralize(
+          recommendations.length,
+          "query",
+          "queries"
+        )} that could be optimized`,
         recommendations.join("\n"),
+        explanation,
         metadata,
         GithubReporter.REVIEW_COMMENT_SUFFIX,
       ].join("\n");
