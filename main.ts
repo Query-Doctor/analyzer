@@ -191,7 +191,7 @@ async function main() {
     recommendations,
     metadata: {
       logSize: fileSize,
-      timeElapsed: Date.now() - startTime,
+      timeElapsed: Date.now() - startDate.getTime(),
     },
   });
   console.timeEnd("total");
