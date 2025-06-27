@@ -33,20 +33,7 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y perl make wget
-
-    # Download, build, and install pgBadger
-    - name: Download and Install pgBadger
-      shell: bash
-      run: |
-        PGBADGER_VERSION=13.1
-        cd /tmp
-        wget https://github.com/darold/pgbadger/archive/v${PGBADGER_VERSION}.tar.gz -O pgbadger.tar.gz
-        tar -xzf pgbadger.tar.gz
-        cd pgbadger-${PGBADGER_VERSION}
-        perl Makefile.PL
-        sudo make install # Use sudo to install globally
-        cd ${{ github.action_path }} # Return to action directory
+        sudo apt-get install -y pgbadger
 
     # Compile the Deno application into a single executable
     - name: Compile Analyzer

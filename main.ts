@@ -54,9 +54,9 @@ async function main() {
   const stats = new Statistics(pg);
   const existingIndexes = await stats.getExistingIndexes();
   const optimizer = new IndexOptimizer(pg, existingIndexes);
-  console.log(existingIndexes);
   const tables = await stats.dumpStats();
 
+  console.time("total");
   for await (const chunk of stream) {
     const [
       _timestamp,
@@ -181,9 +181,10 @@ async function main() {
     }
   }
   const reporter = new GithubReporter(
-    process.env.GITHUB_TOKEN || core.getInput("github_token")
+    core.getInput("github_token", { required: true })
   );
   await reporter.report({ recommendations });
+  console.timeEnd("total");
   await output.status;
   console.log(`Ran ${matching} queries`);
   Deno.exit(0);
