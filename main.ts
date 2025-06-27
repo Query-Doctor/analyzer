@@ -166,6 +166,20 @@ async function main() {
             const newIndexes = Array.from(out.newIndexes)
               .map((n) => out.triedIndexes.get(n)?.definition)
               .filter((n) => n !== undefined);
+            const existingIndexesForQuery = Array.from(out.existingIndexes)
+              .map((index) => {
+                const existing = existingIndexes.find(
+                  (e) => e.index_name === index
+                );
+                if (existing) {
+                  return `${existing.schema_name}.${
+                    existing.table_name
+                  }(${existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")})`;
+                }
+              })
+              .filter((i) => i !== undefined);
             console.log(dedent`
               Optimized cost from ${out.baseCost} to ${out.finalCost}
               Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
@@ -175,8 +189,9 @@ async function main() {
               formattedQuery: formatQuery(query),
               baseCost: out.baseCost,
               optimizedCost: out.finalCost,
-              existingIndexes: Array.from(out.existingIndexes),
+              existingIndexes: existingIndexesForQuery,
               proposedIndexes: newIndexes,
+              explainPlan: out.explainPlan,
             });
           } else {
             console.log("No new indexes found");

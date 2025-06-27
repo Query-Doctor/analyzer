@@ -35,9 +35,9 @@ export class GithubReporter {
       (((r.baseCost - r.optimizedCost) / r.baseCost) * 100).toFixed(2);
     const recommendations = ctx.recommendations.map((r, i) =>
       [
-        `<h2>Query ${i + 1} cost reduced <code>${r.baseCost} -> ${
-          r.optimizedCost
-        }</code> by <strong>${percentage(r)}%</strong></h2>`,
+        `<h2>Query ${i + 1} cost reduced by <strong>${percentage(
+          r
+        )}%</strong> <code>(${r.baseCost} -> ${r.optimizedCost})</code></h2>`,
         `<h3>Missing ${pluralize(
           r.proposedIndexes.length,
           "index",
@@ -53,6 +53,15 @@ export class GithubReporter {
         "",
         "```sql",
         r.formattedQuery,
+        "```",
+        "",
+        "</details>",
+        "",
+        "<details>",
+        "<summary>Optimized explain plan</summary>",
+        "",
+        "```json",
+        r.explainPlan,
         "```",
         "",
         "</details>",
@@ -151,4 +160,5 @@ export type ReportIndexRecommendation = {
   optimizedCost: number;
   existingIndexes: string[];
   proposedIndexes: string[];
+  explainPlan: string;
 };
