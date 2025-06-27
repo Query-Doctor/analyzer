@@ -21,14 +21,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Cache Deno
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.deno
-          ${{ github.action_path }}/analyzer
-        key: deno-${{ runner.os }}-v2-${{ hashFiles('**/*.ts', '**/*.sql', 'deno.json', '**/deno.lock') }}
-
     # Setup Deno environment
     - name: Install Deno
       uses: denoland/setup-deno@v2
@@ -66,18 +58,11 @@ runs:
         sudo make install # Use sudo to install globally
         cd ${{ github.action_path }} # Return to action directory
 
-    # Compile the Deno application into a single executable
-    - name: Compile Analyzer
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: |
-        deno compile --allow-run --allow-read --allow-write --allow-env --allow-net -o analyzer main.ts
-
     # Run the compiled application
     - name: Run Analyzer
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: ./analyzer
+      run: deno run --allow-run --allow-read --allow-write --allow-env --allow-net main.ts
       env:
         INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
         INPUT_LOG_PATH: ${{ inputs.log_path }}
