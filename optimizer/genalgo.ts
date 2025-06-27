@@ -127,6 +127,7 @@ export class IndexOptimizer {
       newIndexes,
       existingIndexes: existingIndexesUsedByQuery,
       triedIndexes,
+      explainPlan: JSON.stringify(finalExplain, null, 2),
     };
   }
 
