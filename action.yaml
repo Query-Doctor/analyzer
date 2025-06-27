@@ -21,12 +21,27 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Cache Deno
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.deno
+          ${{ github.action_path }}/analyzer
+        key: deno-${{ runner.os }}-v2-${{ hashFiles('**/*.ts', '**/*.sql', 'deno.json', '**/deno.lock') }}
+
     # Setup Deno environment
     - name: Install Deno
       uses: denoland/setup-deno@v2
       with:
         cache: true
         deno-version: v2.x
+
+    # Cache pgBadger build
+    - name: Cache pgBadger
+      uses: actions/cache@v4
+      with:
+        path: /usr/local/bin/pgbadger
+        key: pgbadger-${{ runner.os }}-v13.1
 
     # Install pgbadger dependencies (using apt for Ubuntu runners)
     - name: Install pgBadger Dependencies
