@@ -43,9 +43,13 @@ async function main() {
   });
   const output = command.spawn();
   output.stderr.pipeTo(Deno.stderr.writable);
-  const stream = csv.parseStream(Readable.from(output.stdout), {
-    headers: false,
-  });
+  const stream = csv
+    .parseStream(Readable.from(output.stdout), {
+      headers: false,
+    })
+    .on("error", (err) => {
+      console.error(err);
+    });
 
   const seenQueries = new Set<number>();
   const recommendations: ReportIndexRecommendation[] = [];
@@ -158,13 +162,13 @@ async function main() {
           );
           if (out.newIndexes.size > 0) {
             console.log(dedent`
-        Optimized cost from ${out.baseCost} to ${out.finalCost}
-        Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
-        New indexes: ${Array.from(
-          out.newIndexes,
-          (n) => out.triedIndexes.get(n)?.definition
-        ).join(", ")}
-      `);
+              Optimized cost from ${out.baseCost} to ${out.finalCost}
+              Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
+              New indexes: ${Array.from(
+                out.newIndexes,
+                (n) => out.triedIndexes.get(n)?.definition
+              ).join(", ")}
+            `);
             recommendations.push({
               formattedQuery: formatQuery(query),
               baseCost: out.baseCost,
