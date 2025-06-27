@@ -163,20 +163,20 @@ async function main() {
             tables
           );
           if (out.newIndexes.size > 0) {
+            const newIndexes = Array.from(out.newIndexes)
+              .map((n) => out.triedIndexes.get(n)?.definition)
+              .filter((n) => n !== undefined);
             console.log(dedent`
               Optimized cost from ${out.baseCost} to ${out.finalCost}
               Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
-              New indexes: ${Array.from(
-                out.newIndexes,
-                (n) => out.triedIndexes.get(n)?.definition
-              ).join(", ")}
+              New indexes: ${newIndexes.join(", ")}
             `);
             recommendations.push({
               formattedQuery: formatQuery(query),
               baseCost: out.baseCost,
               optimizedCost: out.finalCost,
               existingIndexes: Array.from(out.existingIndexes),
-              proposedIndexes: Array.from(out.newIndexes),
+              proposedIndexes: newIndexes,
             });
           } else {
             console.log("No new indexes found");
