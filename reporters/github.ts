@@ -10,6 +10,7 @@ export class GithubReporter {
 
   async report(ctx: ReportContext) {
     if (typeof this.prNumber === "undefined") {
+      console.warn(`Not a PR, skipping report...`);
       return;
     }
     const octokit = github.getOctokit(this.githubToken);

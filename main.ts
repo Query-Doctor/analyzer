@@ -9,7 +9,10 @@ import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
 import { fingerprint } from "@libpg-query/parser";
 import dedent from "dedent";
-import { ReportIndexRecommendation } from "./reporters/github.ts";
+import {
+  GithubReporter,
+  ReportIndexRecommendation,
+} from "./reporters/github.ts";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -177,6 +180,10 @@ async function main() {
       }
     }
   }
+  const reporter = new GithubReporter(
+    process.env.GITHUB_TOKEN || core.getInput("github_token")
+  );
+  await reporter.report({ recommendations });
   await output.status;
   console.log(`Ran ${matching} queries`);
   Deno.exit(0);

@@ -5,6 +5,9 @@ name: "Query Doctor"
 description: "Query Doctor"
 
 inputs:
+  github_token:
+    description: "GitHub token"
+    required: false
   begin_date:
     description: "Begin date to start analyzing logs"
     required: false

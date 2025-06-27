@@ -3,6 +3,8 @@ name: Run with Postgres
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
   push:
     branches:
       - main
@@ -42,5 +44,6 @@ jobs:
       - name: Run local GitHub Action
         uses: ./
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           postgres_url: http://query_doctor@localhost:5432/testing
           log_path: /var/log/postgresql/postgres.log
