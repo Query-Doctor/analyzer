@@ -25,7 +25,7 @@ runs:
     - name: Install Deno
       uses: denoland/setup-deno@v2
       with:
-        cache: true
+        cache-hash: ${{ hashFiles('deno.json', '**/deno.lock') }}
         deno-version: v2.x
 
     # Cache pgBadger build
