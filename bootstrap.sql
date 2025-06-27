@@ -385,6 +385,7 @@ from
       100
   ) "userAssets";
 
+select * from guests order by last_upload desc, id desc limit 100;
 --
 -- PostgreSQL database dump complete
 --

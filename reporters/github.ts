@@ -33,8 +33,23 @@ export class GithubReporter {
     // use ejs or whatever
     const percentage = (r: ReportIndexRecommendation) =>
       (((r.baseCost - r.optimizedCost) / r.baseCost) * 100).toFixed(2);
-    const recommendations = ctx.recommendations.map((r, i) =>
-      [
+    const recommendations = ctx.recommendations.map((r, i) => {
+      let fullQuery;
+      if (r.formattedQuery.length > 100) {
+        fullQuery = [
+          "<details>",
+          "<summary>Full query</summary>",
+          "",
+          "```sql",
+          r.formattedQuery,
+          "```",
+          "",
+          "</details>",
+        ];
+      } else {
+        fullQuery = ["<h3>Full query</h3>", "```sql", r.formattedQuery, "```"];
+      }
+      return [
         `<h2>Query ${i + 1} cost reduced by <strong>${percentage(
           r
         )}%</strong> <code>(${r.baseCost} -> ${r.optimizedCost})</code></h2>`,
@@ -48,14 +63,7 @@ export class GithubReporter {
           .map((index) => `<li><code>${index}</code></li>`)
           .join("\n"),
         "</ul>",
-        "<details>",
-        "<summary>Full query</summary>",
-        "",
-        "```sql",
-        r.formattedQuery,
-        "```",
-        "",
-        "</details>",
+        ...fullQuery,
         "",
         "<details>",
         "<summary>Optimized explain plan</summary>",
@@ -85,8 +93,8 @@ export class GithubReporter {
         "<ul>",
         r.existingIndexes.map((i) => `<li><code>${i}</code></li>`).join("\n"),
         "</ul>",
-      ].join("\n")
-    );
+      ].join("\n");
+    });
     const explanation = [
       "<details>",
       "<summary>What does cost mean?</summary>",
