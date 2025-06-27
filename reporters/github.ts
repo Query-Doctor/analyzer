@@ -68,9 +68,9 @@ export class GithubReporter {
       <summary>Metadata</summary>
       <dl>
         <dt>Log size</dt>
-        <dd>${ctx.metadata.logSize}</dd>
+        <dd>${ctx.metadata.logSize} bytes</dd>
         <dt>Time elapsed</dt>
-        <dd>${ctx.metadata.timeElapsed}</dd>
+        <dd>${ctx.metadata.timeElapsed}ms</dd>
       </dl>
     </details>
     `;
