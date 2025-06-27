@@ -1,4 +1,3 @@
-import postgres from "https://deno.land/x/postgresjs@v3.4.7/mod.js";
 import { ParseResult, Node } from "@pgsql/types";
 import { parse } from "pgsql-parser";
 import { deparseSync } from "pgsql-deparser";
