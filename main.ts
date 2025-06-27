@@ -23,10 +23,14 @@ function formatQuery(query: string) {
 }
 
 async function main() {
-  const logPath = process.env.LOG_PATH || core.getInput("log_path");
-  const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
-  console.log(logPath);
-  console.log(postgresUrl);
+  const logPath = process.env.LOG_PATH || "/var/log/postgresql/postgres.log";
+  const postgresUrl = process.env.POSTGRES_URL;
+  if (!postgresUrl) {
+    core.setFailed("POSTGRES_URL environment variable is not set");
+    Deno.exit(1);
+  }
+  const startDate = new Date();
+  const fileSize = Deno.statSync(logPath).size;
   // core.setOutput("time", new Date().toLocaleTimeString());
   const command = new Deno.Command("pgbadger", {
     stdout: "piped",
@@ -183,7 +187,13 @@ async function main() {
     }
   }
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
-  await reporter.report({ recommendations });
+  await reporter.report({
+    recommendations,
+    metadata: {
+      logSize: fileSize,
+      timeElapsed: Date.now() - startTime,
+    },
+  });
   console.timeEnd("total");
   await output.status;
   console.log(`Ran ${matching} queries`);

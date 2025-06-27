@@ -28,7 +28,6 @@ export class GithubReporter {
       (r) =>
         r.user &&
         r.body_html &&
-        r.user.type === "Bot" &&
         r.body_html.includes(GithubReporter.REVIEW_COMMENT_SUFFIX)
     );
     const recommendations = ctx.recommendations.map(
@@ -64,15 +63,28 @@ export class GithubReporter {
     `
     );
     let review: string;
+    const metadata = dedent`
+    <details>
+      <summary>Metadata</summary>
+      <dl>
+        <dt>Log size</dt>
+        <dd>${ctx.metadata.logSize}</dd>
+        <dt>Time elapsed</dt>
+        <dd>${ctx.metadata.timeElapsed}</dd>
+      </dl>
+    </details>
+    `;
     if (recommendations.length > 0) {
       review = dedent`
       # Found ${recommendations.length} queries that could be optimized
       ${recommendations.join("\n")}
+      ${metadata}
       ${GithubReporter.REVIEW_COMMENT_SUFFIX}
     `;
     } else {
       review = dedent`
       # Your queries are optimized!
+      ${metadata}
       ${GithubReporter.REVIEW_COMMENT_SUFFIX}
     `;
     }
@@ -97,8 +109,14 @@ export class GithubReporter {
   }
 }
 
+type ReportMetadata = {
+  logSize: number;
+  timeElapsed: number;
+};
+
 export type ReportContext = {
   recommendations: ReportIndexRecommendation[];
+  metadata: ReportMetadata;
 };
 
 export type ReportIndexRecommendation = {

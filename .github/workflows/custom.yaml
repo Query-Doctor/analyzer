@@ -45,7 +45,5 @@ jobs:
         uses: ./
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          postgres_url: http://query_doctor@localhost:5432/testing
-          log_path: /var/log/postgresql/postgres.log
+          POSTGRES_URL: http://query_doctor@localhost:5432/testing
+          # LOG_PATH: /var/log/postgresql/postgres.log
