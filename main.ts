@@ -1,38 +1,27 @@
 import * as core from "@actions/core";
 import csv from "fast-csv";
-import { Readable as NodeReadable, Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { format } from "sql-formatter";
-import { highlight } from "sql-highlight";
 import { Analyzer } from "./analyzer.ts";
 import postgres from "postgresjs";
 import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
-import { time } from "node:console";
+import { fingerprint } from "@libpg-query/parser";
 import dedent from "dedent";
+import { ReportIndexRecommendation } from "./reporters/github.ts";
 
 function formatQuery(query: string) {
   return format(query, {
     language: "postgresql",
     keywordCase: "lower",
-    denseOperators: false,
     linesBetweenQueries: 2,
   });
-}
-
-function prettyLog(query: string, params: unknown[]) {
-  const formatted = formatQuery(query);
-  console.log(highlight(formatted));
-  if (params) {
-    console.log(params);
-  }
-  console.log();
 }
 
 async function main() {
   console.log(process.env.GITHUB_WORKSPACE);
   // console.log([...Deno.readDirSync(process.env.GITHUB_WORKSPACE!)]);
-  const beginDate = process.env.BEGIN_DATE || core.getInput("begin_date");
   const logPath = process.env.LOG_PATH || core.getInput("log_path");
   const postgresUrl = process.env.POSTGRES_URL || core.getInput("postgres_url");
   console.log(logPath);
@@ -55,7 +44,16 @@ async function main() {
     headers: false,
   });
 
+  const seenQueries = new Set<number>();
+  const recommendations: ReportIndexRecommendation[] = [];
   let matching = 0;
+  const pg = postgres(postgresUrl);
+  const stats = new Statistics(pg);
+  const existingIndexes = await stats.getExistingIndexes();
+  const optimizer = new IndexOptimizer(pg, existingIndexes);
+  console.log(existingIndexes);
+  const tables = await stats.dumpStats();
+
   for await (const chunk of stream) {
     const [
       _timestamp,
@@ -109,6 +107,7 @@ async function main() {
         console.log(e);
         break;
       }
+      const queryFingerprint = await fingerprint(parsed["Query Text"]);
       if (
         parsed.Plan["Node Type"] === "ModifyTable" ||
         // we get some infinite loops in development here
@@ -117,24 +116,45 @@ async function main() {
       ) {
         continue;
       }
-      console.time("computation");
-      matching++;
+      const fingerprintNum = parseInt(queryFingerprint, 16);
+      if (seenQueries.has(fingerprintNum)) {
+        console.log("Skipping duplicate query", fingerprintNum);
+        continue;
+      }
+      seenQueries.add(fingerprintNum);
       const query = parsed["Query Text"];
       const rawParams = parsed["Query Parameters"];
       const params = rawParams ? extractParams(rawParams) : [];
       const analyzer = new Analyzer();
-      const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
-        formatQuery(query),
-        params
+
+      const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
+        await analyzer.analyze(formatQuery(query), params);
+
+      const selectsCatalog = referencedTables.find((table) =>
+        table.startsWith("pg_")
       );
-      console.log(ansiHighlightedQuery);
-      const pg = postgres(postgresUrl);
-      const optimizer = new IndexOptimizer(pg);
-      const stats = new Statistics(pg);
-      const tables = await stats.dumpStats();
-      const indexes = analyzer.deriveIndexes(tables, indexesToCheck);
-      const out = await optimizer.run(query, params, indexes, tables);
-      console.log(dedent`
+      if (selectsCatalog) {
+        console.log(
+          "Skipping query that selects from catalog tables",
+          selectsCatalog,
+          fingerprintNum
+        );
+        continue;
+      }
+      const indexCandidates = analyzer.deriveIndexes(tables, indexesToCheck);
+      if (indexCandidates.length > 0) {
+        await core.group(`query:${fingerprintNum}`, async () => {
+          console.time(`timing`);
+          matching++;
+          console.log(ansiHighlightedQuery);
+          const out = await optimizer.run(
+            query,
+            params,
+            indexCandidates,
+            tables
+          );
+          if (out.newIndexes.size > 0) {
+            console.log(dedent`
         Optimized cost from ${out.baseCost} to ${out.finalCost}
         Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
         New indexes: ${Array.from(
@@ -142,7 +162,19 @@ async function main() {
           (n) => out.triedIndexes.get(n)?.definition
         ).join(", ")}
       `);
-      console.timeEnd("computation");
+            recommendations.push({
+              formattedQuery: formatQuery(query),
+              baseCost: out.baseCost,
+              optimizedCost: out.finalCost,
+              existingIndexes: Array.from(out.existingIndexes),
+              proposedIndexes: Array.from(out.newIndexes),
+            });
+          } else {
+            console.log("No new indexes found");
+          }
+          console.timeEnd(`timing`);
+        });
+      }
     }
   }
   await output.status;

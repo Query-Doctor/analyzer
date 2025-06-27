@@ -71,6 +71,7 @@ export class Analyzer {
   ): Promise<{
     indexesToCheck: DiscoveredColumnReference[];
     ansiHighlightedQuery: string;
+    referencedTables: string[];
   }> {
     const mappings: Map<string, ColumnReferencePart> = new Map();
     const tempTables: Set<string> = new Set();
@@ -251,9 +252,11 @@ export class Analyzer {
         indexRepresentations.add(queryRepr);
       }
     }
+    const referencedTables = Array.from(mappings.keys());
     return {
       indexesToCheck,
       ansiHighlightedQuery: currQuery,
+      referencedTables,
     };
   }
 

@@ -110,14 +110,18 @@ export class Statistics {
   }
 
   async dumpStats() {
-    return this.sql<TableMetadata[]>`
+    console.log("dumping stats");
+    const postgresVersion = (await this.sql`show server_version_num`)[0]
+      .server_version_num;
+    // certain things are only supported with pg17
+    if (postgresVersion <= "170000") {
+      return this.sql<TableMetadata[]>`
 SELECT
     c.table_name as "tableName",
     c.table_schema as "schemaName",
     cl.reltuples,
     cl.relpages,
     cl.relallvisible,
-    -- cl.relallfrozen,
     n.nspname as "schemaName",
     json_agg(
       json_build_object(
@@ -144,9 +148,6 @@ SELECT
             'most_common_elems', s.most_common_elems,
             'most_common_elem_freqs', s.most_common_elem_freqs,
             'elem_count_histogram', s.elem_count_histogram
-            -- 'range_length_histogram', s.range_length_histogram,
-            -- 'range_empty_frac', s.range_empty_frac,
-            -- 'range_bounds_histogram', s.range_bounds_histogram
           )
             from pg_stats s
           where
@@ -170,6 +171,122 @@ WHERE
 GROUP BY
     c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname; -- @qd_introspection
 `;
+    }
+    return await this.sql<TableMetadata[]>`
+SELECT
+    c.table_name as "tableName",
+    c.table_schema as "schemaName",
+    cl.reltuples,
+    cl.relpages,
+    cl.relallvisible,
+    cl.relallfrozen,
+    n.nspname as "schemaName",
+    json_agg(
+      json_build_object(
+        'columnName', c.column_name,
+        'dataType', c.data_type,
+        'isNullable', (c.is_nullable = 'YES')::boolean,
+        'characterMaximumLength', c.character_maximum_length,
+        'numericPrecision', c.numeric_precision,
+        'numericScale', c.numeric_scale,
+        'columnDefault', c.column_default,
+        'stats', (
+          select json_build_object(
+            'schemaname', s.schemaname,
+            'relname', s.tablename,
+            'attname', s.attname,
+            'inherited', s.inherited,
+            'null_frac', s.null_frac,
+            'avg_width', s.avg_width,
+            'n_distinct', s.n_distinct,
+            'most_common_vals', s.most_common_vals,
+            'most_common_freqs', s.most_common_freqs,
+            'histogram_bounds', s.histogram_bounds,
+            'correlation', s.correlation,
+            'most_common_elems', s.most_common_elems,
+            'most_common_elem_freqs', s.most_common_elem_freqs,
+            'elem_count_histogram', s.elem_count_histogram
+            'range_length_histogram', s.range_length_histogram,
+            'range_empty_frac', s.range_empty_frac,
+            'range_bounds_histogram', s.range_bounds_histogram
+          )
+            from pg_stats s
+          where
+            s.tablename = c.table_name
+            and s.attname = c.column_name
+        )
+      )
+    ORDER BY c.ordinal_position) as columns
+FROM
+    information_schema.columns c
+JOIN
+    pg_class cl
+    ON cl.relname = c.table_name
+JOIN
+    pg_namespace n
+    ON n.oid = cl.relnamespace
+WHERE
+    c.table_name not like 'pg_%'
+    and n.nspname <> 'information_schema'
+    and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
+GROUP BY
+    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, cl.relallfrozen, n.nspname; -- @qd_introspection`;
+  }
+
+  /**
+   * Returns all indexes in the database.
+   * ONLY handles regular btree indexes
+   */
+  async getExistingIndexes(): Promise<IndexedTable[]> {
+    const indexes = await this.sql<IndexedTable[]>`
+      WITH partitioned_tables AS (
+          SELECT
+              inhparent::regclass AS parent_table,
+              inhrelid::regclass AS partition_table
+          FROM
+              pg_inherits
+      )
+      SELECT
+          n.nspname AS schema_name,
+          COALESCE(pt.parent_table::text, t.relname) AS table_name,
+          i.relname AS index_name,
+          am.amname AS index_type,
+          array_agg(
+              CASE
+                  -- Handle regular columns
+                  WHEN a.attname IS NOT NULL THEN
+                    json_build_object('name', a.attname, 'order',
+                      CASE
+                          WHEN (indoption[array_position(ix.indkey, a.attnum)] & 1) = 1 THEN 'DESC'
+                          ELSE 'ASC'
+                      END)
+                  -- Handle expressions
+                  ELSE
+                      json_build_object('name', pg_get_expr((ix.indexprs)::pg_node_tree, t.oid), 'order',
+                      CASE
+                          WHEN (indoption[array_position(ix.indkey, k.attnum)] & 1) = 1 THEN 'DESC'
+                          ELSE 'ASC'
+                      END)
+              END
+              ORDER BY array_position(ix.indkey, k.attnum)
+          ) AS index_columns
+      FROM
+          pg_class t
+          LEFT JOIN partitioned_tables pt ON t.oid = pt.partition_table
+          JOIN pg_index ix ON t.oid = ix.indrelid
+          JOIN pg_class i ON i.oid = ix.indexrelid
+          JOIN pg_am am ON i.relam = am.oid
+          LEFT JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY k(attnum, ordinality) ON true
+          LEFT JOIN pg_attribute a ON a.attnum = k.attnum AND a.attrelid = t.oid
+          JOIN pg_namespace n ON t.relnamespace = n.oid
+      WHERE
+          n.nspname = 'public'
+      GROUP BY
+          n.nspname, COALESCE(pt.parent_table::text, t.relname), i.relname, am.amname
+      ORDER BY
+          COALESCE(pt.parent_table::text, t.relname), i.relname; -- @qd_introspection
+      `;
+    return indexes;
   }
 }
 
@@ -207,7 +324,7 @@ export type TableMetadata = {
   reltuples: number;
   relpages: number;
   relallvisible: number;
-  relallfrozen: number;
+  relallfrozen?: number;
   columns: ColumnMetadata[];
 };
 
@@ -221,4 +338,15 @@ export type SerializeResult = {
   schema: TableMetadata[];
   serialized: string;
   sampledRecords: Record<TableName, number>;
+};
+
+export type IndexOrder = "ASC" | "DESC";
+
+export type IndexedTable = {
+  index_columns: Array<{ name: string; order: IndexOrder }>;
+  index_name: string;
+  index_type: "btree" | "gin" | (string & {});
+  // this is always public
+  schema_name: string;
+  table_name: string;
 };

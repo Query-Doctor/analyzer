@@ -1,12 +1,17 @@
 import postgres from "postgresjs";
-import { TableMetadata } from "./statistics.ts";
+import * as core from "@actions/core";
+import { IndexedTable, TableMetadata } from "./statistics.ts";
+import dedent from "dedent";
 
 type IndexRecommendation = PermutedIndexCandidate & {
   definition: string;
 };
 
 export class IndexOptimizer {
-  constructor(private readonly sql: postgres.Sql) {}
+  constructor(
+    private readonly sql: postgres.Sql,
+    private readonly existingIndexes: IndexedTable[]
+  ) {}
 
   async run(
     query: string,
@@ -15,26 +20,31 @@ export class IndexOptimizer {
     tables: TableMetadata[]
   ) {
     const baseExplain = await this.runWithReltuples(query, params, tables);
-    const baseCost = baseExplain["Total Cost"];
+    const baseCost: number = Number(baseExplain["Total Cost"]);
     console.log("Base cost with current indexes", baseCost);
     const permutedIndexes = this.tableColumnIndexCandidates(indexes);
     const nextStage: PermutedIndexCandidate[] = [];
     const triedIndexes: Map<string, IndexRecommendation> = new Map();
     // const permutedIndexes = permuteWithFeedback(indexes);
     await this.sql`vacuum;`;
+    const baseIndexes = this.findUsedIndexes(baseExplain);
+    console.log(baseIndexes);
     for (const { table, schema, columns } of permutedIndexes.values()) {
       const permutations = permuteWithFeedback(Array.from(columns));
-      let iter;
+      let iter = permutations.next(PROCEED);
       let previousCost: number = baseCost;
-      let decision: typeof PROCEED | typeof SKIP = PROCEED;
-      do {
-        console.log(`Calling ${String(decision)} on ${table}`);
-        iter = permutations.next(decision);
-        if (iter.done) {
-          console.log("No more reasonable permutations to try. Going to next");
-          break;
-        }
+      while (!iter.done) {
         const columns = iter.value;
+        console.log(table, columns);
+        const existingIndex = this.indexAlreadyExists(table, columns);
+        if (existingIndex) {
+          console.log(
+            `index definition already exists, skipping: ${existingIndex.index_name}`
+          );
+          iter = permutations.next(SKIP);
+          console.log("--------------------------------");
+          continue;
+        }
         const explain = await this.runWithReltuples(
           query,
           params,
@@ -53,11 +63,6 @@ export class IndexOptimizer {
             });
             console.log(sqlString);
             await sql.unsafe(`${sqlString} -- @qd_introspection`);
-            console.log(
-              `trying index ${table}(${Array.from(columns)
-                .map((c) => `"${c}"`)
-                .join(",")});`
-            );
           }
         );
         console.log(
@@ -67,10 +72,12 @@ export class IndexOptimizer {
           explain["Total Cost"]
         );
         if (previousCost > explain["Total Cost"]) {
-          decision = PROCEED;
+          console.log(`decide to PROCEED on ${table}`);
+          iter = permutations.next(PROCEED);
           previousCost = explain["Total Cost"];
         } else {
-          decision = SKIP;
+          console.log(`decide to SKIP on ${table}`);
+          iter = permutations.next(SKIP);
           previousCost = baseCost;
         }
         console.log("Total cost", explain["Total Cost"]);
@@ -80,15 +87,15 @@ export class IndexOptimizer {
           table,
           columns,
         });
-      } while (!iter.done);
+      }
     }
     console.log("Adding ALL indexes");
     // console.log(nextStage);
-    try {
-      await this.sql`vacuum pg_class;`;
-    } catch (err) {
-      console.error(err);
-    }
+    // try {
+    //   await this.sql`vacuum pg_class;`;
+    // } catch (err) {
+    //   console.error(err);
+    // }
     const finalExplain = await this.runWithReltuples(
       query,
       params,
@@ -105,21 +112,35 @@ export class IndexOptimizer {
         }
       }
     );
-    console.dir(finalExplain, { depth: null });
+    // console.dir(finalExplain, { depth: null });
     console.log(
       "Final cost",
       finalExplain["Total Cost"],
       "Base cost",
       baseCost
     );
-    const { newIndexes, existingIndexes } = this.findUsedIndexes(finalExplain);
+    const { newIndexes, existingIndexes: existingIndexesUsedByQuery } =
+      this.findUsedIndexes(finalExplain);
     return {
       baseCost,
-      finalCost: finalExplain["Total Cost"],
+      finalCost: Number(finalExplain["Total Cost"]),
       newIndexes,
-      existingIndexes,
+      existingIndexes: existingIndexesUsedByQuery,
       triedIndexes,
     };
+  }
+
+  private indexAlreadyExists(
+    table: string,
+    columns: string[]
+  ): IndexedTable | undefined {
+    return this.existingIndexes.find(
+      (index) =>
+        index.index_type === "btree" &&
+        index.table_name === table &&
+        index.index_columns.length === columns.length &&
+        index.index_columns.every((c, i) => columns[i] === c.name)
+    );
   }
 
   async runWithReltuples(
@@ -133,10 +154,10 @@ export class IndexOptimizer {
         await f?.(sql);
         const reltuplesTrick = `update pg_class set reltuples = 1000000 where relname IN (${allTableNames
           .map((t) => `'${t.tableName}'`)
-          .join(",")}) returning relname, reltuples; -- @qd_introspection`;
+          .join(",")}); -- @qd_introspection`;
         // console.log(reltuplesTrick);
-        const updateds = await sql.unsafe(reltuplesTrick);
-        const explainString = `explain (analyze, verbose, format json) ${query} -- @qd_introspection`;
+        await sql.unsafe(reltuplesTrick);
+        const explainString = `explain (generic_plan, verbose, format json) ${query} -- @qd_introspection`;
         // console.log(explainString);
         const result = await sql.unsafe(explainString, params as any);
         const out = result[0]["QUERY PLAN"][0].Plan;
