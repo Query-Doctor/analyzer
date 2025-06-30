@@ -381,6 +381,7 @@ from
 select * from guests order by last_upload desc, id desc limit 100;
 
 select * from guest_ip_addresses where ip_address = '127.0.0.1';
+insert into guest_ip_addresses (guest_id, ip_address) values (1, '127.0.0.1');
 --
 -- PostgreSQL database dump complete
 --
