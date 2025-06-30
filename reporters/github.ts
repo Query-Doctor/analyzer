@@ -106,6 +106,8 @@ export class GithubReporter {
       `<dd>${ctx.metadata.logSize} bytes</dd>`,
       "<dt>Time elapsed</dt>",
       `<dd>${ctx.metadata.timeElapsed}ms</dd>`,
+      "<dt>Queries processed</dt>",
+      `<dd>${ctx.queriesLookedAt}</dd>`,
       "</dl>",
       "</details>",
     ].join("\n");
@@ -152,6 +154,7 @@ type ReportMetadata = {
 export type ReportContext = {
   recommendations: ReportIndexRecommendation[];
   metadata: ReportMetadata;
+  queriesLookedAt: number;
 };
 
 export type ReportIndexRecommendation = {

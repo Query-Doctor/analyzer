@@ -112,8 +112,6 @@ async function main() {
       try {
         parsed = JSON.parse(json);
       } catch (e) {
-        console.log(json[850].codePointAt(0));
-        console.log(json.slice(830, 1000));
         console.log(e);
         break;
       }
@@ -206,6 +204,7 @@ async function main() {
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
   await reporter.report({
     recommendations,
+    queriesLookedAt: seenQueries.size,
     metadata: {
       logSize: fileSize,
       timeElapsed: Date.now() - startDate.getTime(),
