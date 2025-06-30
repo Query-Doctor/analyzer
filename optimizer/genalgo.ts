@@ -155,7 +155,7 @@ export class IndexOptimizer {
     try {
       await this.sql.begin(async (sql) => {
         await f?.(sql);
-        const reltuplesTrick = `update pg_class set reltuples = 1000000, relpages = 1000, relallvisible = 1000 where relname IN (${allTableNames
+        const reltuplesTrick = `update pg_class set reltuples = 1000000, relpages = 1000 where relname IN (${allTableNames
           .map((t) => `'${t.tableName}'`)
           .join(",")}); -- @qd_introspection`;
         // console.log(reltuplesTrick);
