@@ -26,7 +26,7 @@ export class IndexOptimizer {
     const nextStage: PermutedIndexCandidate[] = [];
     const triedIndexes: Map<string, IndexRecommendation> = new Map();
     // const permutedIndexes = permuteWithFeedback(indexes);
-    await this.sql`vacuum;`;
+    // await this.sql`vacuum;`;
     const baseIndexes = this.findUsedIndexes(baseExplain);
     console.log(baseIndexes);
     for (const { table, schema, columns } of permutedIndexes.values()) {
@@ -35,7 +35,6 @@ export class IndexOptimizer {
       let previousCost: number = baseCost;
       while (!iter.done) {
         const columns = iter.value;
-        console.log(table, columns);
         const existingIndex = this.indexAlreadyExists(table, columns);
         if (existingIndex) {
           console.log(
@@ -61,7 +60,7 @@ export class IndexOptimizer {
               columns,
               definition: indexDefinition,
             });
-            console.log(sqlString);
+            console.log(indexDefinition);
             await sql.unsafe(`${sqlString} -- @qd_introspection`);
           }
         );
@@ -76,11 +75,14 @@ export class IndexOptimizer {
           iter = permutations.next(PROCEED);
           previousCost = explain["Total Cost"];
         } else {
-          console.log(`decide to SKIP on ${table}`);
-          iter = permutations.next(SKIP);
+          console.log(
+            `decide to SKIP on ${table} (temporarily continuing anyway)`
+          );
+          // TODO: can we safely call skip?
+          // iter = permutations.next(SKIP);
+          iter = permutations.next(PROCEED);
           previousCost = baseCost;
         }
-        console.log("Total cost", explain["Total Cost"]);
         console.log("--------------------------------");
         nextStage.push({
           schema,
@@ -153,7 +155,7 @@ export class IndexOptimizer {
     try {
       await this.sql.begin(async (sql) => {
         await f?.(sql);
-        const reltuplesTrick = `update pg_class set reltuples = 1000000 where relname IN (${allTableNames
+        const reltuplesTrick = `update pg_class set reltuples = 1000000, relpages = 1000, relallvisible = 1000 where relname IN (${allTableNames
           .map((t) => `'${t.tableName}'`)
           .join(",")}); -- @qd_introspection`;
         // console.log(reltuplesTrick);

@@ -61,6 +61,7 @@ async function main() {
   const existingIndexes = await stats.getExistingIndexes();
   const optimizer = new IndexOptimizer(pg, existingIndexes);
   const tables = await stats.dumpStats();
+  // console.log(tables);
 
   console.time("total");
   for await (const chunk of stream) {
@@ -155,6 +156,7 @@ async function main() {
         await core.group(`query:${fingerprintNum}`, async () => {
           console.time(`timing`);
           matching++;
+          printLegend();
           console.log(ansiHighlightedQuery);
           const out = await optimizer.run(
             query,
@@ -234,4 +236,13 @@ function extractParams(logLine: string) {
 
 if (import.meta.main) {
   await main();
+}
+
+function printLegend() {
+  console.log(`--Legend--------------------------`);
+  console.log(`| \x1b[48;5;205m column \x1b[0m | Candidate            |`);
+  console.log(`| \x1b[33m column \x1b[0m | Ignored              |`);
+  console.log(`| \x1b[34m column \x1b[0m | Temp table reference |`);
+  console.log(`-----------------------------------`);
+  console.log();
 }
