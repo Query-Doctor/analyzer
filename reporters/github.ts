@@ -53,11 +53,7 @@ export class GithubReporter {
         `<h2>Query ${i + 1} cost reduced by <strong>${percentage(
           r
         )}%</strong> <code>(${r.baseCost} -> ${r.optimizedCost})</code></h2>`,
-        `<h3>Missing ${pluralize(
-          r.proposedIndexes.length,
-          "index",
-          "indexes"
-        )}</h3>`,
+        `<h3>Missing indexes</h3>`,
         "<ul>",
         r.proposedIndexes
           .map((index) => `<li><code>${index}</code></li>`)
@@ -115,11 +111,7 @@ export class GithubReporter {
     ].join("\n");
     if (recommendations.length > 0) {
       review = [
-        `# Found ${pluralize(
-          recommendations.length,
-          "query",
-          "queries"
-        )} that could be optimized`,
+        `# Found queries that could be optimized`,
         recommendations.join("\n"),
         explanation,
         metadata,
