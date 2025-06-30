@@ -13,11 +13,11 @@ export class GithubReporter {
 
   async report(ctx: ReportContext) {
     if (typeof this.prNumber === "undefined") {
-      console.warn(`Not a PR, skipping report...`);
+      console.log(`Not a PR, skipping report...`);
       return;
     }
     if (!this.githubToken) {
-      console.warn(`No GitHub token provided, skipping report...`);
+      console.log(`No GitHub token provided, skipping report...`);
       return;
     }
     const octokit = github.getOctokit(this.githubToken);
@@ -108,6 +108,8 @@ export class GithubReporter {
       `<dd>${ctx.metadata.timeElapsed}ms</dd>`,
       "<dt>Queries processed</dt>",
       `<dd>${ctx.queriesLookedAt}</dd>`,
+      "<dt>Total queries found</dt>",
+      `<dd>${ctx.totalQueries}</dd>`,
       "</dl>",
       "</details>",
     ].join("\n");
@@ -155,6 +157,8 @@ export type ReportContext = {
   recommendations: ReportIndexRecommendation[];
   metadata: ReportMetadata;
   queriesLookedAt: number;
+  totalQueries: number;
+  error?: Error;
 };
 
 export type ReportIndexRecommendation = {
