@@ -1,7 +1,5 @@
 import postgres from "postgresjs";
-import * as core from "@actions/core";
 import { IndexedTable, TableMetadata } from "./statistics.ts";
-import dedent from "dedent";
 
 type IndexRecommendation = PermutedIndexCandidate & {
   definition: string;

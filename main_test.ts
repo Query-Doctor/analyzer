@@ -97,29 +97,8 @@ Deno.test(async function analyzer() {
     query1,
     []
   );
-  // printLegend();
-  // console.log(ansiHighlightedQuery);
-  // console.log(indexesToCheck);
-  // console.log(indexesToCheck);
-  // assertEquals(
-  //   indexesToCheck,
-  //   new Set([
-  //     ["avg_salary"],
-  //     ["audits", "result"],
-  //     ["audits", "department_id"],
-  //     ["employees", "department_id"],
-  //     ["projects", "department_id"],
-  //     ["projects", "status"],
-  //     ["projects", "budget"],
-  //     ["departments", "name"],
-  //     ["departments", "id"],
-  //     ["employees", "id"],
-  //     ["employees", "manager_id"],
-  //     ["employees", "name"],
-  //     ["manager_id"],
-  //   ])
-  // );
 });
+
 Deno.test(async function analyzer2() {
   const analyzer = new Analyzer();
   const query2 = await Deno.readTextFile("./test/query-2.sql");
@@ -152,12 +131,3 @@ Deno.test(async function analyzer2() {
 Deno.test(async function analyzer() {
   //
 });
-
-function printLegend() {
-  console.log(`--Legend--------------------------`);
-  console.log(`| \x1b[48;5;205m column \x1b[0m | Candidate            |`);
-  console.log(`| \x1b[33m column \x1b[0m | Ignored              |`);
-  console.log(`| \x1b[34m column \x1b[0m | Temp table reference |`);
-  console.log(`-----------------------------------`);
-  console.log();
-}
