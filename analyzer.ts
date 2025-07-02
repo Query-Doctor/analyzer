@@ -278,12 +278,6 @@ export class Analyzer {
             return column.columnName === referencedColumn;
           });
         });
-        // if (!table) {
-        //   console.error(
-        //     `Table ${referencedColumn} does not exist in the introspected tables`
-        //   );
-        //   continue;
-        // }
         for (const table of matchingTables) {
           allIndexes.push({
             schema: table.schemaName,

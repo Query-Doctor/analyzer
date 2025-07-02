@@ -4,6 +4,7 @@
     "jsr:@std/assert@1": "1.0.13",
     "jsr:@std/collections@^1.1.1": "1.1.1",
     "jsr:@std/data-structures@^1.0.8": "1.0.8",
+    "jsr:@std/fmt@^1.0.8": "1.0.8",
     "jsr:@std/internal@^1.0.6": "1.0.8",
     "npm:@actions/core@*": "1.11.1",
     "npm:@actions/core@^1.11.1": "1.11.1",
@@ -31,6 +32,9 @@
     },
     "@std/data-structures@1.0.8": {
       "integrity": "2fb7219247e044c8fcd51341788547575653c82ae2c759ff209e0263ba7d9b66"
+    },
+    "@std/fmt@1.0.8": {
+      "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
     },
     "@std/internal@1.0.8": {
       "integrity": "fc66e846d8d38a47cffd274d80d2ca3f0de71040f855783724bb6b87f60891f5"
@@ -679,6 +683,7 @@
       "jsr:@std/assert@1",
       "jsr:@std/collections@^1.1.1",
       "jsr:@std/data-structures@^1.0.8",
+      "jsr:@std/fmt@^1.0.8",
       "npm:@actions/core@^1.11.1",
       "npm:@actions/github@^6.0.1",
       "npm:@libpg-query/parser@^17.5.1",

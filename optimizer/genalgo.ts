@@ -1,5 +1,7 @@
+import { red, yellow, green, gray, blue, cyan } from "@std/fmt/colors";
 import postgres from "postgresjs";
 import { IndexedTable, TableMetadata } from "./statistics.ts";
+import process from "node:process";
 
 type IndexRecommendation = PermutedIndexCandidate & {
   definition: string;
@@ -13,7 +15,7 @@ export class IndexOptimizer {
 
   async run(
     query: string,
-    params: unknown[],
+    params: string[],
     indexes: RootIndexCandidate[],
     tables: TableMetadata[]
   ) {
@@ -35,53 +37,61 @@ export class IndexOptimizer {
         const columns = iter.value;
         const existingIndex = this.indexAlreadyExists(table, columns);
         if (existingIndex) {
-          console.log(
-            `index definition already exists, skipping: ${existingIndex.index_name}`
-          );
+          console.log(` <${gray("skip")}> ${gray(existingIndex.index_name)}`);
           iter = permutations.next(PROCEED);
-          console.log("--------------------------------");
           continue;
         }
+        let indexDefinition: string = "?";
         const explain = await this.runWithReltuples(
           query,
           params,
           tables,
           async (sql) => {
             const indexName = `__qd_${schema}_${table}_${columns.join("_")}`;
-            const indexDefinition = `${schema}.${table}(${columns
+            const indexDefinitionRaw = `${schema}.${table}(${columns
               .map((c) => `"${c}"`)
               .join(", ")})`;
-            const sqlString = `create index ${indexName} on ${indexDefinition};`;
+            const shortenedSchema = schema === "public" ? "" : `${schema}.`;
+            indexDefinition = `${shortenedSchema}${table}(${columns
+              .map((c) => yellow(`"${c}"`))
+              .join(", ")})`;
+            const sqlString = `create index ${indexName} on ${indexDefinitionRaw};`;
             triedIndexes.set(indexName, {
               schema,
               table,
               columns,
               definition: indexDefinition,
             });
-            console.log(indexDefinition);
             await sql.unsafe(`${sqlString} -- @qd_introspection`);
           }
         );
-        console.log(
-          "Previous cost",
-          previousCost,
-          "Current cost",
-          explain["Total Cost"]
-        );
+        const costDeltaPercentage =
+          ((previousCost - explain["Total Cost"]) / previousCost) * 100;
         if (previousCost > explain["Total Cost"]) {
-          console.log(`decide to PROCEED on ${table}`);
+          console.log(
+            `${green(
+              `+${costDeltaPercentage.toFixed(2).padStart(5, "0")}%`
+            )} ${indexDefinition} `
+          );
           iter = permutations.next(PROCEED);
           previousCost = explain["Total Cost"];
         } else {
           console.log(
-            `decide to SKIP on ${table} (temporarily continuing anyway)`
+            `${
+              previousCost === explain["Total Cost"]
+                ? ` ${gray("00.00%")}`
+                : `${red(
+                    `-${Math.abs(costDeltaPercentage)
+                      .toFixed(2)
+                      .padStart(5, "0")}%`
+                  )}`
+            } ${indexDefinition}`
           );
           // TODO: can we safely call skip?
           // iter = permutations.next(SKIP);
           iter = permutations.next(PROCEED);
           previousCost = baseCost;
         }
-        console.log("--------------------------------");
         nextStage.push({
           schema,
           table,
@@ -89,13 +99,6 @@ export class IndexOptimizer {
         });
       }
     }
-    console.log("Adding ALL indexes");
-    // console.log(nextStage);
-    // try {
-    //   await this.sql`vacuum pg_class;`;
-    // } catch (err) {
-    //   console.error(err);
-    // }
     const finalExplain = await this.runWithReltuples(
       query,
       params,
@@ -112,13 +115,20 @@ export class IndexOptimizer {
         }
       }
     );
-    // console.dir(finalExplain, { depth: null });
-    console.log(
-      "Final cost",
-      finalExplain["Total Cost"],
-      "Base cost",
-      baseCost
-    );
+    if (process.env.DEBUG) {
+      console.dir(finalExplain, { depth: null });
+    }
+    const deltaPercentage =
+      ((baseCost - finalExplain["Total Cost"]) / baseCost) * 100;
+    if (finalExplain["Total Cost"] < baseCost) {
+      console.log(
+        ` 🎉🎉🎉 ${green(`+${deltaPercentage.toFixed(2).padStart(5, "0")}%`)}`
+      );
+    } else if (finalExplain["Total Cost"] > baseCost) {
+      console.log(
+        ` 👍👍👍 ${gray("If there's a better index, we haven't tried it")}`
+      );
+    }
     const { newIndexes, existingIndexes: existingIndexesUsedByQuery } =
       this.findUsedIndexes(finalExplain);
     return {
@@ -146,7 +156,7 @@ export class IndexOptimizer {
 
   async runWithReltuples(
     query: string,
-    params: unknown[],
+    params: string[],
     allTableNames: TableMetadata[],
     f?: (sql: postgres.Sql) => Promise<void>
   ): Promise<any> {
@@ -156,10 +166,8 @@ export class IndexOptimizer {
         const reltuplesTrick = `update pg_class set reltuples = 1000000, relpages = 1000 where relname IN (${allTableNames
           .map((t) => `'${t.tableName}'`)
           .join(",")}); -- @qd_introspection`;
-        // console.log(reltuplesTrick);
         await sql.unsafe(reltuplesTrick);
         const explainString = `explain (generic_plan, verbose, format json) ${query} -- @qd_introspection`;
-        // console.log(explainString);
         const result = await sql.unsafe(explainString, params as any);
         const out = result[0]["QUERY PLAN"][0].Plan;
         throw new RollbackError(out);

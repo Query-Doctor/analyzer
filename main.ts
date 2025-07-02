@@ -13,6 +13,8 @@ import {
   GithubReporter,
   ReportIndexRecommendation,
 } from "./reporters/github.ts";
+import { preprocessEncodedJson } from "./json.ts";
+import { ExplainedLog } from "./pg_log.ts";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -63,6 +65,7 @@ async function main() {
   const recommendations: ReportIndexRecommendation[] = [];
   let allQueries = 0;
   let matching = 0;
+  let skipped = {};
   const pg = postgres(postgresUrl);
   const stats = new Statistics(pg);
   const existingIndexes = await stats.getExistingIndexes();
@@ -91,74 +94,54 @@ async function main() {
     if (loglevel !== "LOG" || !queryString.startsWith("plan:")) {
       continue;
     }
-    const plan: string = queryString.split("plan:")[1].trim();
-    let isJSONOutput = false;
-    let i = 0;
-    for (; i < plan.length; i++) {
-      const char = plan[i];
-      if (char === "\\" && plan[i + 1] === "n") {
-        i++;
-        continue;
-      } else if (/\s+/.test(char)) {
-        continue;
-      } else if (char === "{") {
-        isJSONOutput = true;
-        break;
-      }
+    const planString: string = queryString.split("plan:")[1].trim();
+    const json = preprocessEncodedJson(planString);
+    if (!json) {
+      continue;
     }
-    if (!isJSONOutput) {
-      return;
-    }
-    const json = plan
-      .slice(i)
-      .replace(/\\n/g, "\n")
-      // there are random control characters in the json lol
-      // deno-lint-ignore no-control-regex
-      .replace(/[\u0000-\u001F]+/g, (c) =>
-        c === "\n" ? "\\n" : c === "\r" ? "\\r" : c === "\t" ? "\\t" : ""
-      );
-    let parsed: any;
+    let parsed: ExplainedLog;
     try {
-      parsed = JSON.parse(json);
+      parsed = new ExplainedLog(json);
     } catch (e) {
       console.log(e);
       break;
     }
     allQueries++;
-    const queryFingerprint = await fingerprint(parsed["Query Text"]);
+    const { query, parameters, plan } = parsed;
+    const queryFingerprint = await fingerprint(query);
     if (
       // TODO: we can support inserts/updates too. Just need the right optimization for it.
-      parsed.Plan["Node Type"] === "ModifyTable" ||
-      parsed["Query Text"].includes("@qd_introspection")
+      plan.nodeType === "ModifyTable" ||
+      query.includes("@qd_introspection")
     ) {
       continue;
     }
     const fingerprintNum = parseInt(queryFingerprint, 16);
     if (seenQueries.has(fingerprintNum)) {
-      console.log("Skipping duplicate query", fingerprintNum);
+      if (process.env.DEBUG) {
+        console.log("Skipping duplicate query", fingerprintNum);
+      }
       continue;
     }
     seenQueries.add(fingerprintNum);
-    const query = parsed["Query Text"];
-    const rawParams = parsed["Query Parameters"];
-    const params = rawParams ? extractParams(rawParams) : [];
     const analyzer = new Analyzer();
 
     const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
-      await analyzer.analyze(formatQuery(query), params);
+      await analyzer.analyze(formatQuery(query), parameters);
 
     const selectsCatalog = referencedTables.find((table) =>
       table.startsWith("pg_")
     );
     if (selectsCatalog) {
-      console.log(
-        "Skipping query that selects from catalog tables",
-        selectsCatalog,
-        fingerprintNum
-      );
+      if (process.env.DEBUG) {
+        console.log(
+          "Skipping query that selects from catalog tables",
+          selectsCatalog,
+          fingerprintNum
+        );
+      }
       continue;
     }
-    console.log(query);
     const indexCandidates = analyzer.deriveIndexes(tables, indexesToCheck);
     if (indexCandidates.length > 0) {
       await core.group(`query:${fingerprintNum}`, async () => {
@@ -166,7 +149,12 @@ async function main() {
         matching++;
         printLegend();
         console.log(ansiHighlightedQuery);
-        const out = await optimizer.run(query, params, indexCandidates, tables);
+        const out = await optimizer.run(
+          query,
+          parameters,
+          indexCandidates,
+          tables
+        );
         if (out.newIndexes.size > 0) {
           const newIndexes = Array.from(out.newIndexes)
             .map((n) => out.triedIndexes.get(n)?.definition)
@@ -185,11 +173,7 @@ async function main() {
               }
             })
             .filter((i) => i !== undefined);
-          console.log(dedent`
-            Optimized cost from ${out.baseCost} to ${out.finalCost}
-            Existing indexes: ${Array.from(out.existingIndexes).join(", ")}
-            New indexes: ${newIndexes.join(", ")}
-          `);
+          console.log(`New indexes: ${newIndexes.join(", ")}`);
           recommendations.push({
             formattedQuery: formatQuery(query),
             baseCost: out.baseCost,
@@ -219,25 +203,9 @@ async function main() {
       timeElapsed: Date.now() - startDate.getTime(),
     },
   });
+  console.log(seenQueries.size);
   console.timeEnd("total");
   Deno.exit(0);
-}
-
-const paramPattern = /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
-function extractParams(logLine: string) {
-  const paramsArray = [];
-  let match;
-
-  while ((match = paramPattern.exec(logLine)) !== null) {
-    const paramValue = match[2] !== undefined ? match[2] : match[3];
-    // Push the value directly into the array.
-    // The order is determined by the $1, $2, etc. in the log line.
-    paramsArray[parseInt(match[1]) - 1] = paramValue;
-  }
-
-  // Filter out any empty slots if parameters were not consecutive (e.g., $1, $3 present, but $2 missing)
-  // This ensures a dense array without 'empty' items.
-  return paramsArray.filter((value) => value !== undefined);
 }
 
 if (import.meta.main) {

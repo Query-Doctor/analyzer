@@ -10,6 +10,7 @@
     "@std/assert": "jsr:@std/assert@1",
     "@std/collections": "jsr:@std/collections@^1.1.1",
     "@std/data-structures": "jsr:@std/data-structures@^1.0.8",
+    "@std/fmt": "jsr:@std/fmt@^1.0.8",
     "dedent": "npm:dedent@^1.6.0",
     "fast-csv": "npm:fast-csv@^5.0.2",
     "pgsql-deparser": "npm:pgsql-deparser@^17.8.1",
