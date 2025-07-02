@@ -1,4 +1,4 @@
-import { red, yellow, green, gray, blue, cyan } from "@std/fmt/colors";
+import { red, green, gray } from "@std/fmt/colors";
 import postgres from "postgresjs";
 import { IndexedTable, TableMetadata } from "./statistics.ts";
 import process from "node:process";
@@ -53,14 +53,14 @@ export class IndexOptimizer {
               .join(", ")})`;
             const shortenedSchema = schema === "public" ? "" : `${schema}.`;
             indexDefinition = `${shortenedSchema}${table}(${columns
-              .map((c) => yellow(`"${c}"`))
+              .map((c) => green(`"${c}"`))
               .join(", ")})`;
             const sqlString = `create index ${indexName} on ${indexDefinitionRaw};`;
             triedIndexes.set(indexName, {
               schema,
               table,
               columns,
-              definition: indexDefinition,
+              definition: indexDefinitionRaw,
             });
             await sql.unsafe(`${sqlString} -- @qd_introspection`);
           }
@@ -80,7 +80,7 @@ export class IndexOptimizer {
             `${
               previousCost === explain["Total Cost"]
                 ? ` ${gray("00.00%")}`
-                : `${red(
+                : ` ${red(
                     `-${Math.abs(costDeltaPercentage)
                       .toFixed(2)
                       .padStart(5, "0")}%`

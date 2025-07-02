@@ -13,7 +13,7 @@ jobs:
   run:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Run Postgres
         run: |
           sudo tee -a /etc/postgresql/16/main/postgresql.conf <<EOF

@@ -191,7 +191,6 @@ async function main() {
   }
   await output.status;
   console.log(`Matched ${matching} queries out of ${allQueries}`);
-  // output.unref();
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
   await reporter.report({
     recommendations,
@@ -203,7 +202,6 @@ async function main() {
       timeElapsed: Date.now() - startDate.getTime(),
     },
   });
-  console.log(seenQueries.size);
   console.timeEnd("total");
   Deno.exit(0);
 }
