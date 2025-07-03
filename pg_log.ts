@@ -54,6 +54,14 @@ export class ExplainedLog {
 
     return paramsArray.filter((value) => value !== undefined);
   }
+
+  /**
+   * Whether this query was run by our tool.
+   * Want to skip this to prevent analyzing our own queries.
+   */
+  get isIntrospection(): boolean {
+    return this.query.includes("@qd_introspection");
+  }
 }
 
 class Plan {

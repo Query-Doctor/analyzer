@@ -189,6 +189,15 @@ export class Analyzer {
       }
       if (is(node, "ColumnRef")) {
         for (let i = 0; i < stack.length; i++) {
+          const inReturningList =
+            stack[i] === "returningList" &&
+            stack[i + 1] === "ResTarget" &&
+            stack[i + 2] === "val" &&
+            stack[i + 3] === "ColumnRef";
+          if (inReturningList) {
+            add(node, true);
+            return;
+          }
           if (
             // stack[i] === "SelectStmt" &&
             stack[i + 1] === "targetList" &&
@@ -199,7 +208,9 @@ export class Analyzer {
             // we don't want to index the columns that are being selected
             add(node, true);
             return;
-          } else if (stack[i] === "FuncCall" && stack[i + 1] === "args") {
+          }
+
+          if (stack[i] === "FuncCall" && stack[i + 1] === "args") {
             // args of a function call can't be indexed (without functional indexes)
             add(node, true);
             return;

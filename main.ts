@@ -106,13 +106,9 @@ async function main() {
       break;
     }
     allQueries++;
-    const { query, parameters, plan } = parsed;
+    const { query, parameters } = parsed;
     const queryFingerprint = await fingerprint(query);
-    if (
-      // TODO: we can support inserts/updates too. Just need the right optimization for it.
-      plan.nodeType === "ModifyTable" ||
-      query.includes("@qd_introspection")
-    ) {
+    if (parsed.isIntrospection) {
       continue;
     }
     const fingerprintNum = parseInt(queryFingerprint, 16);
