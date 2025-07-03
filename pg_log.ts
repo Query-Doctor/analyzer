@@ -52,8 +52,6 @@ export class ExplainedLog {
       paramsArray[parseInt(match[1]) - 1] = paramValue;
     }
 
-    // Filter out any empty slots if parameters were not consecutive (e.g., $1, $3 present, but $2 missing)
-    // This ensures a dense array without 'empty' items.
     return paramsArray.filter((value) => value !== undefined);
   }
 }

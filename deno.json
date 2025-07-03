@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/denoland/deno/refs/heads/main/cli/schemas/config-file.v1.json",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "tasks": {
     "dev": "deno run -A --watch main.ts"
   },

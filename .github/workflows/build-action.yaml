@@ -38,12 +38,3 @@ jobs:
           tag_name: v${{ env.DENO_VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create and push major version tag
-        run: |
-          MAJOR_VERSION=$(echo "${{ env.DENO_VERSION }}" | cut -d. -f1)
-          MAJOR_TAG="v${MAJOR_VERSION}"
-          git fetch --tags
-          git tag -f $MAJOR_TAG v${{ env.DENO_VERSION }}
-          git push origin -f $MAJOR_TAG
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
