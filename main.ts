@@ -148,12 +148,17 @@ async function main() {
         matching++;
         printLegend();
         console.log(ansiHighlightedQuery);
-        const out = await optimizer.run(
-          query,
-          parameters,
-          indexCandidates,
-          tables
-        );
+        // TODO: give concrete type
+        let out: Awaited<ReturnType<typeof optimizer.run>>;
+        try {
+          out = await optimizer.run(query, parameters, indexCandidates, tables);
+        } catch (err) {
+          console.error(err);
+          console.error(
+            `Something went wrong while running this query. Skipping`
+          );
+          return;
+        }
         if (out.newIndexes.size > 0) {
           const newIndexes = Array.from(out.newIndexes)
             .map((n) => out.triedIndexes.get(n)?.definition)

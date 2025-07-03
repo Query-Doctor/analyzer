@@ -4,6 +4,9 @@ import dedent from "dedent";
 export class Statistics {
   constructor(private readonly sql: postgres.Sql) {}
 
+  /**
+   * Only works with postgres 18
+   */
   async restoreStats(metadata: TableMetadata[]) {
     this.sql.begin(async (query) => {
       for (const table of metadata) {
@@ -103,10 +106,7 @@ export class Statistics {
           await query.unsafe(sql, args as any);
         }
       }
-      // throw new Error("Not implemented");
     });
-    // console.log(args);
-    // return this.sql.unsafe(sql);
   }
 
   async dumpStats() {
@@ -114,123 +114,124 @@ export class Statistics {
     const postgresVersion = (await this.sql`show server_version_num`)[0]
       .server_version_num;
     // certain things are only supported with pg17
-    if (postgresVersion <= "170000") {
+    if (postgresVersion < "170000") {
       return this.sql<TableMetadata[]>`
-SELECT
-    c.table_name as "tableName",
-    c.table_schema as "schemaName",
-    cl.reltuples,
-    cl.relpages,
-    cl.relallvisible,
-    n.nspname as "schemaName",
-    json_agg(
-      json_build_object(
-        'columnName', c.column_name,
-        'dataType', c.data_type,
-        'isNullable', (c.is_nullable = 'YES')::boolean,
-        'characterMaximumLength', c.character_maximum_length,
-        'numericPrecision', c.numeric_precision,
-        'numericScale', c.numeric_scale,
-        'columnDefault', c.column_default,
-        'stats', (
-          select json_build_object(
-            'schemaname', s.schemaname,
-            'relname', s.tablename,
-            'attname', s.attname,
-            'inherited', s.inherited,
-            'null_frac', s.null_frac,
-            'avg_width', s.avg_width,
-            'n_distinct', s.n_distinct,
-            'most_common_vals', s.most_common_vals,
-            'most_common_freqs', s.most_common_freqs,
-            'histogram_bounds', s.histogram_bounds,
-            'correlation', s.correlation,
-            'most_common_elems', s.most_common_elems,
-            'most_common_elem_freqs', s.most_common_elem_freqs,
-            'elem_count_histogram', s.elem_count_histogram
-          )
-            from pg_stats s
-          where
-            s.tablename = c.table_name
-            and s.attname = c.column_name
-        )
-      )
-    ORDER BY c.ordinal_position) as columns
-FROM
-    information_schema.columns c
-JOIN
-    pg_class cl
-    ON cl.relname = c.table_name
-JOIN
-    pg_namespace n
-    ON n.oid = cl.relnamespace
-WHERE
-    c.table_name not like 'pg_%'
-    and n.nspname <> 'information_schema'
-    and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
-GROUP BY
-    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname; -- @qd_introspection
-`;
+        SELECT
+            c.table_name as "tableName",
+            c.table_schema as "schemaName",
+            cl.reltuples,
+            cl.relpages,
+            cl.relallvisible,
+            n.nspname as "schemaName",
+            json_agg(
+              json_build_object(
+                'columnName', c.column_name,
+                'dataType', c.data_type,
+                'isNullable', (c.is_nullable = 'YES')::boolean,
+                'characterMaximumLength', c.character_maximum_length,
+                'numericPrecision', c.numeric_precision,
+                'numericScale', c.numeric_scale,
+                'columnDefault', c.column_default,
+                'stats', (
+                  select json_build_object(
+                    'schemaname', s.schemaname,
+                    'relname', s.tablename,
+                    'attname', s.attname,
+                    'inherited', s.inherited,
+                    'null_frac', s.null_frac,
+                    'avg_width', s.avg_width,
+                    'n_distinct', s.n_distinct,
+                    'most_common_vals', s.most_common_vals,
+                    'most_common_freqs', s.most_common_freqs,
+                    'histogram_bounds', s.histogram_bounds,
+                    'correlation', s.correlation,
+                    'most_common_elems', s.most_common_elems,
+                    'most_common_elem_freqs', s.most_common_elem_freqs,
+                    'elem_count_histogram', s.elem_count_histogram
+                  )
+                    from pg_stats s
+                  where
+                    s.tablename = c.table_name
+                    and s.attname = c.column_name
+                )
+              )
+            ORDER BY c.ordinal_position) as columns
+        FROM
+            information_schema.columns c
+        JOIN
+            pg_class cl
+            ON cl.relname = c.table_name
+        JOIN
+            pg_namespace n
+            ON n.oid = cl.relnamespace
+        WHERE
+            c.table_name not like 'pg_%'
+            and n.nspname <> 'information_schema'
+            and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
+        GROUP BY
+            c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname; -- @qd_introspection
+      `;
     }
     return await this.sql<TableMetadata[]>`
-SELECT
-    c.table_name as "tableName",
-    c.table_schema as "schemaName",
-    cl.reltuples,
-    cl.relpages,
-    cl.relallvisible,
-    cl.relallfrozen,
-    n.nspname as "schemaName",
-    json_agg(
-      json_build_object(
-        'columnName', c.column_name,
-        'dataType', c.data_type,
-        'isNullable', (c.is_nullable = 'YES')::boolean,
-        'characterMaximumLength', c.character_maximum_length,
-        'numericPrecision', c.numeric_precision,
-        'numericScale', c.numeric_scale,
-        'columnDefault', c.column_default,
-        'stats', (
-          select json_build_object(
-            'schemaname', s.schemaname,
-            'relname', s.tablename,
-            'attname', s.attname,
-            'inherited', s.inherited,
-            'null_frac', s.null_frac,
-            'avg_width', s.avg_width,
-            'n_distinct', s.n_distinct,
-            'most_common_vals', s.most_common_vals,
-            'most_common_freqs', s.most_common_freqs,
-            'histogram_bounds', s.histogram_bounds,
-            'correlation', s.correlation,
-            'most_common_elems', s.most_common_elems,
-            'most_common_elem_freqs', s.most_common_elem_freqs,
-            'elem_count_histogram', s.elem_count_histogram
-            'range_length_histogram', s.range_length_histogram,
-            'range_empty_frac', s.range_empty_frac,
-            'range_bounds_histogram', s.range_bounds_histogram
-          )
-            from pg_stats s
-          where
-            s.tablename = c.table_name
-            and s.attname = c.column_name
-        )
-      )
-    ORDER BY c.ordinal_position) as columns
-FROM
-    information_schema.columns c
-JOIN
-    pg_class cl
-    ON cl.relname = c.table_name
-JOIN
-    pg_namespace n
-    ON n.oid = cl.relnamespace
-WHERE
-    c.table_name not like 'pg_%'
-    and n.nspname <> 'information_schema'
-    and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
-GROUP BY
-    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, cl.relallfrozen, n.nspname; -- @qd_introspection`;
+      SELECT
+          c.table_name as "tableName",
+          c.table_schema as "schemaName",
+          cl.reltuples,
+          cl.relpages,
+          cl.relallvisible,
+          cl.relallfrozen,
+          n.nspname as "schemaName",
+          json_agg(
+            json_build_object(
+              'columnName', c.column_name,
+              'dataType', c.data_type,
+              'isNullable', (c.is_nullable = 'YES')::boolean,
+              'characterMaximumLength', c.character_maximum_length,
+              'numericPrecision', c.numeric_precision,
+              'numericScale', c.numeric_scale,
+              'columnDefault', c.column_default,
+              'stats', (
+                select json_build_object(
+                  'schemaname', s.schemaname,
+                  'relname', s.tablename,
+                  'attname', s.attname,
+                  'inherited', s.inherited,
+                  'null_frac', s.null_frac,
+                  'avg_width', s.avg_width,
+                  'n_distinct', s.n_distinct,
+                  'most_common_vals', s.most_common_vals,
+                  'most_common_freqs', s.most_common_freqs,
+                  'histogram_bounds', s.histogram_bounds,
+                  'correlation', s.correlation,
+                  'most_common_elems', s.most_common_elems,
+                  'most_common_elem_freqs', s.most_common_elem_freqs,
+                  'elem_count_histogram', s.elem_count_histogram
+                  'range_length_histogram', s.range_length_histogram,
+                  'range_empty_frac', s.range_empty_frac,
+                  'range_bounds_histogram', s.range_bounds_histogram
+                )
+                  from pg_stats s
+                where
+                  s.tablename = c.table_name
+                  and s.attname = c.column_name
+              )
+            )
+          ORDER BY c.ordinal_position) as columns
+      FROM
+          information_schema.columns c
+      JOIN
+          pg_class cl
+          ON cl.relname = c.table_name
+      JOIN
+          pg_namespace n
+          ON n.oid = cl.relnamespace
+      WHERE
+          c.table_name not like 'pg_%'
+          and n.nspname <> 'information_schema'
+          and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
+      GROUP BY
+          c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, cl.relallfrozen, n.nspname; -- @qd_introspection
+    `;
   }
 
   /**
