@@ -1,12 +1,10 @@
 import { assertEquals } from "@std/assert";
 import { Analyzer, DatabaseDriver } from "./analyzer.ts";
 import postgres from "https://deno.land/x/postgresjs@v3.4.7/mod.js";
-import { Introspector } from "./introspect.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 
 Deno.test.only(async function real() {
   const sql = postgres("postgres://localhost:5432/hatira_dev");
-  const introspector = new Introspector(sql);
   const analyzer = new Analyzer();
   const optimizer = new IndexOptimizer(sql);
   const query = await Deno.readTextFile("./test/query-real.sql");

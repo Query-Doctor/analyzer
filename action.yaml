@@ -3,6 +3,7 @@
 
 name: "Query Doctor"
 description: "Query Doctor"
+
 branding:
   icon: "database"
   color: "blue"
@@ -24,6 +25,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Setup Deno environment
+    - name: Install Deno
+      uses: denoland/setup-deno@v2
+      with:
+        cache-hash: ${{ hashFiles('deno.json', '**/deno.lock') }}
+        deno-version: v2.x
+
     # Cache pgBadger build
     - name: Cache pgBadger
       uses: actions/cache@v4
@@ -57,8 +65,8 @@ runs:
     # Run the compiled application
     - name: Run Analyzer
       shell: bash
-      working-directory: ${{ github.action_path }}/bin
-      run: ./analyzer
+      working-directory: ${{ github.action_path }}
+      run: deno run --allow-run --allow-read --allow-write --allow-env --allow-net main.ts
       env:
         INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
         INPUT_LOG_PATH: ${{ inputs.log_path }}

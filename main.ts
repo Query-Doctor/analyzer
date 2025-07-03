@@ -8,7 +8,6 @@ import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
 import { fingerprint } from "@libpg-query/parser";
-import dedent from "dedent";
 import {
   GithubReporter,
   ReportIndexRecommendation,
