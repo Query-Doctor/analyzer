@@ -1,7 +1,6 @@
-import { ParseResult, Node } from "@pgsql/types";
-import { parse } from "pgsql-parser";
+import type { ParseResult, Node } from "@pgsql/types";
+import { parse } from "@libpg-query/parser";
 import { deparseSync } from "pgsql-deparser";
-import { BinaryHeap } from "@std/data-structures";
 import { RootIndexCandidate } from "./optimizer/genalgo.ts";
 import { TableMetadata } from "./optimizer/statistics.ts";
 
@@ -353,17 +352,6 @@ function walk(
       walk(child, [...stack, key as KeysOfUnion<Node>], callback);
     }
   }
-}
-
-function buildFrequencyMap(heap: BinaryHeap<string>) {
-  const map = new Map<string, number>();
-  while (!heap.isEmpty()) {
-    const reference = heap.pop();
-    if (reference) {
-      map.set(reference, (map.get(reference) ?? 0) + 1);
-    }
-  }
-  return map;
 }
 
 function isANode(node: unknown): node is Node {

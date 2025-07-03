@@ -2,7 +2,6 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.13",
-    "jsr:@std/collections@^1.1.1": "1.1.1",
     "jsr:@std/data-structures@^1.0.8": "1.0.8",
     "jsr:@std/fmt@^1.0.8": "1.0.8",
     "jsr:@std/internal@^1.0.6": "1.0.8",
@@ -12,11 +11,9 @@
     "npm:@actions/github@^6.0.1": "6.0.1_@octokit+core@5.2.1",
     "npm:@libpg-query/parser@^17.5.1": "17.5.1",
     "npm:@pgsql/types@^17.6.1": "17.6.1",
-    "npm:@types/node@*": "22.15.15",
     "npm:dedent@^1.6.0": "1.6.0",
     "npm:fast-csv@^5.0.2": "5.0.2",
     "npm:pgsql-deparser@^17.8.1": "17.8.1",
-    "npm:pgsql-parser@^17.7.2": "17.7.2",
     "npm:sql-formatter@^15.6.5": "15.6.5",
     "npm:sql-highlight@^6.1.0": "6.1.0"
   },
@@ -26,9 +23,6 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
-    },
-    "@std/collections@1.1.1": {
-      "integrity": "eff6443fbd9d5a6697018fb39c5d13d5f662f0045f21392d640693d0008ab2af"
     },
     "@std/data-structures@1.0.8": {
       "integrity": "2fb7219247e044c8fcd51341788547575653c82ae2c759ff209e0263ba7d9b66"
@@ -241,8 +235,8 @@
     "@protobufjs/utf8@1.1.0": {
       "integrity": "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="
     },
-    "@types/node@22.15.15": {
-      "integrity": "sha512-R5muMcZob3/Jjchn5LcO8jdKwSCbzqmPB6ruBxMcf9kbxtniZHP327s6C37iOfuw8mbKK3cAQa7sEl7afLrQ8A==",
+    "@types/node@24.0.3": {
+      "integrity": "sha512-R4I/kzCYAdRLzfiCabn9hxWfbuHS573x+r0dJMkkzThEa7pbrcDWK+9zu3e7aBOouf+rQAciqPFMnxwr0aWgKg==",
       "dependencies": [
         "undici-types"
       ]
@@ -282,12 +276,6 @@
       "integrity": "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==",
       "dependencies": [
         "safer-buffer"
-      ]
-    },
-    "libpg-query@17.5.2": {
-      "integrity": "sha512-9VhuzWrWyZ6AalSCtF2+BDx/aHpp8JKLAsYa1qF77x7f+kJ5BxAXvdRYOduNNFqdwu67110eFpoBr6BtN4WH/A==",
-      "dependencies": [
-        "@pgsql/types"
       ]
     },
     "lodash.escaperegexp@4.1.2": {
@@ -343,14 +331,6 @@
         "@pgsql/types"
       ]
     },
-    "pgsql-parser@17.7.2": {
-      "integrity": "sha512-pWokAnwbSbhOlu+jWK2cE4wfUE5KqCUycmlG2N5zB1OIA2ncVnffiiGeqr9Bfd5ZOWB7czCvOON/KKkh0iUirQ==",
-      "dependencies": [
-        "@pgsql/types",
-        "libpg-query",
-        "pgsql-deparser"
-      ]
-    },
     "railroad-diagrams@1.0.0": {
       "integrity": "sha512-cz93DjNeLY0idrCNOH6PviZGRN9GJhsdm9hpn1YCS879fj4W+x5IFJhhkRZcwVgMmFF7R82UA/7Oh+R8lLZg6A=="
     },
@@ -381,8 +361,8 @@
     "tunnel@0.0.6": {
       "integrity": "sha512-1h/Lnq9yajKY2PEbBadPXj3VxsDDu844OnaAo52UVmIzIvwwtBPIuNvkjuzBlTWpfJyUbG3ez0KSBibQkj4ojg=="
     },
-    "undici-types@6.21.0": {
-      "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="
+    "undici-types@7.8.0": {
+      "integrity": "sha512-9UJ2xGDvQ43tYyVMpuHlsgApydB8ZKfVYTsLDhXkFL/6gfkp+U8xTGdh8pMJv1SpZna0zxG1DwsKZsreLbXBxw=="
     },
     "undici@5.29.0": {
       "integrity": "sha512-raqeBD6NQK4SkWhQzeYKd1KmIG6dllBOTt55Rmkt4HtI9mwdWtJljnrXjAFUBLTSN67HWrOIZ3EPF4kjUw80Bg==",
@@ -681,7 +661,6 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
-      "jsr:@std/collections@^1.1.1",
       "jsr:@std/data-structures@^1.0.8",
       "jsr:@std/fmt@^1.0.8",
       "npm:@actions/core@^1.11.1",
@@ -691,7 +670,6 @@
       "npm:dedent@^1.6.0",
       "npm:fast-csv@^5.0.2",
       "npm:pgsql-deparser@^17.8.1",
-      "npm:pgsql-parser@^17.7.2",
       "npm:sql-formatter@^15.6.5",
       "npm:sql-highlight@^6.1.0"
     ]
