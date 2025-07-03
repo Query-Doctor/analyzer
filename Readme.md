@@ -1,4 +1,4 @@
-`analyzer` is capable of giving index recommendations after going through your postgres logs.
+`analyzer` is capable of giving index recommendations after going through your postgres logs. It works with all languages, ORMs and query builders!
 
 There are a couple assumptions about your CI pipeline we make for this to work.
 
