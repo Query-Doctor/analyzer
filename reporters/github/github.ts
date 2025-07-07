@@ -11,14 +11,20 @@ import {
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
 export class GithubReporter implements Reporter {
-  private static readonly REVIEW_COMMENT_SUFFIX = "<!-- qd-review-comment -->";
+  private static readonly REVIEW_COMMENT_PREFIX = "<!-- qd-review-comment -->";
   private readonly prNumber?: number;
   private readonly octokit?: ReturnType<typeof github.getOctokit>;
   constructor(githubToken?: string) {
     this.prNumber = github.context.payload.pull_request?.number;
     if (githubToken) {
       this.octokit = github.getOctokit(githubToken);
+    } else {
+      console.log("No GitHub token provided, review will not be created");
     }
+  }
+
+  provider() {
+    return "GitHub";
   }
 
   async report(ctx: ReportContext) {
@@ -30,7 +36,7 @@ export class GithubReporter implements Reporter {
       isQueryLong: isQueryLong,
       renderExplain: renderExplain,
     });
-    this.createReview(output, existingReview);
+    return this.createReview(output, existingReview);
   }
 
   private async findExistingReview() {
@@ -38,6 +44,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
+      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
       return;
     }
     try {
@@ -47,7 +54,7 @@ export class GithubReporter implements Reporter {
         pull_number: this.prNumber,
       });
       return reviews.data.find(
-        (r) => r.body && r.body.includes(GithubReporter.REVIEW_COMMENT_SUFFIX),
+        (r) => r.body && r.body.startsWith(GithubReporter.REVIEW_COMMENT_PREFIX),
       );
     } catch (err) {
       console.error(err);
@@ -60,7 +67,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      // console.log(review);
+      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
       return;
     }
     try {
@@ -70,7 +77,7 @@ export class GithubReporter implements Reporter {
           repo: github.context.repo.repo,
           pull_number: this.prNumber,
           event: "COMMENT",
-          body: review,
+          body: GithubReporter.REVIEW_COMMENT_PREFIX + "\n" + review,
         });
       } else {
         await this.octokit.rest.pulls.updateReview({
@@ -78,7 +85,7 @@ export class GithubReporter implements Reporter {
           repo: github.context.repo.repo,
           pull_number: this.prNumber,
           review_id: existingReview.id,
-          body: review,
+          body: GithubReporter.REVIEW_COMMENT_PREFIX + "\n" + review,
         });
       }
     } catch (err) {

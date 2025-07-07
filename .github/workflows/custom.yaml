@@ -46,4 +46,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           POSTGRES_URL: http://query_doctor@localhost:5432/testing
-          # LOG_PATH: /var/log/postgresql/postgres.log

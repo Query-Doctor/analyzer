@@ -1,4 +1,5 @@
 export interface Reporter {
+  provider(): string;
   report(ctx: ReportContext): Promise<void>;
 }
 
@@ -26,8 +27,8 @@ export function deriveIndexStatistics(indexes: ReportIndexRecommendation[]) {
       }
     }
   }
-  return Array.from(indexUsage.entries()).sort((a, b) =>
-    b[1].usageCount - a[1].usageCount
+  return Array.from(indexUsage.entries()).sort(
+    (a, b) => b[1].usageCount - a[1].usageCount
   );
 }
 
