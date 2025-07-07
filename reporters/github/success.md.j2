@@ -12,7 +12,7 @@ The following indexes are likely to make the most impact to your queries. They'r
   <tbody>
     {% for index, stats in statistics %}
     <tr>
-      <td>{{ index }}</td>
+      <td><code>{{ index }}</code></td>
       <td>{{ stats.usageCount }}</td>
     </tr>
     {% endfor %}
@@ -56,7 +56,7 @@ Couldn't find any new indexes to recommend.
 
   <ol>
     {% for proposedIndex in recommendation.proposedIndexes %}
-      <li>{{ proposedIndex }}</li>
+      <li><code>{{ proposedIndex }}</code></li>
     {% endfor %}
   </ol>
 
