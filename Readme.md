@@ -73,29 +73,7 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Postgres
-        run: |
-          sudo tee -a /etc/postgresql/16/main/postgresql.conf <<EOF
-            shared_preload_libraries = 'auto_explain'
-            auto_explain.log_min_duration = 0
-            auto_explain.log_analyze = true
-            auto_explain.log_verbose = true
-            auto_explain.log_buffers = true
-            auto_explain.log_format = 'json'
-            logging_collector = on
-            log_directory = '/var/log/postgresql'
-            log_filename = 'postgres.log'
-          EOF
-          sudo tee /etc/postgresql/16/main/pg_hba.conf > /dev/null <<EOF
-            host all all 127.0.0.1/32 trust
-            host all all ::1/128 trust
-            local all all peer
-          EOF
-          sudo systemctl start postgresql.service
-          sudo -u postgres createuser -s -d -r -w me
-          sudo -u postgres createdb testing
-          sudo chmod 666 /var/log/postgresql/postgres.log
+      # ... previous steps ...
       - name: Migrate
         run: pnpm run migrate && pnpm run seed
         env:
@@ -110,42 +88,20 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Postgres
-        run: |
-          sudo tee -a /etc/postgresql/16/main/postgresql.conf <<EOF
-            shared_preload_libraries = 'auto_explain'
-            auto_explain.log_min_duration = 0
-            auto_explain.log_analyze = true
-            auto_explain.log_verbose = true
-            auto_explain.log_buffers = true
-            auto_explain.log_format = 'json'
-            logging_collector = on
-            log_directory = '/var/log/postgresql'
-            log_filename = 'postgres.log'
-          EOF
-          sudo tee /etc/postgresql/16/main/pg_hba.conf > /dev/null <<EOF
-            host all all 127.0.0.1/32 trust
-            host all all ::1/128 trust
-            local all all peer
-          EOF
-          sudo systemctl start postgresql.service
-          sudo -u postgres createuser -s -d -r -w me
-          sudo -u postgres createdb testing
-          sudo chmod 666 /var/log/postgresql/postgres.log
-        - name: Migrate
-          run: pnpm run migrate && pnpm run seed
-          env:
-            POSTGRES_URL: postgres://me@localhost/testing
-        - name: Run integration tests
-          run: pnpm run test:integration
-          env:
-            POSTGRES_URL: postgres://me@localhost/testing
-        - name: Run query-doctor/analyzer
-          uses: query-doctor/analyzer@v1
-          env:
-            GITHUB_TOKEN: ${{ github.token }}
-            POSTGRES_URL: postgres://me@localhost/testing
+      # ... previous steps ...
+      - name: Migrate
+        run: pnpm run migrate && pnpm run seed
+        env:
+          POSTGRES_URL: postgres://me@localhost/testing
+      - name: Run integration tests
+        run: pnpm run test:integration
+        env:
+          POSTGRES_URL: postgres://me@localhost/testing
+      - name: Run query-doctor/analyzer
+        uses: query-doctor/analyzer@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          POSTGRES_URL: postgres://me@localhost/testing
 ```
 
 1. Add `pull-request: write` permissions to your job to allow
