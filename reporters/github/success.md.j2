@@ -10,10 +10,10 @@ The following indexes are likely to make the most impact to your queries. They'r
     </tr>
   </thead>
   <tbody>
-    {% for index, count in statistics %}
+    {% for index, stats in statistics %}
     <tr>
       <td>{{ index }}</td>
-      <td>{{ count }}</td>
+      <td>{{ stats.usageCount }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -43,7 +43,7 @@ Couldn't find any new indexes to recommend.
       </td>
       <td>{{ recommendation.baseCost }}</td>
       <td>{{ recommendation.optimizedCost }}</td>
-      <td>{{ recommendation.baseCost / recommendation.optimizedCost }}x</td>
+      <td>{{ (recommendation.baseCost / recommendation.optimizedCost).toFixed(2) }}x</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -52,7 +52,7 @@ Couldn't find any new indexes to recommend.
 {% endif %}
 {% for recommendation in recommendations %}
   <h4 id="query-{{ recommendation.fingerprint }}">Query {{ recommendation.fingerprint }}</h4>
-  New indexes improve cost by {{ recommendation.baseCost / recommendation.optimizedCost }}x:
+  New indexes improve cost by {{ (recommendation.baseCost / recommendation.optimizedCost).toFixed(2) }}x:
 
   <ol>
     {% for proposedIndex in recommendation.proposedIndexes %}
@@ -64,23 +64,23 @@ Couldn't find any new indexes to recommend.
   <details>
     <summary>View Query <i>(too long to display inline)</i></summary>
     {# The extra space above and below the code block is very important (this comment is a space itself) #}
-    ```sql
-    {{ recommendation.formattedQuery }}
-    ```
+```sql
+{{ recommendation.formattedQuery }}
+```
 
   </details>
   {% else %}
 
-  ```sql
-  {{ recommendation.formattedQuery }}
-  ```
+```sql
+{{ recommendation.formattedQuery }}
+```
   {% endif %}
   <details>
     <summary>View Explain Plan <i>(after optimization)</i></summary>
 
-    ```json
-    {{ renderExplain(recommendation.explainPlan) }}
-    ```
+```json
+{{ renderExplain(recommendation.explainPlan) }}
+```
 
   </details>
 
