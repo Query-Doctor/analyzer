@@ -60,6 +60,10 @@ export class IndexOptimizer {
               .map((c) => `"${c}"`)
               .join(", ")})`;
             const shortenedSchema = schema === "public" ? "" : `${schema}.`;
+            // TODO: this is silly, turn this into a data structure here ONLY
+            const indexDefinitionClean = `${shortenedSchema}${table}(${columns
+              .map((c) => `"${c}"`)
+              .join(", ")})`;
             indexDefinition = `${shortenedSchema}${table}(${columns
               .map((c) => green(`"${c}"`))
               .join(", ")})`;
@@ -68,7 +72,7 @@ export class IndexOptimizer {
               schema,
               table,
               columns,
-              definition: indexDefinitionRaw as IndexIdentifier,
+              definition: indexDefinitionClean as IndexIdentifier,
             });
             await sql.unsafe(`${sqlString} -- @qd_introspection`);
           }
