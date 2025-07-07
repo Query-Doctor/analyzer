@@ -1,0 +1,120 @@
+{% if statistics and statistics.length > 0 %}
+## Found New Recommended Indexes
+The following indexes are likely to make the most impact to your queries. They're listed from most to least used, but the impact they make is based on how much they reduce the cost of the queries they're used in.
+
+<table>
+  <thead>
+    <tr>
+      <th>Index Definition</th>
+      <th>Usage Count</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for index, count in statistics %}
+    <tr>
+      <td>{{ index }}</td>
+      <td>{{ count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+### Your queries look good!
+Couldn't find any new indexes to recommend.
+{% endif %}
+
+{% if recommendations.length > 0 %}
+### Optimization Overview
+
+<table>
+  <thead>
+    <tr>
+      <th>Query</th>
+      <th>Base Cost</th>
+      <th>Optimized Cost</th>
+      <th>Improvement</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for recommendation in recommendations %}
+    <tr>
+      <td>
+      <a href="#user-content-query-{{ recommendation.fingerprint }}">{{ recommendation.fingerprint }}</a>
+      </td>
+      <td>{{ recommendation.baseCost }}</td>
+      <td>{{ recommendation.optimizedCost }}</td>
+      <td>{{ recommendation.baseCost / recommendation.optimizedCost }}x</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endif %}
+{% for recommendation in recommendations %}
+  <h4 id="query-{{ recommendation.fingerprint }}">Query {{ recommendation.fingerprint }}</h4>
+  New indexes improve cost by {{ recommendation.baseCost / recommendation.optimizedCost }}x:
+
+  <ol>
+    {% for proposedIndex in recommendation.proposedIndexes %}
+    <li>{{ proposedIndex }}</li>
+    {% endfor %}
+  </ol>
+
+  {% if isQueryLong(recommendation.formattedQuery) %}
+  <details>
+  <summary>View Query <i>(too long to display inline)</i></summary>
+  {# The extra space above and below the code block is very important (this comment is a space itself) #}
+  ```sql
+  {{ recommendation.formattedQuery }}
+  ```
+
+  </details>
+  {% else %}
+
+  ```sql
+  {{ recommendation.formattedQuery }}
+  ```
+  {% endif %}
+  <details>
+  <summary>View Explain Plan <i>(after optimization)</i></summary>
+
+  ```json
+  {{ renderExplain(recommendation.explainPlan) }}
+  ```
+
+  </details>
+
+{% endfor %}
+{% if recommendations.length > 0 %}
+<hr />
+
+<details>
+<summary>What are the numbers next to the query?</summary>
+The numbers are a fingerprint uniquely identifying the query. Let us know in the <a href="https://discord.gg/PrSyxaCWV8">Discord</a> if you'd like to be able to assign unique names to your queries.
+</details>
+
+<details>
+<summary>What is cost?</summary>
+Cost is an arbitrary value representing the amount of work postgres decided it needs to do to execute a query based on what it knows about the database and the query itself. <br />We use cost to look for improvements when checking if an index helps optimize a query in CI as the full production dataset is simply not available to work with.
+</details>
+{% endif %}
+
+<details>
+<summary>Execution metadata</summary>
+  <dl>
+    <dt>Log size</dt>
+    <dd>{{ metadata.logSize or '?' }} bytes</dd>
+    <dt>Time elapsed</dt>
+    <dd>{{ metadata.timeElapsed or '?' }}ms</dd>
+    <dt>Queries processed</dt>
+    <dd>{{ queriesMatched or 'unknown' }}</dd>
+    <dt>Total queries found</dt>
+    <dd>{{ queriesSeen or 'unknown' }}</dd>
+  </dl>
+</details>
+
+{% if recommendations.length > 5 %}
+<sub>
+Too much going on? Let's talk about <a href="https://discord.gg/PrSyxaCWV8">how we can help</a>.
+</sub>
+{% endif %}

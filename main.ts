@@ -8,12 +8,13 @@ import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
 import { fingerprint } from "@libpg-query/parser";
-import {
-  GithubReporter,
-  ReportIndexRecommendation,
-} from "./reporters/github.ts";
+import { GithubReporter } from "./reporters/github/github.ts";
 import { preprocessEncodedJson } from "./json.ts";
 import { ExplainedLog } from "./pg_log.ts";
+import {
+  deriveIndexStatistics,
+  ReportIndexRecommendation,
+} from "./reporters/reporter.ts";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -155,7 +156,7 @@ async function main() {
           );
           return;
         }
-        if (out.newIndexes.size > 0) {
+        if (out.kind === "ok" && out.newIndexes.size > 0) {
           const newIndexes = Array.from(out.newIndexes)
             .map((n) => out.triedIndexes.get(n)?.definition)
             .filter((n) => n !== undefined);
@@ -175,6 +176,7 @@ async function main() {
             .filter((i) => i !== undefined);
           console.log(`New indexes: ${newIndexes.join(", ")}`);
           recommendations.push({
+            fingerprint: fingerprintNum,
             formattedQuery: formatQuery(query),
             baseCost: out.baseCost,
             optimizedCost: out.finalCost,
@@ -192,10 +194,12 @@ async function main() {
   await output.status;
   console.log(`Matched ${matching} queries out of ${allQueries}`);
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
+  const statistics = deriveIndexStatistics(recommendations);
   await reporter.report({
     recommendations,
-    queriesLookedAt: matching,
-    totalQueries: allQueries,
+    queriesMatched: matching,
+    queriesSeen: allQueries,
+    statistics,
     error,
     metadata: {
       logSize: fileSize,
