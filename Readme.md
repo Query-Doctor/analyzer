@@ -98,7 +98,7 @@ jobs:
         env:
           POSTGRES_URL: postgres://me@localhost/testing
       - name: Run query-doctor/analyzer
-        uses: query-doctor/analyzer@v1
+        uses: query-doctor/analyzer@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
           POSTGRES_URL: postgres://me@localhost/testing
