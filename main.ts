@@ -208,7 +208,7 @@ async function main() {
     metadata: { logSize, timeElapsed },
   });
   console.timeEnd("total");
-  Deno.exit(0);
+  Deno.exit();
 }
 
 if (import.meta.main) {

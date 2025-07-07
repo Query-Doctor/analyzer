@@ -16,7 +16,6 @@ export class GithubReporter implements Reporter {
   private readonly octokit?: ReturnType<typeof github.getOctokit>;
   constructor(githubToken?: string) {
     this.prNumber = github.context.payload.pull_request?.number;
-    console.log("prNumber", this.prNumber);
     if (githubToken) {
       this.octokit = github.getOctokit(githubToken);
     } else {
@@ -37,8 +36,7 @@ export class GithubReporter implements Reporter {
       isQueryLong: isQueryLong,
       renderExplain: renderExplain,
     });
-    console.log(existingReview);
-    this.createReview(output, existingReview);
+    return this.createReview(output, existingReview);
   }
 
   private async findExistingReview() {
@@ -74,17 +72,14 @@ export class GithubReporter implements Reporter {
     }
     try {
       if (typeof existingReview === "undefined") {
-        console.log("creating review");
-        const reviewResponse = await this.octokit.rest.pulls.createReview({
+        await this.octokit.rest.pulls.createReview({
           owner: github.context.repo.owner,
           repo: github.context.repo.repo,
           pull_number: this.prNumber,
           event: "COMMENT",
           body: review,
         });
-        console.log("reviewResponse", reviewResponse);
       } else {
-        console.log("updating review");
         await this.octokit.rest.pulls.updateReview({
           owner: github.context.repo.owner,
           repo: github.context.repo.repo,
@@ -94,9 +89,7 @@ export class GithubReporter implements Reporter {
         });
       }
     } catch (err) {
-      console.log("Error creating review", err);
       console.error(err);
-      console.error("Testin")
     }
   }
 
