@@ -8,20 +8,6 @@ branding:
   icon: "database"
   color: "blue"
 
-inputs:
-  github_token:
-    description: "GitHub token"
-    required: true
-  begin_date:
-    description: "Begin date to start analyzing logs"
-    required: false
-  log_path:
-    description: "Path to the Postgres logs"
-    required: true
-  postgres_url:
-    description: "Postgres URL"
-    required: true
-
 runs:
   using: "composite"
   steps:
@@ -69,5 +55,3 @@ runs:
       run: deno run start
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
-        INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
-        INPUT_LOG_PATH: ${{ inputs.log_path }}

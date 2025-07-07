@@ -46,7 +46,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      console.log("No GitHub token or PR number provided, review will not be created", this.octokit, this.prNumber);
+      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
       return;
     }
     try {
@@ -69,19 +69,22 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      console.log("No GitHub token or PR number provided, review will not be created", this.octokit, this.prNumber);
+      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
       return;
     }
     try {
       if (typeof existingReview === "undefined") {
-        await this.octokit.rest.pulls.createReview({
+        console.log("creating review");
+        const reviewResponse = await this.octokit.rest.pulls.createReview({
           owner: github.context.repo.owner,
           repo: github.context.repo.repo,
           pull_number: this.prNumber,
           event: "COMMENT",
           body: review,
         });
+        console.log("reviewResponse", reviewResponse);
       } else {
+        console.log("updating review");
         await this.octokit.rest.pulls.updateReview({
           owner: github.context.repo.owner,
           repo: github.context.repo.repo,
@@ -91,7 +94,9 @@ export class GithubReporter implements Reporter {
         });
       }
     } catch (err) {
+      console.log("Error creating review", err);
       console.error(err);
+      console.error("Testin")
     }
   }
 

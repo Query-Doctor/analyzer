@@ -15,6 +15,7 @@ import {
   deriveIndexStatistics,
   ReportIndexRecommendation,
 } from "./reporters/reporter.ts";
+import { DEBUG, GITHUB_TOKEN, LOG_PATH, POSTGRES_URL } from "./env.ts";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -25,8 +26,8 @@ function formatQuery(query: string) {
 }
 
 async function main() {
-  const logPath = process.env.LOG_PATH || "/var/log/postgresql/postgres.log";
-  const postgresUrl = process.env.POSTGRES_URL;
+  const logPath = LOG_PATH || "/var/log/postgresql/postgres.log";
+  const postgresUrl = POSTGRES_URL;
   if (!postgresUrl) {
     core.setFailed("POSTGRES_URL environment variable is not set");
     Deno.exit(1);
@@ -114,7 +115,7 @@ async function main() {
     }
     const fingerprintNum = parseInt(queryFingerprint, 16);
     if (seenQueries.has(fingerprintNum)) {
-      if (process.env.DEBUG) {
+      if (DEBUG) {
         console.log("Skipping duplicate query", fingerprintNum);
       }
       continue;
@@ -129,7 +130,7 @@ async function main() {
       table.startsWith("pg_")
     );
     if (selectsCatalog) {
-      if (process.env.DEBUG) {
+      if (DEBUG) {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
@@ -193,7 +194,8 @@ async function main() {
   }
   await output.status;
   console.log(`Matched ${matching} queries out of ${allQueries}`);
-  const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
+  console.log(`GITHUB_TOKEN=${GITHUB_TOKEN}`);
+  const reporter = new GithubReporter(GITHUB_TOKEN);
   const statistics = deriveIndexStatistics(recommendations);
   const timeElapsed = Date.now() - startDate.getTime();
   console.log(`Generating report (${reporter.provider()})`);
@@ -210,57 +212,6 @@ async function main() {
 }
 
 if (import.meta.main) {
-  //   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
-  //   reporter.report({
-  //     metadata: {
-  //       logSize: 100,
-  //       timeElapsed: 100,
-  //     },
-  //     queriesMatched: 2,
-  //     queriesSeen: 100,
-  //     recommendations: [
-  //       {
-  //         fingerprint: "1234567890",
-  //         formattedQuery: `select
-  //   "id",
-  //   "ladder_id",
-  //   "challenger_id",
-  //   "opponent_id",
-  //   "match_date",
-  //   "outcome",
-  //   "rounds_won",
-  //   "rounds_lost",
-  //   "created_at",
-  //   "updated_at",
-  //   "deleted_at"
-  // from
-  //   "matches"
-  // where
-  //   (
-  //     (
-  //       "matches"."challenger_id" = $1
-  //       or "matches"."opponent_id" = $2
-  //     )
-  //     and "matches"."deleted_at" is null
-  //   )`,
-  //         baseCost: 100,
-  //         optimizedCost: 50,
-  //         existingIndexes: [],
-  //         proposedIndexes: ["assets(id, name)"],
-  //         explainPlan: {},
-  //         // isQueryLong: true
-  //       },
-  //       {
-  //         fingerprint: "999999",
-  //         formattedQuery: "SELECT * FROM users where aa",
-  //         baseCost: 1000,
-  //         optimizedCost: 50,
-  //         existingIndexes: [],
-  //         proposedIndexes: ["assets(id, name)", "guests(gaming, ez)"],
-  //         explainPlan: { hello: "world" },
-  //       },
-  //     ],
-  //   });
   await main();
 }
 
