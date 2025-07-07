@@ -133,7 +133,7 @@ async function main() {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
-          fingerprintNum
+          fingerprintNum,
         );
       }
       continue;
@@ -152,7 +152,7 @@ async function main() {
         } catch (err) {
           console.error(err);
           console.error(
-            `Something went wrong while running this query. Skipping`
+            `Something went wrong while running this query. Skipping`,
           );
           return;
         }
@@ -163,14 +163,14 @@ async function main() {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
               const existing = existingIndexes.find(
-                (e) => e.index_name === index
+                (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${
-                  existing.table_name
-                }(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")})`;
+                return `${existing.schema_name}.${existing.table_name}(${
+                  existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")
+                })`;
               }
             })
             .filter((i) => i !== undefined);
@@ -211,6 +211,57 @@ async function main() {
 }
 
 if (import.meta.main) {
+  //   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
+  //   reporter.report({
+  //     metadata: {
+  //       logSize: 100,
+  //       timeElapsed: 100,
+  //     },
+  //     queriesMatched: 2,
+  //     queriesSeen: 100,
+  //     recommendations: [
+  //       {
+  //         fingerprint: "1234567890",
+  //         formattedQuery: `select
+  //   "id",
+  //   "ladder_id",
+  //   "challenger_id",
+  //   "opponent_id",
+  //   "match_date",
+  //   "outcome",
+  //   "rounds_won",
+  //   "rounds_lost",
+  //   "created_at",
+  //   "updated_at",
+  //   "deleted_at"
+  // from
+  //   "matches"
+  // where
+  //   (
+  //     (
+  //       "matches"."challenger_id" = $1
+  //       or "matches"."opponent_id" = $2
+  //     )
+  //     and "matches"."deleted_at" is null
+  //   )`,
+  //         baseCost: 100,
+  //         optimizedCost: 50,
+  //         existingIndexes: [],
+  //         proposedIndexes: ["assets(id, name)"],
+  //         explainPlan: {},
+  //         // isQueryLong: true
+  //       },
+  //       {
+  //         fingerprint: "999999",
+  //         formattedQuery: "SELECT * FROM users where aa",
+  //         baseCost: 1000,
+  //         optimizedCost: 50,
+  //         existingIndexes: [],
+  //         proposedIndexes: ["assets(id, name)", "guests(gaming, ez)"],
+  //         explainPlan: { hello: "world" },
+  //       },
+  //     ],
+  //   });
   await main();
 }
 
