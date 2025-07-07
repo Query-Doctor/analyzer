@@ -19,18 +19,11 @@ jobs:
       - name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          cache-hash: ${{ hashFiles('deno.json', '**/deno.lock') }}
+          cache-hash: ${{ hashFiles('**/deno.lock') }}
           deno-version: v2.x
       - name: Export version
         run: |
           echo "DENO_VERSION=$(jq -r '.version' deno.json)" >> $GITHUB_ENV
-
-      # - name: Build Action
-      #   shell: bash
-      #   working-directory: ${{ github.action_path }}
-      #   run: |
-      #     deno compile --target x86_64-unknown-linux-gnu --allow-run --allow-read --allow-write --allow-env --allow-net -o bin/analyzer_${{ env.DENO_VERSION }}_linux_x86_64 main.ts
-      #     deno compile --target aarch64-unknown-linux-gnu --allow-run --allow-read --allow-write --allow-env --allow-net -o bin/analyzer_${{ env.DENO_VERSION }}_linux_aarch64 main.ts
 
       - name: Upload files to release
         uses: softprops/action-gh-release@v2

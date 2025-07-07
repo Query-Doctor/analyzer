@@ -8,12 +8,13 @@ import { Statistics } from "./optimizer/statistics.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import process from "node:process";
 import { fingerprint } from "@libpg-query/parser";
-import {
-  GithubReporter,
-  ReportIndexRecommendation,
-} from "./reporters/github.ts";
+import { GithubReporter } from "./reporters/github/github.ts.tsx";
 import { preprocessEncodedJson } from "./json.ts";
 import { ExplainedLog } from "./pg_log.ts";
+import {
+  deriveIndexStatistics,
+  ReportIndexRecommendation,
+} from "./reporters/reporter.ts";
 
 function formatQuery(query: string) {
   return format(query, {
@@ -132,7 +133,7 @@ async function main() {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
-          fingerprintNum
+          fingerprintNum,
         );
       }
       continue;
@@ -151,30 +152,31 @@ async function main() {
         } catch (err) {
           console.error(err);
           console.error(
-            `Something went wrong while running this query. Skipping`
+            `Something went wrong while running this query. Skipping`,
           );
           return;
         }
-        if (out.newIndexes.size > 0) {
+        if (out.kind === "ok" && out.newIndexes.size > 0) {
           const newIndexes = Array.from(out.newIndexes)
             .map((n) => out.triedIndexes.get(n)?.definition)
             .filter((n) => n !== undefined);
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
               const existing = existingIndexes.find(
-                (e) => e.index_name === index
+                (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${
-                  existing.table_name
-                }(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")})`;
+                return `${existing.schema_name}.${existing.table_name}(${
+                  existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")
+                })`;
               }
             })
             .filter((i) => i !== undefined);
           console.log(`New indexes: ${newIndexes.join(", ")}`);
           recommendations.push({
+            fingerprint: fingerprintNum,
             formattedQuery: formatQuery(query),
             baseCost: out.baseCost,
             optimizedCost: out.finalCost,
@@ -192,10 +194,12 @@ async function main() {
   await output.status;
   console.log(`Matched ${matching} queries out of ${allQueries}`);
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
+  const statistics = deriveIndexStatistics(recommendations);
   await reporter.report({
     recommendations,
-    queriesLookedAt: matching,
-    totalQueries: allQueries,
+    queriesMatched: matching,
+    queriesSeen: allQueries,
+    statistics,
     error,
     metadata: {
       logSize: fileSize,
@@ -207,6 +211,57 @@ async function main() {
 }
 
 if (import.meta.main) {
+  //   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
+  //   reporter.report({
+  //     metadata: {
+  //       logSize: 100,
+  //       timeElapsed: 100,
+  //     },
+  //     queriesMatched: 2,
+  //     queriesSeen: 100,
+  //     recommendations: [
+  //       {
+  //         fingerprint: "1234567890",
+  //         formattedQuery: `select
+  //   "id",
+  //   "ladder_id",
+  //   "challenger_id",
+  //   "opponent_id",
+  //   "match_date",
+  //   "outcome",
+  //   "rounds_won",
+  //   "rounds_lost",
+  //   "created_at",
+  //   "updated_at",
+  //   "deleted_at"
+  // from
+  //   "matches"
+  // where
+  //   (
+  //     (
+  //       "matches"."challenger_id" = $1
+  //       or "matches"."opponent_id" = $2
+  //     )
+  //     and "matches"."deleted_at" is null
+  //   )`,
+  //         baseCost: 100,
+  //         optimizedCost: 50,
+  //         existingIndexes: [],
+  //         proposedIndexes: ["assets(id, name)"],
+  //         explainPlan: {},
+  //         // isQueryLong: true
+  //       },
+  //       {
+  //         fingerprint: "999999",
+  //         formattedQuery: "SELECT * FROM users where aa",
+  //         baseCost: 1000,
+  //         optimizedCost: 50,
+  //         existingIndexes: [],
+  //         proposedIndexes: ["assets(id, name)", "guests(gaming, ez)"],
+  //         explainPlan: { hello: "world" },
+  //       },
+  //     ],
+  //   });
   await main();
 }
 

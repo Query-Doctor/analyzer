@@ -66,7 +66,7 @@ runs:
     - name: Run Analyzer
       shell: bash
       working-directory: ${{ github.action_path }}
-      run: deno run --allow-run --allow-read --allow-write --allow-env --allow-net main.ts
+      run: deno run start
       env:
         INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
         INPUT_LOG_PATH: ${{ inputs.log_path }}
