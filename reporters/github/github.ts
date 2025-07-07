@@ -16,9 +16,16 @@ export class GithubReporter implements Reporter {
   private readonly octokit?: ReturnType<typeof github.getOctokit>;
   constructor(githubToken?: string) {
     this.prNumber = github.context.payload.pull_request?.number;
+    console.log("prNumber", this.prNumber);
     if (githubToken) {
       this.octokit = github.getOctokit(githubToken);
+    } else {
+      console.log("No GitHub token provided, review will not be created");
     }
+  }
+
+  provider() {
+    return "GitHub";
   }
 
   async report(ctx: ReportContext) {
@@ -30,6 +37,7 @@ export class GithubReporter implements Reporter {
       isQueryLong: isQueryLong,
       renderExplain: renderExplain,
     });
+    console.log(existingReview);
     this.createReview(output, existingReview);
   }
 
@@ -38,6 +46,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
+      console.log("No GitHub token or PR number provided, review will not be created", this.octokit, this.prNumber);
       return;
     }
     try {
@@ -60,7 +69,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      // console.log(review);
+      console.log("No GitHub token or PR number provided, review will not be created", this.octokit, this.prNumber);
       return;
     }
     try {

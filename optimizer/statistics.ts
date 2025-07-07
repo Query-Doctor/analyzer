@@ -1,5 +1,6 @@
 import postgres from "postgresjs";
 import dedent from "dedent";
+import { gray } from "@std/fmt/colors";
 
 export class Statistics {
   constructor(private readonly sql: postgres.Sql) {}
@@ -110,9 +111,9 @@ export class Statistics {
   }
 
   async dumpStats() {
-    console.log("dumping stats");
     const postgresVersion = (await this.sql`show server_version_num`)[0]
       .server_version_num;
+    console.log(`dumping stats for postgres ${gray(postgresVersion)}`);
     // certain things are only supported with pg17
     if (postgresVersion < "170000") {
       return this.sql<TableMetadata[]>`

@@ -68,5 +68,6 @@ runs:
       working-directory: ${{ github.action_path }}
       run: deno run start
       env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         INPUT_POSTGRES_URL: ${{ inputs.postgres_url }}
         INPUT_LOG_PATH: ${{ inputs.log_path }}

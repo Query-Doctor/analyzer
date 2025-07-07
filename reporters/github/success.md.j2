@@ -56,17 +56,17 @@ Couldn't find any new indexes to recommend.
 
   <ol>
     {% for proposedIndex in recommendation.proposedIndexes %}
-    <li>{{ proposedIndex }}</li>
+      <li>{{ proposedIndex }}</li>
     {% endfor %}
   </ol>
 
   {% if isQueryLong(recommendation.formattedQuery) %}
   <details>
-  <summary>View Query <i>(too long to display inline)</i></summary>
-  {# The extra space above and below the code block is very important (this comment is a space itself) #}
-  ```sql
-  {{ recommendation.formattedQuery }}
-  ```
+    <summary>View Query <i>(too long to display inline)</i></summary>
+    {# The extra space above and below the code block is very important (this comment is a space itself) #}
+    ```sql
+    {{ recommendation.formattedQuery }}
+    ```
 
   </details>
   {% else %}
@@ -76,11 +76,11 @@ Couldn't find any new indexes to recommend.
   ```
   {% endif %}
   <details>
-  <summary>View Explain Plan <i>(after optimization)</i></summary>
+    <summary>View Explain Plan <i>(after optimization)</i></summary>
 
-  ```json
-  {{ renderExplain(recommendation.explainPlan) }}
-  ```
+    ```json
+    {{ renderExplain(recommendation.explainPlan) }}
+    ```
 
   </details>
 
@@ -89,13 +89,13 @@ Couldn't find any new indexes to recommend.
 <hr />
 
 <details>
-<summary>What are the numbers next to the query?</summary>
-The numbers are a fingerprint uniquely identifying the query. Let us know in the <a href="https://discord.gg/PrSyxaCWV8">Discord</a> if you'd like to be able to assign unique names to your queries.
+  <summary>What are the numbers next to the query?</summary>
+  The numbers are a fingerprint uniquely identifying the query. Let us know in the <a href="https://discord.gg/PrSyxaCWV8">Discord</a> if you'd like to be able to assign unique names to your queries.
 </details>
 
 <details>
-<summary>What is cost?</summary>
-Cost is an arbitrary value representing the amount of work postgres decided it needs to do to execute a query based on what it knows about the database and the query itself. <br />We use cost to look for improvements when checking if an index helps optimize a query in CI as the full production dataset is simply not available to work with.
+  <summary>What is cost?</summary>
+  Cost is an arbitrary value representing the amount of work postgres decided it needs to do to execute a query based on what it knows about the database and the query itself. <br />We use cost to look for improvements when checking if an index helps optimize a query in CI as the full production dataset is simply not available to work with.
 </details>
 {% endif %}
 

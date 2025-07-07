@@ -32,8 +32,8 @@ async function main() {
     Deno.exit(1);
   }
   const startDate = new Date();
-  const fileSize = Deno.statSync(logPath).size;
-  console.log(`logPath=${logPath},fileSize=${fileSize}`);
+  const logSize = Deno.statSync(logPath).size;
+  console.log(`logPath=${logPath},fileSize=${logSize}`);
   // core.setOutput("time", new Date().toLocaleTimeString());
   const args = [
     "--dump-raw-csv",
@@ -133,7 +133,7 @@ async function main() {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
-          fingerprintNum,
+          fingerprintNum
         );
       }
       continue;
@@ -152,7 +152,7 @@ async function main() {
         } catch (err) {
           console.error(err);
           console.error(
-            `Something went wrong while running this query. Skipping`,
+            `Something went wrong while running this query. Skipping`
           );
           return;
         }
@@ -163,14 +163,14 @@ async function main() {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
               const existing = existingIndexes.find(
-                (e) => e.index_name === index,
+                (e) => e.index_name === index
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${
-                  existing.index_columns
-                    .map((c) => `"${c.name}" ${c.order}`)
-                    .join(", ")
-                })`;
+                return `${existing.schema_name}.${
+                  existing.table_name
+                }(${existing.index_columns
+                  .map((c) => `"${c.name}" ${c.order}`)
+                  .join(", ")})`;
               }
             })
             .filter((i) => i !== undefined);
@@ -195,16 +195,15 @@ async function main() {
   console.log(`Matched ${matching} queries out of ${allQueries}`);
   const reporter = new GithubReporter(process.env.GITHUB_TOKEN);
   const statistics = deriveIndexStatistics(recommendations);
+  const timeElapsed = Date.now() - startDate.getTime();
+  console.log(`Generating report (${reporter.provider()})`);
   await reporter.report({
     recommendations,
     queriesMatched: matching,
     queriesSeen: allQueries,
     statistics,
     error,
-    metadata: {
-      logSize: fileSize,
-      timeElapsed: Date.now() - startDate.getTime(),
-    },
+    metadata: { logSize, timeElapsed },
   });
   console.timeEnd("total");
   Deno.exit(0);
