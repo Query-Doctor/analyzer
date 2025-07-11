@@ -1,0 +1,5132 @@
+logPath=/tmp/postgres_logs/postgres.log,fileSize=3049296
+pgbadger --dump-raw-csv --no-progressbar -f stderr /tmp/postgres_logs/postgres.log
+dumping stats for postgres [90m160009[39m
+Result(1) [
+  {
+    json_agg: [
+      {
+        tableName: "_prisma_migrations",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object]
+        ]
+      },
+      {
+        tableName: "event_data",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object]
+        ]
+      },
+      {
+        tableName: "report",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object]
+        ]
+      },
+      {
+        tableName: "session",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object]
+        ]
+      },
+      {
+        tableName: "session_data",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object]
+        ]
+      },
+      {
+        tableName: "team",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object]
+        ]
+      },
+      {
+        tableName: "team_user",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [ [Object], [Object], [Object], [Object], [Object], [Object] ]
+      },
+      {
+        tableName: "user",
+        schemaName: "public",
+        reltuples: 1,
+        relpages: 1,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object]
+        ]
+      },
+      {
+        tableName: "website",
+        schemaName: "public",
+        reltuples: 2,
+        relpages: 1,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object], [Object],
+          [Object]
+        ]
+      },
+      {
+        tableName: "website_event",
+        schemaName: "public",
+        reltuples: -1,
+        relpages: 0,
+        relallvisible: 0,
+        columns: [
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object], [Object],
+          [Object], [Object]
+        ]
+      }
+    ]
+  }
+]
+Result(0) []
+Map(0) {}
+::group::query:8222074007983194000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."password"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."created_at"[0m
+from
+  "public"."user"
+where
+  (
+    [48;5;205m"public"."user"."username"[0m = $1
+    and 1 = 1
+  )
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_username_key[39m
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 796,
+  Output: [ "user_id", "username", "password", "role", "created_at" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 796,
+      Output: [ "user_id", "username", "password", "role", "created_at" ],
+      Filter: `(("user".username)::text = 'admin'::text)`
+    }
+  ]
+}
+No new indexes found
+timing: 17.9ms
+::endgroup::
+::group::query:16888571312410653000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."created_at"[0m
+from
+  "public"."user"
+where
+  (
+    [48;5;205m"public"."user"."user_id"[0m = $1
+    and 1 = 1
+  )
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_pkey[39m
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 658,
+  Output: [ "user_id", "username", "role", "created_at" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 658,
+      Output: [ "user_id", "username", "role", "created_at" ],
+      Filter: `("user".user_id = '41e2b680-648e-4b09-bcd7-3e2b10c06264'::uuid)`
+    }
+  ]
+}
+No new indexes found
+timing: 12.0ms
+::endgroup::
+::group::query:8600632967258724000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."created_at"[0m
+from
+  "public"."user"
+where
+  (
+    [48;5;205m"public"."user"."username"[0m = $1
+    and [48;5;205m"public"."user"."deleted_at"[0m is null
+  )
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m user([32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m, [32m"username"[39m)
+ <[90mskip[39m> [90muser_username_key[39m
+ [90m00.00%[39m user([32m"username"[39m, [32m"deleted_at"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 658,
+  Output: [ "user_id", "username", "role", "created_at" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 658,
+      Output: [ "user_id", "username", "role", "created_at" ],
+      Filter: `(("user".deleted_at IS NULL) AND (("user".username)::text = 'cypress1'::text))`
+    }
+  ]
+}
+No new indexes found
+timing: 124ms
+::endgroup::
+insert into
+  "public"."user" (
+    "user_id",
+    "username",
+    "password",
+    "role",
+    "created_at",
+    "updated_at"
+  )
+values
+  ($1, $2, $3, $4, $5, $6)
+returning
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."role"[0m
+No index candidates found 12378850293518279000
+Skipping duplicate query 16888571312410653000
+insert into
+  "public"."team" (
+    "team_id",
+    "name",
+    "access_code",
+    "created_at",
+    "updated_at"
+  )
+values
+  ($1, $2, $3, $4, $5)
+returning
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m
+No index candidates found 17762823263015778000
+insert into
+  "public"."team_user" (
+    "team_user_id",
+    "team_id",
+    "user_id",
+    "role",
+    "created_at",
+    "updated_at"
+  )
+values
+  ($1, $2, $3, $4, $5, $6)
+returning
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m,
+  [33m"public"."team_user"."user_id"[0m,
+  [33m"public"."team_user"."role"[0m,
+  [33m"public"."team_user"."created_at"[0m,
+  [33m"public"."team_user"."updated_at"[0m
+No index candidates found 7343185512749601000
+Skipping duplicate query 16888571312410653000
+::group::query:5904173995038152000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m
+from
+  "public"."team"
+where
+  (
+    [48;5;205m"public"."team"."team_id"[0m = $1
+    and 1 = 1
+  )
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_team_id_key" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 792,
+  Output: [
+    "team_id",
+    "name",
+    "access_code",
+    "logo_url",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_team_id_key",
+      "Relation Name": "team",
+      Schema: "public",
+      Alias: "team",
+      "Startup Cost": 0.14,
+      "Total Cost": 8.16,
+      "Plan Rows": 1,
+      "Plan Width": 792,
+      Output: [
+        "team_id",
+        "name",
+        "access_code",
+        "logo_url",
+        "created_at",
+        "updated_at",
+        "deleted_at"
+      ],
+      "Index Cond": "(team.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 11.5ms
+::endgroup::
+::group::query:12253411743541877000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m,
+  [33m"public"."team_user"."user_id"[0m,
+  [33m"public"."team_user"."role"[0m,
+  [33m"public"."team_user"."created_at"[0m,
+  [33m"public"."team_user"."updated_at"[0m
+from
+  "public"."team_user"
+where
+  [48;5;205m"public"."team_user"."team_id"[0m in ($1)
+offset
+  $2
+Base cost with current indexes 9.5
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+{
+  "Node Type": "Bitmap Heap Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 4.16,
+  "Total Cost": 9.5,
+  "Plan Rows": 2,
+  "Plan Width": 182,
+  Output: [
+    "team_user_id",
+    "team_id",
+    "user_id",
+    "role",
+    "created_at",
+    "updated_at"
+  ],
+  "Recheck Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)",
+  Plans: [
+    {
+      "Node Type": "Bitmap Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Index Name": "team_user_team_id_idx",
+      "Startup Cost": 0,
+      "Total Cost": 4.16,
+      "Plan Rows": 2,
+      "Plan Width": 0,
+      "Index Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 12.5ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:17793789039416703000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team"."team_id"[0m
+from
+  "public"."team"
+where
+  (
+    [48;5;205m"public"."team"."team_id"[0m = $1
+    and 1 = 1
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_team_id_key" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+{
+  "Node Type": "Index Only Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "team_team_id_key",
+  "Relation Name": "team",
+  Schema: "public",
+  Alias: "team",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "team_id" ],
+  "Index Cond": "(team.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+}
+No new indexes found
+timing: 18.7ms
+::endgroup::
+::group::query:9179617747769630000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."team"
+set
+  "name" = $1,
+  "updated_at" = $2
+where
+  (
+    [48;5;205m"public"."team"."team_id"[0m = $3
+    and 1 = 1
+  )
+returning
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_team_id_key" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team",
+  Schema: "public",
+  Alias: "team",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 132,
+  Output: [
+    "team_id",
+    "name",
+    "access_code",
+    "logo_url",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_team_id_key",
+      "Relation Name": "team",
+      Schema: "public",
+      Alias: "team",
+      "Startup Cost": 0.14,
+      "Total Cost": 8.16,
+      "Plan Rows": 1,
+      "Plan Width": 132,
+      Output: [
+        "'cypressUpdate'::character varying(50)",
+        "'2025-07-11 07:16:59.151+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      "Index Cond": "(team.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 24.8ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:3369478116519137300
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m,
+  [33m"public"."team_user"."user_id"[0m,
+  [33m"public"."team_user"."role"[0m,
+  [33m"public"."team_user"."created_at"[0m,
+  [33m"public"."team_user"."updated_at"[0m
+from
+  "public"."team_user"
+  left join "public"."user" as "j0" on ([48;5;205m"j0"."user_id"[0m) = ([48;5;205m"public"."team_user"."user_id"[0m)
+where
+  (
+    [48;5;205m"public"."team_user"."team_id"[0m = $1
+    and (
+      [48;5;205m"j0"."deleted_at"[0m is null
+      and ([48;5;205m"j0"."user_id"[0m is not null)
+    )
+  )
+order by
+  [48;5;205m"public"."team_user"."team_user_id"[0m asc
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 10.55
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_pkey[39m
+ [90m00.00%[39m team_user([32m"team_user_id"[39m, [32m"team_id"[39m)
+ [90m00.00%[39m team_user([32m"team_user_id"[39m, [32m"team_id"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m team_user([32m"team_user_id"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m team_user([32m"team_user_id"[39m, [32m"user_id"[39m, [32m"team_id"[39m)
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+ [90m00.00%[39m team_user([32m"team_id"[39m, [32m"team_user_id"[39m)
+[32m+12.70%[39m team_user([32m"team_id"[39m, [32m"team_user_id"[39m, [32m"user_id"[39m) 
+[32m+00.11%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m) 
+ [90m00.00%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m, [32m"team_user_id"[39m)
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+ [90m00.00%[39m team_user([32m"user_id"[39m, [32m"team_user_id"[39m)
+[32m+12.70%[39m team_user([32m"user_id"[39m, [32m"team_user_id"[39m, [32m"team_id"[39m) 
+[32m+00.11%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m) 
+ [90m00.00%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m, [32m"team_user_id"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 9.2,
+  "Total Cost": 9.2,
+  "Plan Rows": 1,
+  "Plan Width": 182,
+  Output: [
+    "team_user.team_user_id",
+    "team_user.team_id",
+    "team_user.user_id",
+    "team_user.role",
+    "team_user.created_at",
+    "team_user.updated_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Sort",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 9.2,
+      "Total Cost": 9.2,
+      "Plan Rows": 1,
+      "Plan Width": 182,
+      Output: [
+        "team_user.team_user_id",
+        "team_user.team_id",
+        "team_user.user_id",
+        "team_user.role",
+        "team_user.created_at",
+        "team_user.updated_at"
+      ],
+      "Sort Key": [ "team_user.team_user_id" ],
+      Plans: [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Inner",
+          "Startup Cost": 0.15,
+          "Total Cost": 9.19,
+          "Plan Rows": 1,
+          "Plan Width": 182,
+          Output: [
+            "team_user.team_user_id",
+            "team_user.team_id",
+            "team_user.user_id",
+            "team_user.role",
+            "team_user.created_at",
+            "team_user.updated_at"
+          ],
+          "Inner Unique": false,
+          Plans: [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "user",
+              Schema: "public",
+              Alias: "j0",
+              "Startup Cost": 0,
+              "Total Cost": 1.01,
+              "Plan Rows": 1,
+              "Plan Width": 16,
+              Output: [
+                "j0.user_id",
+                "j0.username",
+                "j0.password",
+                "j0.role",
+                "j0.created_at",
+                "j0.updated_at",
+                "j0.deleted_at",
+                "j0.display_name",
+                "j0.logo_url"
+              ],
+              Filter: "((j0.deleted_at IS NULL) AND (j0.user_id IS NOT NULL))"
+            },
+            {
+              "Node Type": "Index Scan",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Scan Direction": "Forward",
+              "Index Name": "__qd_public_team_user_user_id_team_id_team_user_id",
+              "Relation Name": "team_user",
+              Schema: "public",
+              Alias: "team_user",
+              "Startup Cost": 0.15,
+              "Total Cost": 8.17,
+              "Plan Rows": 1,
+              "Plan Width": 182,
+              Output: [
+                "team_user.team_user_id",
+                "team_user.team_id",
+                "team_user.user_id",
+                "team_user.role",
+                "team_user.created_at",
+                "team_user.updated_at"
+              ],
+              "Index Cond": "((team_user.user_id = j0.user_id) AND (team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid))"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+ 🎉🎉🎉 [32m+12.80%[39m
+New indexes: team_user("user_id", "team_id", "team_user_id")
+timing: 162ms
+::endgroup::
+::group::query:16700775148627206000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m
+from
+  "public"."user"
+where
+  [48;5;205m"public"."user"."user_id"[0m in ($1)
+offset
+  $2
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_pkey[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "user",
+  Schema: "public",
+  Alias: "user",
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 532,
+  Output: [ "user_id", "username" ],
+  Filter: `("user".user_id = '41e2b680-648e-4b09-bcd7-3e2b10c06264'::uuid)`
+}
+No new indexes found
+timing: 4.64ms
+::endgroup::
+::group::query:6041589775047514000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  COUNT(*) as "_count._all"
+from
+  (
+    select
+      [33m"public"."team_user"."team_user_id"[0m
+    from
+      "public"."team_user"
+      left join "public"."user" as "j0" on ([48;5;205m"j0"."user_id"[0m) = ([48;5;205m"public"."team_user"."user_id"[0m)
+    where
+      (
+        [48;5;205m"public"."team_user"."team_id"[0m = $1
+        and (
+          [48;5;205m"j0"."deleted_at"[0m is null
+          and ([48;5;205m"j0"."user_id"[0m is not null)
+        )
+      )
+    offset
+      $2
+  ) as "sub"
+Base cost with current indexes 10.56
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+[32m+12.78%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m) 
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+ [90m00.00%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m)
+{
+  "Node Type": "Aggregate",
+  Strategy: "Plain",
+  "Partial Mode": "Simple",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 9.2,
+  "Total Cost": 9.21,
+  "Plan Rows": 1,
+  "Plan Width": 8,
+  Output: [ "count(*)" ],
+  Plans: [
+    {
+      "Node Type": "Nested Loop",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Inner",
+      "Startup Cost": 0.15,
+      "Total Cost": 9.19,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "NULL::uuid" ],
+      "Inner Unique": false,
+      Plans: [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "user",
+          Schema: "public",
+          Alias: "j0",
+          "Startup Cost": 0,
+          "Total Cost": 1.01,
+          "Plan Rows": 1,
+          "Plan Width": 16,
+          Output: [
+            "j0.user_id",
+            "j0.username",
+            "j0.password",
+            "j0.role",
+            "j0.created_at",
+            "j0.updated_at",
+            "j0.deleted_at",
+            "j0.display_name",
+            "j0.logo_url"
+          ],
+          Filter: "((j0.deleted_at IS NULL) AND (j0.user_id IS NOT NULL))"
+        },
+        {
+          "Node Type": "Index Only Scan",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Scan Direction": "Forward",
+          "Index Name": "__qd_public_team_user_user_id_team_id",
+          "Relation Name": "team_user",
+          Schema: "public",
+          Alias: "team_user",
+          "Startup Cost": 0.15,
+          "Total Cost": 8.17,
+          "Plan Rows": 1,
+          "Plan Width": 16,
+          Output: [ "team_user.user_id", "team_user.team_id" ],
+          "Index Cond": "((team_user.user_id = j0.user_id) AND (team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid))"
+        }
+      ]
+    }
+  ]
+}
+ 🎉🎉🎉 [32m+12.78%[39m
+New indexes: team_user("user_id", "team_id")
+timing: 25.6ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:5732413414025801000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m,
+  [33m"public"."team_user"."user_id"[0m,
+  [33m"public"."team_user"."role"[0m,
+  [33m"public"."team_user"."created_at"[0m,
+  [33m"public"."team_user"."updated_at"[0m
+from
+  "public"."team_user"
+where
+  (
+    [48;5;205m"public"."team_user"."team_id"[0m = $1
+    and [48;5;205m"public"."team_user"."user_id"[0m = $2
+  )
+limit
+  $3
+offset
+  $4
+Base cost with current indexes 9.51
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+[32m+14.09%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m) 
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+ [90m00.00%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0.15,
+  "Total Cost": 8.17,
+  "Plan Rows": 1,
+  "Plan Width": 182,
+  Output: [
+    "team_user_id",
+    "team_id",
+    "user_id",
+    "role",
+    "created_at",
+    "updated_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "__qd_public_team_user_team_id_user_id",
+      "Relation Name": "team_user",
+      Schema: "public",
+      Alias: "team_user",
+      "Startup Cost": 0.15,
+      "Total Cost": 8.17,
+      "Plan Rows": 1,
+      "Plan Width": 182,
+      Output: [
+        "team_user_id",
+        "team_id",
+        "user_id",
+        "role",
+        "created_at",
+        "updated_at"
+      ],
+      "Index Cond": "((team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid) AND (team_user.user_id = '41e2b680-648e-4b09-bcd7-3e2b10c06264'::uuid))"
+    }
+  ]
+}
+ 🎉🎉🎉 [32m+14.09%[39m
+New indexes: team_user("team_id", "user_id")
+timing: 24.9ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:11014726210130890000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+from
+  "public"."website"
+where
+  (
+    [48;5;205m"public"."website"."team_id"[0m = $1
+    and [48;5;205m"public"."website"."deleted_at"[0m is null
+  )
+order by
+  [48;5;205m"public"."website"."website_id"[0m asc
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.04
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+ [90m00.00%[39m website([32m"website_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"website_id"[39m, [32m"deleted_at"[39m, [32m"team_id"[39m)
+ [90m00.00%[39m website([32m"website_id"[39m, [32m"team_id"[39m)
+ [90m00.00%[39m website([32m"website_id"[39m, [32m"team_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"website_id"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"website_id"[39m, [32m"team_id"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"team_id"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"team_id"[39m, [32m"website_id"[39m)
+ <[90mskip[39m> [90mwebsite_team_id_idx[39m
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"website_id"[39m)
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"website_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"deleted_at"[39m, [32m"website_id"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 1.03,
+  "Total Cost": 1.04,
+  "Plan Rows": 1,
+  "Plan Width": 948,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Sort",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 1.03,
+      "Total Cost": 1.04,
+      "Plan Rows": 1,
+      "Plan Width": 948,
+      Output: [
+        "website_id", "name",
+        "domain",     "share_id",
+        "reset_at",   "user_id",
+        "team_id",    "created_by",
+        "created_at", "updated_at",
+        "deleted_at"
+      ],
+      "Sort Key": [ "website.website_id" ],
+      Plans: [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "website",
+          Schema: "public",
+          Alias: "website",
+          "Startup Cost": 0,
+          "Total Cost": 1.02,
+          "Plan Rows": 1,
+          "Plan Width": 948,
+          Output: [
+            "website_id", "name",
+            "domain",     "share_id",
+            "reset_at",   "user_id",
+            "team_id",    "created_by",
+            "created_at", "updated_at",
+            "deleted_at"
+          ],
+          Filter: "((website.deleted_at IS NULL) AND (website.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid))"
+        }
+      ]
+    }
+  ]
+}
+No new indexes found
+timing: 125ms
+::endgroup::
+::group::query:15668559197268020000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  COUNT(*) as "_count._all"
+from
+  (
+    select
+      [33m"public"."website"."website_id"[0m
+    from
+      "public"."website"
+    where
+      (
+        [48;5;205m"public"."website"."team_id"[0m = $1
+        and [48;5;205m"public"."website"."deleted_at"[0m is null
+      )
+    offset
+      $2
+  ) as "sub"
+Base cost with current indexes 1.05
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"team_id"[39m)
+ <[90mskip[39m> [90mwebsite_team_id_idx[39m
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"deleted_at"[39m)
+{
+  "Node Type": "Aggregate",
+  Strategy: "Plain",
+  "Partial Mode": "Simple",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 1.04,
+  "Total Cost": 1.05,
+  "Plan Rows": 1,
+  "Plan Width": 8,
+  Output: [ "count(*)" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "NULL::uuid" ],
+      Filter: "((website.deleted_at IS NULL) AND (website.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid))"
+    }
+  ]
+}
+No new indexes found
+timing: 24.2ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5732413414025801000
+Skipping duplicate query 7343185512749601000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5732413414025801000
+::group::query:17336537769737660000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m
+from
+  "public"."team_user"
+where
+  (
+    [48;5;205m"public"."team_user"."team_user_id"[0m = $1
+    and 1 = 1
+  )
+offset
+  $2
+Base cost with current indexes 8.17
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_user_id_key" }
+}
+ <[90mskip[39m> [90mteam_user_pkey[39m
+{
+  "Node Type": "Index Only Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "team_user_team_user_id_key",
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 0.15,
+  "Total Cost": 8.17,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "team_user_id" ],
+  "Index Cond": "(team_user.team_user_id = '28be8403-1349-45f7-8dcb-e9f6c30bde7d'::uuid)"
+}
+No new indexes found
+timing: 2.49ms
+::endgroup::
+::group::query:18330830986911513000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."team_user"
+set
+  "role" = $1,
+  "updated_at" = $2
+where
+  (
+    [48;5;205m"public"."team_user"."team_user_id"[0m = $3
+    and 1 = 1
+  )
+returning
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m,
+  [33m"public"."team_user"."user_id"[0m,
+  [33m"public"."team_user"."role"[0m,
+  [33m"public"."team_user"."created_at"[0m,
+  [33m"public"."team_user"."updated_at"[0m
+Base cost with current indexes 8.17
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_user_id_key" }
+}
+ <[90mskip[39m> [90mteam_user_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 0.15,
+  "Total Cost": 8.17,
+  "Plan Rows": 1,
+  "Plan Width": 132,
+  Output: [
+    "team_user_id",
+    "team_id",
+    "user_id",
+    "role",
+    "created_at",
+    "updated_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_user_team_user_id_key",
+      "Relation Name": "team_user",
+      Schema: "public",
+      Alias: "team_user",
+      "Startup Cost": 0.15,
+      "Total Cost": 8.17,
+      "Plan Rows": 1,
+      "Plan Width": 132,
+      Output: [
+        "'team-view-only'::character varying(50)",
+        "'2025-07-11 07:17:04.642+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      "Index Cond": "(team_user.team_user_id = '28be8403-1349-45f7-8dcb-e9f6c30bde7d'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 2.85ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5732413414025801000
+::group::query:3793854026709010000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m
+from
+  "public"."team_user"
+where
+  (
+    [48;5;205m"public"."team_user"."team_id"[0m = $1
+    and [48;5;205m"public"."team_user"."user_id"[0m = $2
+  )
+offset
+  $3
+Base cost with current indexes 9.51
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+[32m+14.09%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m) 
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+ [90m00.00%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m)
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "__qd_public_team_user_team_id_user_id",
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 0.15,
+  "Total Cost": 8.17,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "team_user_id" ],
+  "Index Cond": "((team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid) AND (team_user.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid))"
+}
+ 🎉🎉🎉 [32m+14.09%[39m
+New indexes: team_user("team_id", "user_id")
+timing: 22.0ms
+::endgroup::
+::group::query:5599375363004514000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+delete from "public"."team_user"
+where
+  (
+    [48;5;205m"public"."team_user"."team_user_id"[0m in ($1)
+    and 1 = 1
+  )
+Base cost with current indexes 8.17
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_user_id_key" }
+}
+ <[90mskip[39m> [90mteam_user_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Delete",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 0.15,
+  "Total Cost": 8.17,
+  "Plan Rows": 0,
+  "Plan Width": 0,
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_user_team_user_id_key",
+      "Relation Name": "team_user",
+      Schema: "public",
+      Alias: "team_user",
+      "Startup Cost": 0.15,
+      "Total Cost": 8.17,
+      "Plan Rows": 1,
+      "Plan Width": 6,
+      Output: [ "ctid" ],
+      "Index Cond": "(team_user.team_user_id = '28be8403-1349-45f7-8dcb-e9f6c30bde7d'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 2.89ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:16534350972455504000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m
+from
+  "public"."team_user"
+where
+  [48;5;205m"public"."team_user"."team_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 9.5
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+{
+  "Node Type": "Bitmap Heap Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 4.16,
+  "Total Cost": 9.5,
+  "Plan Rows": 2,
+  "Plan Width": 16,
+  Output: [ "team_user_id" ],
+  "Recheck Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)",
+  Plans: [
+    {
+      "Node Type": "Bitmap Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Index Name": "team_user_team_id_idx",
+      "Startup Cost": 0,
+      "Total Cost": 4.16,
+      "Plan Rows": 2,
+      "Plan Width": 0,
+      "Index Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 2.72ms
+::endgroup::
+Skipping duplicate query 5599375363004514000
+::group::query:6316805411368549000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+delete from "public"."team"
+where
+  (
+    [48;5;205m"public"."team"."team_id"[0m = $1
+    and 1 = 1
+  )
+returning
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_team_id_key" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Delete",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team",
+  Schema: "public",
+  Alias: "team",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 6,
+  Output: [
+    "team_id",
+    "name",
+    "access_code",
+    "logo_url",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_team_id_key",
+      "Relation Name": "team",
+      Schema: "public",
+      Alias: "team",
+      "Startup Cost": 0.14,
+      "Total Cost": 8.16,
+      "Plan Rows": 1,
+      "Plan Width": 6,
+      Output: [ "ctid" ],
+      "Index Cond": "(team.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 3.00ms
+::endgroup::
+::group::query:9684532464104094000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."team_id"[0m
+from
+  "public"."website"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."website"."team_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_team_id_idx[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "website_id", "team_id" ],
+  Filter: "(website.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+}
+No new indexes found
+timing: 2.67ms
+::endgroup::
+::group::query:2583430282119048000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."team_id"[0m
+from
+  "public"."team_user"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."team_user"."team_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 9.5
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_team_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+{
+  "Node Type": "Bitmap Heap Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 4.16,
+  "Total Cost": 9.5,
+  "Plan Rows": 2,
+  "Plan Width": 32,
+  Output: [ "team_user_id", "team_id" ],
+  "Recheck Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)",
+  Plans: [
+    {
+      "Node Type": "Bitmap Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Index Name": "team_user_team_id_idx",
+      "Startup Cost": 0,
+      "Total Cost": 4.16,
+      "Plan Rows": 2,
+      "Plan Width": 0,
+      "Index Cond": "(team_user.team_id = '91e815a3-2b0b-4c9d-919e-dce1837bb0bd'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 4.19ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:1204777832307971600
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+from
+  "public"."website"
+where
+  [48;5;205m"public"."website"."user_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_user_id_idx[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 948,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Filter: "(website.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+}
+No new indexes found
+timing: 3.99ms
+::endgroup::
+::group::query:15289885854796970000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m
+from
+  "public"."team"
+where
+  exists (
+    select
+      [33m"t0"."team_id"[0m
+    from
+      "public"."team_user" as "t0"
+    where
+      (
+        [48;5;205m"t0"."user_id"[0m = $1
+        and [48;5;205m"t0"."role"[0m = $2
+        and ([48;5;205m"public"."team"."team_id"[0m) = ([48;5;205m"t0"."team_id"[0m)
+        and [48;5;205m"t0"."team_id"[0m is not null
+      )
+  )
+offset
+  $3
+Base cost with current indexes 17.86
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(2) { "team_user_user_id_idx", "team_team_id_key" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+{
+  "Node Type": "Nested Loop",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Join Type": "Inner",
+  "Startup Cost": 9.65,
+  "Total Cost": 17.86,
+  "Plan Rows": 1,
+  "Plan Width": 792,
+  Output: [
+    "team.team_id",
+    "team.name",
+    "team.access_code",
+    "team.logo_url",
+    "team.created_at",
+    "team.updated_at",
+    "team.deleted_at"
+  ],
+  "Inner Unique": true,
+  Plans: [
+    {
+      "Node Type": "Aggregate",
+      Strategy: "Hashed",
+      "Partial Mode": "Simple",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 9.51,
+      "Total Cost": 9.52,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "t0.team_id" ],
+      "Group Key": [ "t0.team_id" ],
+      "Planned Partitions": 0,
+      Plans: [
+        {
+          "Node Type": "Bitmap Heap Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "team_user",
+          Schema: "public",
+          Alias: "t0",
+          "Startup Cost": 4.16,
+          "Total Cost": 9.51,
+          "Plan Rows": 1,
+          "Plan Width": 16,
+          Output: [
+            "t0.team_user_id",
+            "t0.team_id",
+            "t0.user_id",
+            "t0.role",
+            "t0.created_at",
+            "t0.updated_at"
+          ],
+          "Recheck Cond": "(t0.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)",
+          Filter: "((t0.team_id IS NOT NULL) AND ((t0.role)::text = 'team-owner'::text))",
+          Plans: [
+            {
+              "Node Type": "Bitmap Index Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Index Name": "team_user_user_id_idx",
+              "Startup Cost": 0,
+              "Total Cost": 4.16,
+              "Plan Rows": 2,
+              "Plan Width": 0,
+              "Index Cond": "(t0.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Node Type": "Index Scan",
+      "Parent Relationship": "Inner",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Scan Direction": "Forward",
+      "Index Name": "team_team_id_key",
+      "Relation Name": "team",
+      Schema: "public",
+      Alias: "team",
+      "Startup Cost": 0.14,
+      "Total Cost": 8.16,
+      "Plan Rows": 1,
+      "Plan Width": 792,
+      Output: [
+        "team.team_id",
+        "team.name",
+        "team.access_code",
+        "team.created_at",
+        "team.updated_at",
+        "team.deleted_at",
+        "team.logo_url"
+      ],
+      "Index Cond": "(team.team_id = t0.team_id)"
+    }
+  ]
+}
+No new indexes found
+timing: 4.58ms
+::endgroup::
+select
+  [33m"public"."event_data"."event_data_id"[0m
+from
+  "public"."event_data"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 13934285879285715000
+select
+  [33m"public"."session_data"."session_data_id"[0m
+from
+  "public"."session_data"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 18029410867234873000
+select
+  [33m"public"."website_event"."event_id"[0m
+from
+  "public"."website_event"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 13282669536126091000
+select
+  [33m"public"."session"."session_id"[0m
+from
+  "public"."session"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 5246410333200283000
+::group::query:15206174279536638000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m
+from
+  "public"."team_user"
+where
+  (
+    1 = 0
+    or [48;5;205m"public"."team_user"."user_id"[0m = $1
+  )
+offset
+  $2
+Base cost with current indexes 9.5
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+{
+  "Node Type": "Bitmap Heap Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 4.16,
+  "Total Cost": 9.5,
+  "Plan Rows": 2,
+  "Plan Width": 16,
+  Output: [ "team_user_id" ],
+  "Recheck Cond": "(team_user.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)",
+  Plans: [
+    {
+      "Node Type": "Bitmap Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Index Name": "team_user_user_id_idx",
+      "Startup Cost": 0,
+      "Total Cost": 4.16,
+      "Plan Rows": 2,
+      "Plan Width": 0,
+      "Index Cond": "(team_user.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 4.10ms
+::endgroup::
+select
+  [33m"public"."team"."team_id"[0m
+from
+  "public"."team"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 18178807251955304000
+::group::query:7112739967355152000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."report"."report_id"[0m
+from
+  "public"."report"
+where
+  (
+    1 = 0
+    or [48;5;205m"public"."report"."user_id"[0m = $1
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "report_user_id_idx" }
+}
+ <[90mskip[39m> [90mreport_user_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "report_user_id_idx",
+  "Relation Name": "report",
+  Schema: "public",
+  Alias: "report",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "report_id" ],
+  "Index Cond": "(report.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+}
+No new indexes found
+timing: 5.98ms
+::endgroup::
+select
+  [33m"public"."website"."website_id"[0m
+from
+  "public"."website"
+where
+  1 = 0
+offset
+  $1
+No index candidates found 14065377797721868000
+::group::query:12614759637555454000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+delete from "public"."user"
+where
+  (
+    [48;5;205m"public"."user"."user_id"[0m = $1
+    and 1 = 1
+  )
+returning
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."password"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."logo_url"[0m,
+  [33m"public"."user"."display_name"[0m,
+  [33m"public"."user"."created_at"[0m,
+  [33m"public"."user"."updated_at"[0m,
+  [33m"public"."user"."deleted_at"[0m
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Delete",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "user",
+  Schema: "public",
+  Alias: "user",
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 6,
+  Output: [
+    "user_id",
+    "username",
+    "password",
+    "role",
+    "logo_url",
+    "display_name",
+    "created_at",
+    "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 6,
+      Output: [ "ctid" ],
+      Filter: `("user".user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)`
+    }
+  ]
+}
+No new indexes found
+timing: 3.97ms
+::endgroup::
+::group::query:4228450745596370000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."user_id"[0m
+from
+  "public"."website"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."website"."user_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_user_id_idx[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "website_id", "user_id" ],
+  Filter: "(website.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+}
+No new indexes found
+timing: 4.49ms
+::endgroup::
+::group::query:16331573155122310000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."created_by"[0m
+from
+  "public"."website"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."website"."created_by"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_created_by_idx[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "website_id", "created_by" ],
+  Filter: "(website.created_by = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+}
+No new indexes found
+timing: 4.61ms
+::endgroup::
+::group::query:3855627791748829000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team_user"."team_user_id"[0m,
+  [33m"public"."team_user"."user_id"[0m
+from
+  "public"."team_user"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."team_user"."user_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 9.5
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+{
+  "Node Type": "Bitmap Heap Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "team_user",
+  Schema: "public",
+  Alias: "team_user",
+  "Startup Cost": 4.16,
+  "Total Cost": 9.5,
+  "Plan Rows": 2,
+  "Plan Width": 32,
+  Output: [ "team_user_id", "user_id" ],
+  "Recheck Cond": "(team_user.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)",
+  Plans: [
+    {
+      "Node Type": "Bitmap Index Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Index Name": "team_user_user_id_idx",
+      "Startup Cost": 0,
+      "Total Cost": 4.16,
+      "Plan Rows": 2,
+      "Plan Width": 0,
+      "Index Cond": "(team_user.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 4.81ms
+::endgroup::
+::group::query:952772324796151400
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."report"."report_id"[0m,
+  [33m"public"."report"."user_id"[0m
+from
+  "public"."report"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."report"."user_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "report_user_id_idx" }
+}
+ <[90mskip[39m> [90mreport_user_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "report_user_id_idx",
+  "Relation Name": "report",
+  Schema: "public",
+  Alias: "report",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "report_id", "user_id" ],
+  "Index Cond": "(report.user_id = '37a7d577-1098-4632-8579-58e1c1cba1dc'::uuid)"
+}
+No new indexes found
+timing: 3.15ms
+::endgroup::
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 8600632967258724000
+Skipping duplicate query 12378850293518279000
+Skipping duplicate query 16888571312410653000
+::group::query:16710398357335618000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."password"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."logo_url"[0m,
+  [33m"public"."user"."display_name"[0m,
+  [33m"public"."user"."created_at"[0m,
+  [33m"public"."user"."updated_at"[0m,
+  [33m"public"."user"."deleted_at"[0m,
+  COALESCE(
+    [48;5;205m"aggr_selection_0_Website"."_aggr_count_websiteUser"[0m,
+    0
+  ) as "_aggr_count_websiteUser"
+from
+  "public"."user"
+  left join (
+    select
+      [33m"public"."website"."user_id"[0m,
+      COUNT(*) as "_aggr_count_websiteUser"
+    from
+      "public"."website"
+    where
+      [48;5;205m"public"."website"."deleted_at"[0m is null
+    group by
+      [48;5;205m"public"."website"."user_id"[0m
+  ) as "aggr_selection_0_Website" on (
+    [48;5;205m"public"."user"."user_id"[0m = [48;5;205m"aggr_selection_0_Website"."user_id"[0m
+  )
+where
+  [48;5;205m"public"."user"."deleted_at"[0m is null
+order by
+  [48;5;205m"public"."user"."created_at"[0m desc
+limit
+  $1
+offset
+  $2
+Base cost with current indexes 2.08
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m user([32m"created_at"[39m)
+ [90m00.00%[39m user([32m"created_at"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"created_at"[39m, [32m"deleted_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m user([32m"created_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m user([32m"created_at"[39m, [32m"user_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m, [32m"created_at"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m, [32m"created_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m user([32m"deleted_at"[39m, [32m"user_id"[39m, [32m"created_at"[39m)
+ <[90mskip[39m> [90muser_pkey[39m
+ [90m00.00%[39m user([32m"user_id"[39m, [32m"created_at"[39m)
+ [90m00.00%[39m user([32m"user_id"[39m, [32m"created_at"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"user_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m user([32m"user_id"[39m, [32m"deleted_at"[39m, [32m"created_at"[39m)
+ <[90mskip[39m> [90mwebsite_user_id_idx[39m
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"user_id"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 2.08,
+  "Total Cost": 2.08,
+  "Plan Rows": 1,
+  "Plan Width": 1852,
+  Output: [
+    '"user".user_id',
+    '"user".username',
+    '"user".password',
+    '"user".role',
+    '"user".logo_url',
+    '"user".display_name',
+    '"user".created_at',
+    '"user".updated_at',
+    '"user".deleted_at',
+    "(COALESCE((count(*)), '0'::bigint))"
+  ],
+  Plans: [
+    {
+      "Node Type": "Sort",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 2.08,
+      "Total Cost": 2.08,
+      "Plan Rows": 1,
+      "Plan Width": 1852,
+      Output: [
+        '"user".user_id',
+        '"user".username',
+        '"user".password',
+        '"user".role',
+        '"user".logo_url',
+        '"user".display_name',
+        '"user".created_at',
+        '"user".updated_at',
+        '"user".deleted_at',
+        "(COALESCE((count(*)), '0'::bigint))"
+      ],
+      "Sort Key": [ '"user".created_at DESC' ],
+      Plans: [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Left",
+          "Startup Cost": 1.02,
+          "Total Cost": 2.07,
+          "Plan Rows": 1,
+          "Plan Width": 1852,
+          Output: [
+            '"user".user_id',
+            '"user".username',
+            '"user".password',
+            '"user".role',
+            '"user".logo_url',
+            '"user".display_name',
+            '"user".created_at',
+            '"user".updated_at',
+            '"user".deleted_at',
+            "COALESCE((count(*)), '0'::bigint)"
+          ],
+          "Inner Unique": true,
+          "Join Filter": '("user".user_id = website.user_id)',
+          Plans: [
+            {
+              "Node Type": "Seq Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Relation Name": "user",
+              Schema: "public",
+              Alias: "user",
+              "Startup Cost": 0,
+              "Total Cost": 1.01,
+              "Plan Rows": 1,
+              "Plan Width": 1844,
+              Output: [
+                '"user".user_id',
+                '"user".username',
+                '"user".password',
+                '"user".role',
+                '"user".created_at',
+                '"user".updated_at',
+                '"user".deleted_at',
+                '"user".display_name',
+                '"user".logo_url'
+              ],
+              Filter: '("user".deleted_at IS NULL)'
+            },
+            {
+              "Node Type": "Aggregate",
+              Strategy: "Hashed",
+              "Partial Mode": "Simple",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 1.02,
+              "Total Cost": 1.03,
+              "Plan Rows": 1,
+              "Plan Width": 24,
+              Output: [ "website.user_id", "count(*)" ],
+              "Group Key": [ "website.user_id" ],
+              "Planned Partitions": 0,
+              Plans: [
+                {
+                  "Node Type": "Seq Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Relation Name": "website",
+                  Schema: "public",
+                  Alias: "website",
+                  "Startup Cost": 0,
+                  "Total Cost": 1.02,
+                  "Plan Rows": 1,
+                  "Plan Width": 16,
+                  Output: [
+                    "website.website_id",
+                    "website.name",
+                    "website.domain",
+                    "website.share_id",
+                    "website.reset_at",
+                    "website.user_id",
+                    "website.created_at",
+                    "website.updated_at",
+                    "website.deleted_at",
+                    "website.created_by",
+                    "website.team_id"
+                  ],
+                  Filter: "(website.deleted_at IS NULL)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+No new indexes found
+timing: 157ms
+::endgroup::
+::group::query:7323440152275729000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  COUNT(*) as "_count._all"
+from
+  (
+    select
+      [33m"public"."user"."user_id"[0m
+    from
+      "public"."user"
+    where
+      [48;5;205m"public"."user"."deleted_at"[0m is null
+    offset
+      $1
+  ) as "sub"
+Base cost with current indexes 1.03
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m user([32m"deleted_at"[39m)
+{
+  "Node Type": "Aggregate",
+  Strategy: "Plain",
+  "Partial Mode": "Simple",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 1.02,
+  "Total Cost": 1.03,
+  "Plan Rows": 1,
+  "Plan Width": 8,
+  Output: [ "count(*)" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "NULL::uuid" ],
+      Filter: '("user".deleted_at IS NULL)'
+    }
+  ]
+}
+No new indexes found
+timing: 10.2ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+::group::query:18317781798323010000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."user"."user_id"[0m
+from
+  "public"."user"
+where
+  (
+    [48;5;205m"public"."user"."user_id"[0m = $1
+    and 1 = 1
+  )
+offset
+  $2
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_pkey[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "user",
+  Schema: "public",
+  Alias: "user",
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "user_id" ],
+  Filter: `("user".user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)`
+}
+No new indexes found
+timing: 2.95ms
+::endgroup::
+::group::query:179204910885391580
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."user"
+set
+  "role" = $1,
+  "username" = $2,
+  "updated_at" = $3
+where
+  (
+    [48;5;205m"public"."user"."user_id"[0m = $4
+    and 1 = 1
+  )
+returning
+  [33m"public"."user"."user_id"[0m,
+  [33m"public"."user"."username"[0m,
+  [33m"public"."user"."role"[0m,
+  [33m"public"."user"."created_at"[0m
+Base cost with current indexes 1.01
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90muser_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "user",
+  Schema: "public",
+  Alias: "user",
+  "Startup Cost": 0,
+  "Total Cost": 1.01,
+  "Plan Rows": 1,
+  "Plan Width": 648,
+  Output: [ "user_id", "username", "role", "created_at" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "user",
+      Schema: "public",
+      Alias: "user",
+      "Startup Cost": 0,
+      "Total Cost": 1.01,
+      "Plan Rows": 1,
+      "Plan Width": 648,
+      Output: [
+        "'cypress1'::character varying(255)",
+        "'view-only'::character varying(50)",
+        "'2025-07-11 07:17:08.328+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      Filter: `("user".user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)`
+    }
+  ]
+}
+No new indexes found
+timing: 3.01ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 1204777832307971600
+Skipping duplicate query 15289885854796970000
+Skipping duplicate query 13934285879285715000
+Skipping duplicate query 18029410867234873000
+Skipping duplicate query 13282669536126091000
+Skipping duplicate query 5246410333200283000
+Skipping duplicate query 15206174279536638000
+Skipping duplicate query 18178807251955304000
+Skipping duplicate query 7112739967355152000
+Skipping duplicate query 14065377797721868000
+Skipping duplicate query 12614759637555454000
+Skipping duplicate query 4228450745596370000
+Skipping duplicate query 16331573155122310000
+Skipping duplicate query 3855627791748829000
+Skipping duplicate query 952772324796151400
+Skipping duplicate query 16888571312410653000
+::group::query:5968866059179537000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+from
+  "public"."website"
+where
+  (
+    [48;5;205m"public"."website"."user_id"[0m = $1
+    and [48;5;205m"public"."website"."deleted_at"[0m is null
+  )
+order by
+  [48;5;205m"public"."website"."name"[0m asc
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.04
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m website([32m"name"[39m)
+ [90m00.00%[39m website([32m"name"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"name"[39m, [32m"deleted_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m website([32m"name"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m website([32m"name"[39m, [32m"user_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"name"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"name"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"user_id"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"user_id"[39m, [32m"name"[39m)
+ <[90mskip[39m> [90mwebsite_user_id_idx[39m
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"name"[39m)
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"name"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"deleted_at"[39m, [32m"name"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 1.03,
+  "Total Cost": 1.04,
+  "Plan Rows": 1,
+  "Plan Width": 948,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Sort",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Startup Cost": 1.03,
+      "Total Cost": 1.04,
+      "Plan Rows": 1,
+      "Plan Width": 948,
+      Output: [
+        "website_id", "name",
+        "domain",     "share_id",
+        "reset_at",   "user_id",
+        "team_id",    "created_by",
+        "created_at", "updated_at",
+        "deleted_at"
+      ],
+      "Sort Key": [ "website.name" ],
+      Plans: [
+        {
+          "Node Type": "Seq Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "website",
+          Schema: "public",
+          Alias: "website",
+          "Startup Cost": 0,
+          "Total Cost": 1.02,
+          "Plan Rows": 1,
+          "Plan Width": 948,
+          Output: [
+            "website_id", "name",
+            "domain",     "share_id",
+            "reset_at",   "user_id",
+            "team_id",    "created_by",
+            "created_at", "updated_at",
+            "deleted_at"
+          ],
+          Filter: "((website.deleted_at IS NULL) AND (website.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid))"
+        }
+      ]
+    }
+  ]
+}
+No new indexes found
+timing: 106ms
+::endgroup::
+::group::query:18179284140906900000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  COUNT(*) as "_count._all"
+from
+  (
+    select
+      [33m"public"."website"."website_id"[0m
+    from
+      "public"."website"
+    where
+      (
+        [48;5;205m"public"."website"."user_id"[0m = $1
+        and [48;5;205m"public"."website"."deleted_at"[0m is null
+      )
+    offset
+      $2
+  ) as "sub"
+Base cost with current indexes 1.05
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"user_id"[39m)
+ <[90mskip[39m> [90mwebsite_user_id_idx[39m
+ [90m00.00%[39m website([32m"user_id"[39m, [32m"deleted_at"[39m)
+{
+  "Node Type": "Aggregate",
+  Strategy: "Plain",
+  "Partial Mode": "Simple",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 1.04,
+  "Total Cost": 1.05,
+  "Plan Rows": 1,
+  "Plan Width": 8,
+  Output: [ "count(*)" ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "NULL::uuid" ],
+      Filter: "((website.deleted_at IS NULL) AND (website.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid))"
+    }
+  ]
+}
+No new indexes found
+timing: 84.9ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:13290442902743611000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."team"."team_id"[0m,
+  [33m"public"."team"."name"[0m,
+  [33m"public"."team"."access_code"[0m,
+  [33m"public"."team"."logo_url"[0m,
+  [33m"public"."team"."created_at"[0m,
+  [33m"public"."team"."updated_at"[0m,
+  [33m"public"."team"."deleted_at"[0m,
+  COALESCE(
+    [48;5;205m"aggr_selection_0_Website"."_aggr_count_website"[0m,
+    0
+  ) as "_aggr_count_website",
+  COALESCE(
+    [48;5;205m"aggr_selection_1_TeamUser"."_aggr_count_teamUser"[0m,
+    0
+  ) as "_aggr_count_teamUser"
+from
+  "public"."team"
+  left join (
+    select
+      [33m"public"."website"."team_id"[0m,
+      COUNT(*) as "_aggr_count_website"
+    from
+      "public"."website"
+    where
+      [48;5;205m"public"."website"."deleted_at"[0m is null
+    group by
+      [48;5;205m"public"."website"."team_id"[0m
+  ) as "aggr_selection_0_Website" on (
+    [48;5;205m"public"."team"."team_id"[0m = [48;5;205m"aggr_selection_0_Website"."team_id"[0m
+  )
+  left join (
+    select
+      [33m"public"."team_user"."team_id"[0m,
+      COUNT(*) as "_aggr_count_teamUser"
+    from
+      "public"."team_user"
+      left join "public"."user" as "j0" on ([48;5;205m"j0"."user_id"[0m) = ([48;5;205m"public"."team_user"."user_id"[0m)
+    where
+      (
+        [48;5;205m"j0"."deleted_at"[0m is null
+        and ([48;5;205m"j0"."user_id"[0m is not null)
+      )
+    group by
+      [48;5;205m"public"."team_user"."team_id"[0m
+  ) as "aggr_selection_1_TeamUser" on (
+    [48;5;205m"public"."team"."team_id"[0m = [48;5;205m"aggr_selection_1_TeamUser"."team_id"[0m
+  )
+where
+  (
+    [48;5;205m"public"."team"."deleted_at"[0m is null
+    and exists (
+      select
+        [33m"t1"."team_id"[0m
+      from
+        "public"."team_user" as "t1"
+      where
+        (
+          [48;5;205m"t1"."user_id"[0m = $1
+          and ([48;5;205m"public"."team"."team_id"[0m) = ([48;5;205m"t1"."team_id"[0m)
+          and [48;5;205m"t1"."team_id"[0m is not null
+        )
+    )
+  )
+order by
+  [48;5;205m"public"."team"."team_id"[0m asc
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 32.12
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+[32m+06.51%[39m team([32m"team_id"[39m, [32m"deleted_at"[39m) 
+[32m+02.16%[39m team([32m"deleted_at"[39m) 
+ [90m00.00%[39m team([32m"deleted_at"[39m, [32m"team_id"[39m)
+ <[90mskip[39m> [90mteam_user_team_id_idx[39m
+ [90m00.00%[39m team_user([32m"team_id"[39m, [32m"user_id"[39m)
+ <[90mskip[39m> [90mteam_user_user_id_idx[39m
+ [90m00.00%[39m team_user([32m"user_id"[39m, [32m"team_id"[39m)
+ <[90mskip[39m> [90mwebsite_team_id_idx[39m
+ [90m00.00%[39m website([32m"team_id"[39m, [32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m)
+ [90m00.00%[39m website([32m"deleted_at"[39m, [32m"team_id"[39m)
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 23.9,
+  "Total Cost": 29.38,
+  "Plan Rows": 1,
+  "Plan Width": 808,
+  Output: [
+    "team.team_id",
+    "team.name",
+    "team.access_code",
+    "team.logo_url",
+    "team.created_at",
+    "team.updated_at",
+    "team.deleted_at",
+    "(COALESCE((count(*)), '0'::bigint))",
+    "(COALESCE((count(*)), '0'::bigint))"
+  ],
+  Plans: [
+    {
+      "Node Type": "Nested Loop",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Semi",
+      "Startup Cost": 23.9,
+      "Total Cost": 29.38,
+      "Plan Rows": 1,
+      "Plan Width": 808,
+      Output: [
+        "team.team_id",
+        "team.name",
+        "team.access_code",
+        "team.logo_url",
+        "team.created_at",
+        "team.updated_at",
+        "team.deleted_at",
+        "COALESCE((count(*)), '0'::bigint)",
+        "COALESCE((count(*)), '0'::bigint)"
+      ],
+      "Inner Unique": false,
+      "Join Filter": "(team.team_id = t1.team_id)",
+      Plans: [
+        {
+          "Node Type": "Nested Loop",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Join Type": "Left",
+          "Startup Cost": 19.74,
+          "Total Cost": 19.85,
+          "Plan Rows": 1,
+          "Plan Width": 808,
+          Output: [
+            "team.team_id",
+            "team.name",
+            "team.access_code",
+            "team.logo_url",
+            "team.created_at",
+            "team.updated_at",
+            "team.deleted_at",
+            "(count(*))",
+            "(count(*))"
+          ],
+          "Inner Unique": true,
+          "Join Filter": "(team.team_id = website.team_id)",
+          Plans: [
+            {
+              "Node Type": "Merge Join",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Join Type": "Left",
+              "Startup Cost": 18.71,
+              "Total Cost": 18.79,
+              "Plan Rows": 1,
+              "Plan Width": 800,
+              Output: [
+                "team.team_id",
+                "team.name",
+                "team.access_code",
+                "team.logo_url",
+                "team.created_at",
+                "team.updated_at",
+                "team.deleted_at",
+                "(count(*))"
+              ],
+              "Inner Unique": true,
+              "Merge Cond": "(team.team_id = team_user.team_id)",
+              Plans: [
+                {
+                  "Node Type": "Sort",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 8.17,
+                  "Total Cost": 8.18,
+                  "Plan Rows": 1,
+                  "Plan Width": 792,
+                  Output: [
+                    "team.team_id",
+                    "team.name",
+                    "team.access_code",
+                    "team.logo_url",
+                    "team.created_at",
+                    "team.updated_at",
+                    "team.deleted_at"
+                  ],
+                  "Sort Key": [ "team.team_id" ],
+                  Plans: [
+                    {
+                      "Node Type": "Index Scan",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Scan Direction": "Forward",
+                      "Index Name": "__qd_public_team_deleted_at_team_id",
+                      "Relation Name": "team",
+                      Schema: "public",
+                      Alias: "team",
+                      "Startup Cost": 0.14,
+                      "Total Cost": 8.16,
+                      "Plan Rows": 1,
+                      "Plan Width": 792,
+                      Output: [
+                        "team.team_id",
+                        "team.name",
+                        "team.access_code",
+                        "team.logo_url",
+                        "team.created_at",
+                        "team.updated_at",
+                        "team.deleted_at"
+                      ],
+                      "Index Cond": "(team.deleted_at IS NULL)"
+                    }
+                  ]
+                },
+                {
+                  "Node Type": "Aggregate",
+                  Strategy: "Sorted",
+                  "Partial Mode": "Simple",
+                  "Parent Relationship": "Inner",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Startup Cost": 10.54,
+                  "Total Cost": 10.58,
+                  "Plan Rows": 2,
+                  "Plan Width": 24,
+                  Output: [ "team_user.team_id", "count(*)" ],
+                  "Group Key": [ "team_user.team_id" ],
+                  Plans: [
+                    {
+                      "Node Type": "Sort",
+                      "Parent Relationship": "Outer",
+                      "Parallel Aware": false,
+                      "Async Capable": false,
+                      "Startup Cost": 10.54,
+                      "Total Cost": 10.55,
+                      "Plan Rows": 2,
+                      "Plan Width": 16,
+                      Output: [ "team_user.team_id" ],
+                      "Sort Key": [ "team_user.team_id" ],
+                      Plans: [
+                        {
+                          "Node Type": "Nested Loop",
+                          "Parent Relationship": "Outer",
+                          "Parallel Aware": false,
+                          "Async Capable": false,
+                          "Join Type": "Inner",
+                          "Startup Cost": 4.16,
+                          "Total Cost": 10.53,
+                          "Plan Rows": 2,
+                          "Plan Width": 16,
+                          Output: [ "team_user.team_id" ],
+                          "Inner Unique": false,
+                          Plans: [
+                            {
+                              "Node Type": "Seq Scan",
+                              "Parent Relationship": "Outer",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Relation Name": "user",
+                              Schema: "public",
+                              Alias: "j0",
+                              "Startup Cost": 0,
+                              "Total Cost": 1.01,
+                              "Plan Rows": 1,
+                              "Plan Width": 16,
+                              Output: [
+                                "j0.user_id",
+                                "j0.username",
+                                "j0.password",
+                                "j0.role",
+                                "j0.created_at",
+                                "j0.updated_at",
+                                "j0.deleted_at",
+                                "j0.display_name",
+                                "j0.logo_url"
+                              ],
+                              Filter: "((j0.deleted_at IS NULL) AND (j0.user_id IS NOT NULL))"
+                            },
+                            {
+                              "Node Type": "Bitmap Heap Scan",
+                              "Parent Relationship": "Inner",
+                              "Parallel Aware": false,
+                              "Async Capable": false,
+                              "Relation Name": "team_user",
+                              Schema: "public",
+                              Alias: "team_user",
+                              "Startup Cost": 4.16,
+                              "Total Cost": 9.5,
+                              "Plan Rows": 2,
+                              "Plan Width": 32,
+                              Output: [
+                                "team_user.team_user_id",
+                                "team_user.team_id",
+                                "team_user.user_id",
+                                "team_user.role",
+                                "team_user.created_at",
+                                "team_user.updated_at"
+                              ],
+                              "Recheck Cond": "(team_user.user_id = j0.user_id)",
+                              Plans: [
+                                {
+                                  "Node Type": "Bitmap Index Scan",
+                                  "Parent Relationship": "Outer",
+                                  "Parallel Aware": false,
+                                  "Async Capable": false,
+                                  "Index Name": "__qd_public_team_user_user_id_team_id",
+                                  "Startup Cost": 0,
+                                  "Total Cost": 4.16,
+                                  "Plan Rows": 2,
+                                  "Plan Width": 0,
+                                  "Index Cond": "(team_user.user_id = j0.user_id)"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "Node Type": "Aggregate",
+              Strategy: "Hashed",
+              "Partial Mode": "Simple",
+              "Parent Relationship": "Inner",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Startup Cost": 1.02,
+              "Total Cost": 1.03,
+              "Plan Rows": 1,
+              "Plan Width": 24,
+              Output: [ "website.team_id", "count(*)" ],
+              "Group Key": [ "website.team_id" ],
+              "Planned Partitions": 0,
+              Plans: [
+                {
+                  "Node Type": "Seq Scan",
+                  "Parent Relationship": "Outer",
+                  "Parallel Aware": false,
+                  "Async Capable": false,
+                  "Relation Name": "website",
+                  Schema: "public",
+                  Alias: "website",
+                  "Startup Cost": 0,
+                  "Total Cost": 1.02,
+                  "Plan Rows": 1,
+                  "Plan Width": 16,
+                  Output: [
+                    "website.website_id",
+                    "website.name",
+                    "website.domain",
+                    "website.share_id",
+                    "website.reset_at",
+                    "website.user_id",
+                    "website.created_at",
+                    "website.updated_at",
+                    "website.deleted_at",
+                    "website.created_by",
+                    "website.team_id"
+                  ],
+                  Filter: "(website.deleted_at IS NULL)"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "Node Type": "Bitmap Heap Scan",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "team_user",
+          Schema: "public",
+          Alias: "t1",
+          "Startup Cost": 4.16,
+          "Total Cost": 9.5,
+          "Plan Rows": 2,
+          "Plan Width": 16,
+          Output: [
+            "t1.team_user_id",
+            "t1.team_id",
+            "t1.user_id",
+            "t1.role",
+            "t1.created_at",
+            "t1.updated_at"
+          ],
+          "Recheck Cond": "(t1.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)",
+          Filter: "(t1.team_id IS NOT NULL)",
+          Plans: [
+            {
+              "Node Type": "Bitmap Index Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Index Name": "team_user_user_id_idx",
+              "Startup Cost": 0,
+              "Total Cost": 4.16,
+              "Plan Rows": 2,
+              "Plan Width": 0,
+              "Index Cond": "(t1.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+ 🎉🎉🎉 [32m+08.53%[39m
+New indexes: team("deleted_at", "team_id"), team_user("user_id", "team_id")
+timing: 84.2ms
+::endgroup::
+::group::query:11771141382939330000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  COUNT(*) as "_count._all"
+from
+  (
+    select
+      [33m"public"."team"."team_id"[0m
+    from
+      "public"."team"
+    where
+      (
+        [48;5;205m"public"."team"."deleted_at"[0m is null
+        and exists (
+          select
+            [33m"t0"."team_id"[0m
+          from
+            "public"."team_user" as "t0"
+          where
+            (
+              [48;5;205m"t0"."user_id"[0m = $1
+              and ([48;5;205m"public"."team"."team_id"[0m) = ([48;5;205m"t0"."team_id"[0m)
+              and [48;5;205m"t0"."team_id"[0m is not null
+            )
+        )
+      )
+    offset
+      $2
+  ) as "sub"
+Base cost with current indexes 20.45
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "team_user_user_id_idx" }
+}
+ <[90mskip[39m> [90mteam_pkey[39m
+[32m+10.12%[39m team([32m"team_id"[39m, [32m"deleted_at"[39m) 
+[32m+03.65%[39m team([32m"deleted_at"[39m) 
+ [90m00.00%[39m team([32m"deleted_at"[39m, [32m"team_id"[39m)
+{
+  "Node Type": "Aggregate",
+  Strategy: "Plain",
+  "Partial Mode": "Simple",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 17.7,
+  "Total Cost": 17.71,
+  "Plan Rows": 1,
+  "Plan Width": 8,
+  Output: [ "count(*)" ],
+  Plans: [
+    {
+      "Node Type": "Nested Loop",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Join Type": "Semi",
+      "Startup Cost": 4.31,
+      "Total Cost": 17.69,
+      "Plan Rows": 1,
+      "Plan Width": 16,
+      Output: [ "NULL::uuid" ],
+      "Inner Unique": false,
+      "Join Filter": "(team.team_id = t0.team_id)",
+      Plans: [
+        {
+          "Node Type": "Index Only Scan",
+          "Parent Relationship": "Outer",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Scan Direction": "Forward",
+          "Index Name": "__qd_public_team_deleted_at_team_id",
+          "Relation Name": "team",
+          Schema: "public",
+          Alias: "team",
+          "Startup Cost": 0.14,
+          "Total Cost": 8.16,
+          "Plan Rows": 1,
+          "Plan Width": 16,
+          Output: [ "team.deleted_at", "team.team_id" ],
+          "Index Cond": "(team.deleted_at IS NULL)"
+        },
+        {
+          "Node Type": "Bitmap Heap Scan",
+          "Parent Relationship": "Inner",
+          "Parallel Aware": false,
+          "Async Capable": false,
+          "Relation Name": "team_user",
+          Schema: "public",
+          Alias: "t0",
+          "Startup Cost": 4.16,
+          "Total Cost": 9.5,
+          "Plan Rows": 2,
+          "Plan Width": 16,
+          Output: [
+            "t0.team_user_id",
+            "t0.team_id",
+            "t0.user_id",
+            "t0.role",
+            "t0.created_at",
+            "t0.updated_at"
+          ],
+          "Recheck Cond": "(t0.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)",
+          Filter: "(t0.team_id IS NOT NULL)",
+          Plans: [
+            {
+              "Node Type": "Bitmap Index Scan",
+              "Parent Relationship": "Outer",
+              "Parallel Aware": false,
+              "Async Capable": false,
+              "Index Name": "team_user_user_id_idx",
+              "Startup Cost": 0,
+              "Total Cost": 4.16,
+              "Plan Rows": 2,
+              "Plan Width": 0,
+              "Index Cond": "(t0.user_id = '139e8af3-ed03-4bb7-aa04-f4ea0a840467'::uuid)"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+ 🎉🎉🎉 [32m+13.40%[39m
+New indexes: team("deleted_at", "team_id")
+timing: 24.7ms
+::endgroup::
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 17762823263015778000
+Skipping duplicate query 7343185512749601000
+Skipping duplicate query 16888571312410653000
+insert into
+  "public"."website" (
+    "website_id",
+    "name",
+    "domain",
+    "user_id",
+    "created_by",
+    "created_at",
+    "updated_at"
+  )
+values
+  ($1, $2, $3, $4, $5, $6, $7)
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+No index candidates found 11639741364916115000
+Skipping duplicate query 16888571312410653000
+insert into
+  "public"."website" (
+    "website_id",
+    "name",
+    "domain",
+    "team_id",
+    "created_by",
+    "created_at",
+    "updated_at"
+  )
+values
+  ($1, $2, $3, $4, $5, $6, $7)
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+No index candidates found 12047089683339227000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 16700775148627206000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 16888571312410653000
+::group::query:3797023270255600600
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+from
+  "public"."website"
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $1
+    and 1 = 1
+  )
+limit
+  $2
+offset
+  $3
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "Limit",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 948,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 948,
+      Output: [
+        "website_id", "name",
+        "domain",     "share_id",
+        "reset_at",   "user_id",
+        "team_id",    "created_by",
+        "created_at", "updated_at",
+        "deleted_at"
+      ],
+      Filter: "(website.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 4.70ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+::group::query:7154861120525152000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website"."website_id"[0m
+from
+  "public"."website"
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $1
+    and 1 = 1
+  )
+offset
+  $2
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "Seq Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "website_id" ],
+  Filter: "(website.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 2.04ms
+::endgroup::
+::group::query:11934334004440154000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."website"
+set
+  "name" = $1,
+  "domain" = $2,
+  "updated_at" = $3
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $4
+    and 1 = 1
+  )
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 748,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 748,
+      Output: [
+        "'Cypress Website Updated'::character varying(100)",
+        "'cypressupdated.com'::character varying(500)",
+        "'2025-07-11 07:17:12.862+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      Filter: "(website.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 3.07ms
+::endgroup::
+select
+  1
+No index candidates found 5836069208177286000
+Skipping duplicate query 16888571312410653000
+::group::query:563452371101918400
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."event_data"."event_data_id"[0m
+from
+  "public"."event_data"
+where
+  [48;5;205m"public"."event_data"."website_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "event_data_website_id_created_at_data_key_idx" }
+}
+ <[90mskip[39m> [90mevent_data_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "event_data_website_id_created_at_data_key_idx",
+  "Relation Name": "event_data",
+  Schema: "public",
+  Alias: "event_data",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "event_data_id" ],
+  "Index Cond": "(event_data.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.58ms
+::endgroup::
+::group::query:2789672636808837000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."session_data"."session_data_id"[0m
+from
+  "public"."session_data"
+where
+  [48;5;205m"public"."session_data"."website_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "session_data_website_id_created_at_data_key_idx" }
+}
+ <[90mskip[39m> [90msession_data_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "session_data_website_id_created_at_data_key_idx",
+  "Relation Name": "session_data",
+  Schema: "public",
+  Alias: "session_data",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "session_data_id" ],
+  "Index Cond": "(session_data.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.40ms
+::endgroup::
+::group::query:706061042584019000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."website_event"."event_id"[0m
+from
+  "public"."website_event"
+where
+  [48;5;205m"public"."website_event"."website_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 8.14
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "website_event_website_id_created_at_hostname_idx" }
+}
+ <[90mskip[39m> [90mwebsite_event_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "website_event_website_id_created_at_hostname_idx",
+  "Relation Name": "website_event",
+  Schema: "public",
+  Alias: "website_event",
+  "Startup Cost": 0.12,
+  "Total Cost": 8.14,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "event_id" ],
+  "Index Cond": "(website_event.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.97ms
+::endgroup::
+::group::query:7627637557405573000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."session"."session_id"[0m
+from
+  "public"."session"
+where
+  [48;5;205m"public"."session"."website_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "session_website_id_created_at_region_idx" }
+}
+ <[90mskip[39m> [90msession_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "session_website_id_created_at_region_idx",
+  "Relation Name": "session",
+  Schema: "public",
+  Alias: "session",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "session_id" ],
+  "Index Cond": "(session.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 4.04ms
+::endgroup::
+Skipping duplicate query 7154861120525152000
+::group::query:14196119708359903000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."website"
+set
+  "reset_at" = $1,
+  "updated_at" = $2
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $3
+    and 1 = 1
+  )
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 22,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 22,
+      Output: [
+        "'2025-07-11 07:17:13.656+00'::timestamp(6) with time zone",
+        "'2025-07-11 07:17:13.657+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      Filter: "(website.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 2.93ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 563452371101918400
+Skipping duplicate query 2789672636808837000
+Skipping duplicate query 706061042584019000
+Skipping duplicate query 7627637557405573000
+::group::query:14786045520145762000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."report"."report_id"[0m
+from
+  "public"."report"
+where
+  [48;5;205m"public"."report"."website_id"[0m = $1
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "report_website_id_idx" }
+}
+ <[90mskip[39m> [90mreport_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "report_website_id_idx",
+  "Relation Name": "report",
+  Schema: "public",
+  Alias: "report",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 16,
+  Output: [ "report_id" ],
+  "Index Cond": "(report.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.47ms
+::endgroup::
+::group::query:14263618673117706000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+delete from "public"."website"
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $1
+    and 1 = 1
+  )
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Delete",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 6,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 6,
+      Output: [ "ctid" ],
+      Filter: "(website.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 3.48ms
+::endgroup::
+::group::query:6339272448159586000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."event_data"."event_data_id"[0m,
+  [33m"public"."event_data"."website_id"[0m
+from
+  "public"."event_data"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."event_data"."website_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "event_data_website_id_created_at_data_key_idx" }
+}
+ <[90mskip[39m> [90mevent_data_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "event_data_website_id_created_at_data_key_idx",
+  "Relation Name": "event_data",
+  Schema: "public",
+  Alias: "event_data",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "event_data_id", "website_id" ],
+  "Index Cond": "(event_data.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.21ms
+::endgroup::
+::group::query:6353190184414673000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."session_data"."session_data_id"[0m,
+  [33m"public"."session_data"."website_id"[0m
+from
+  "public"."session_data"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."session_data"."website_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "session_data_website_id_created_at_data_key_idx" }
+}
+ <[90mskip[39m> [90msession_data_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "session_data_website_id_created_at_data_key_idx",
+  "Relation Name": "session_data",
+  Schema: "public",
+  Alias: "session_data",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "session_data_id", "website_id" ],
+  "Index Cond": "(session_data.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.12ms
+::endgroup::
+::group::query:16472712788915593000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+select
+  [33m"public"."report"."report_id"[0m,
+  [33m"public"."report"."website_id"[0m
+from
+  "public"."report"
+where
+  (
+    1 = 1
+    and [48;5;205m"public"."report"."website_id"[0m in ($1)
+  )
+offset
+  $2
+Base cost with current indexes 8.16
+{
+  newIndexes: Set(0) {},
+  existingIndexes: Set(1) { "report_website_id_idx" }
+}
+ <[90mskip[39m> [90mreport_website_id_idx[39m
+{
+  "Node Type": "Index Scan",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Scan Direction": "Forward",
+  "Index Name": "report_website_id_idx",
+  "Relation Name": "report",
+  Schema: "public",
+  Alias: "report",
+  "Startup Cost": 0.14,
+  "Total Cost": 8.16,
+  "Plan Rows": 1,
+  "Plan Width": 32,
+  Output: [ "report_id", "website_id" ],
+  "Index Cond": "(report.website_id = 'ac4535fc-f8d6-46f9-b15f-6b19121c6116'::uuid)"
+}
+No new indexes found
+timing: 3.04ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16534350972455504000
+Skipping duplicate query 5599375363004514000
+Skipping duplicate query 6316805411368549000
+Skipping duplicate query 9684532464104094000
+::group::query:7807725205499549000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."website"
+set
+  "team_id" = $1
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m in ($2)
+    and 1 = 1
+  )
+::endgroup::
+Skipping duplicate query 2583430282119048000
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 5836069208177286000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 16710398357335618000
+Skipping duplicate query 7323440152275729000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 8600632967258724000
+Skipping duplicate query 12378850293518279000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16710398357335618000
+Skipping duplicate query 7323440152275729000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 16710398357335618000
+Skipping duplicate query 7323440152275729000
+Skipping duplicate query 5836069208177286000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16710398357335618000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 7323440152275729000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 1204777832307971600
+Skipping duplicate query 15289885854796970000
+Skipping duplicate query 13934285879285715000
+Skipping duplicate query 18029410867234873000
+Skipping duplicate query 13282669536126091000
+Skipping duplicate query 5246410333200283000
+Skipping duplicate query 15206174279536638000
+Skipping duplicate query 18178807251955304000
+Skipping duplicate query 7112739967355152000
+Skipping duplicate query 14065377797721868000
+Skipping duplicate query 12614759637555454000
+Skipping duplicate query 4228450745596370000
+Skipping duplicate query 16331573155122310000
+Skipping duplicate query 3855627791748829000
+Skipping duplicate query 952772324796151400
+Skipping duplicate query 8222074007983194000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11639741364916115000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 16700775148627206000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 3797023270255600600
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 563452371101918400
+Skipping duplicate query 2789672636808837000
+Skipping duplicate query 706061042584019000
+Skipping duplicate query 7627637557405573000
+Skipping duplicate query 14786045520145762000
+Skipping duplicate query 14263618673117706000
+Skipping duplicate query 6339272448159586000
+Skipping duplicate query 6353190184414673000
+Skipping duplicate query 16472712788915593000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11639741364916115000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5836069208177286000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 16700775148627206000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 3797023270255600600
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 7154861120525152000
+::group::query:11751295415264303000
+--Legend--------------------------
+| [48;5;205m column [0m | Candidate            |
+| [33m column [0m | Ignored              |
+| [34m column [0m | Temp table reference |
+-----------------------------------
+
+update "public"."website"
+set
+  "name" = $1,
+  "domain" = $2,
+  "share_id" = $3,
+  "updated_at" = $4
+where
+  (
+    [48;5;205m"public"."website"."website_id"[0m = $5
+    and 1 = 1
+  )
+returning
+  [33m"public"."website"."website_id"[0m,
+  [33m"public"."website"."name"[0m,
+  [33m"public"."website"."domain"[0m,
+  [33m"public"."website"."share_id"[0m,
+  [33m"public"."website"."reset_at"[0m,
+  [33m"public"."website"."user_id"[0m,
+  [33m"public"."website"."team_id"[0m,
+  [33m"public"."website"."created_by"[0m,
+  [33m"public"."website"."created_at"[0m,
+  [33m"public"."website"."updated_at"[0m,
+  [33m"public"."website"."deleted_at"[0m
+Base cost with current indexes 1.02
+{ newIndexes: Set(0) {}, existingIndexes: Set(0) {} }
+ <[90mskip[39m> [90mwebsite_pkey[39m
+{
+  "Node Type": "ModifyTable",
+  Operation: "Update",
+  "Parallel Aware": false,
+  "Async Capable": false,
+  "Relation Name": "website",
+  Schema: "public",
+  Alias: "website",
+  "Startup Cost": 0,
+  "Total Cost": 1.02,
+  "Plan Rows": 1,
+  "Plan Width": 866,
+  Output: [
+    "website_id", "name",
+    "domain",     "share_id",
+    "reset_at",   "user_id",
+    "team_id",    "created_by",
+    "created_at", "updated_at",
+    "deleted_at"
+  ],
+  Plans: [
+    {
+      "Node Type": "Seq Scan",
+      "Parent Relationship": "Outer",
+      "Parallel Aware": false,
+      "Async Capable": false,
+      "Relation Name": "website",
+      Schema: "public",
+      Alias: "website",
+      "Startup Cost": 0,
+      "Total Cost": 1.02,
+      "Plan Rows": 1,
+      "Plan Width": 866,
+      Output: [
+        "'Updated website'::character varying(100)",
+        "'updatedwebsite.com'::character varying(500)",
+        "'NULL'::character varying(50)",
+        "'2025-07-11 07:17:54.506+00'::timestamp(6) with time zone",
+        "ctid"
+      ],
+      Filter: "(website.website_id = '2ada7508-f616-43d1-9d8b-35077af8cc23'::uuid)"
+    }
+  ]
+}
+No new indexes found
+timing: 52.6ms
+::endgroup::
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 3797023270255600600
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 563452371101918400
+Skipping duplicate query 2789672636808837000
+Skipping duplicate query 706061042584019000
+Skipping duplicate query 7627637557405573000
+Skipping duplicate query 14786045520145762000
+Skipping duplicate query 14263618673117706000
+Skipping duplicate query 6339272448159586000
+Skipping duplicate query 6353190184414673000
+Skipping duplicate query 16472712788915593000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 11639741364916115000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5836069208177286000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 16700775148627206000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 18179284140906900000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 3797023270255600600
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 13290442902743611000
+Skipping duplicate query 11771141382939330000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 563452371101918400
+Skipping duplicate query 2789672636808837000
+Skipping duplicate query 706061042584019000
+Skipping duplicate query 7627637557405573000
+Skipping duplicate query 14786045520145762000
+Skipping duplicate query 14263618673117706000
+Skipping duplicate query 6339272448159586000
+Skipping duplicate query 6353190184414673000
+Skipping duplicate query 16472712788915593000
+Skipping duplicate query 16888571312410653000
+Skipping duplicate query 5968866059179537000
+Skipping duplicate query 18179284140906900000
+Skipping query that selects from catalog tables pg_type 4204046238731371000
+Skipping introspection query 17119510423494179000
+Skipping introspection query 6762676199304912000
+Skipping introspection query 2648393787706881000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9355523856439271000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9355523856439271000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 8008890152313795000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 8008890152313795000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3279852445401041400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3279852445401041400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7364893160858137000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7364893160858137000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14238807857279693000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14238807857279693000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4803621318990711000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4803621318990711000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15155574030203548000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15155574030203548000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4242660843658371600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4242660843658371600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12690664743667150000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12690664743667150000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 191899552143842370
+Skipping introspection query 1272159477619595000
+Skipping introspection query 191899552143842370
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15676942077094982000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15676942077094982000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5798984624084323000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5798984624084323000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15926483212730175000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15926483212730175000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11729562601557656000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11729562601557656000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2695710326027833300
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2695710326027833300
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13871153044001413000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13871153044001413000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14539549508270074000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14539549508270074000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14706093689547063000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14706093689547063000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14185700933839495000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14185700933839495000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12453741621919842000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12453741621919842000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3678771782776747500
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3678771782776747500
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2015290933224091400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2015290933224091400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 232570552971563200
+Skipping introspection query 1272159477619595000
+Skipping introspection query 232570552971563200
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 17267093350284208000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 17267093350284208000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13973678784431868000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13973678784431868000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10546724695823546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10546724695823546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3384791130409538000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3384791130409538000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18247698178336170000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18247698178336170000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18445860710028005000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18445860710028005000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6982284974523161000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6982284974523161000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10255750286559338000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10255750286559338000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3288866795563353600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3288866795563353600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 1011783710552468100
+Skipping introspection query 1272159477619595000
+Skipping introspection query 1011783710552468100
+Skipping introspection query 1272159477619595000
+Skipping introspection query 314248598547641150
+Skipping introspection query 1272159477619595000
+Skipping introspection query 314248598547641150
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16139563167301792000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16139563167301792000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3762021867494043000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3762021867494043000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9410908785016950000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9410908785016950000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3148552255842307600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3148552255842307600
+Skipping introspection query 1272159477619595000
+Skipping duplicate query 4204046238731371000
+Skipping introspection query 17119510423494179000
+Skipping introspection query 6762676199304912000
+Skipping introspection query 2648393787706881000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9355523856439271000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9355523856439271000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 8008890152313795000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 8008890152313795000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7874121897492767000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3279852445401041400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3279852445401041400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7364893160858137000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7364893160858137000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14238807857279693000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14238807857279693000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4803621318990711000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4803621318990711000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 499298399531128060
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15155574030203548000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15155574030203548000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4487407837788430000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6123151043257010000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16125486010913900000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6920235808559565000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4242660843658371600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 4242660843658371600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12690664743667150000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12690664743667150000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15012969880304304000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 191899552143842370
+Skipping introspection query 1272159477619595000
+Skipping introspection query 191899552143842370
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15676942077094982000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15676942077094982000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5798984624084323000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5798984624084323000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15926483212730175000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 15926483212730175000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11729562601557656000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11729562601557656000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2695710326027833300
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2695710326027833300
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13871153044001413000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13871153044001413000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14539549508270074000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14539549508270074000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14706093689547063000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14706093689547063000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14185700933839495000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14185700933839495000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12453741621919842000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 12453741621919842000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3678771782776747500
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3678771782776747500
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2015290933224091400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 2015290933224091400
+Skipping introspection query 1272159477619595000
+Skipping introspection query 232570552971563200
+Skipping introspection query 1272159477619595000
+Skipping introspection query 232570552971563200
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6750811758211546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 7264326589122996000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 17267093350284208000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 17267093350284208000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13973678784431868000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 13973678784431868000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9353830044552966000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 5190125415588980000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 11395948499258931000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 14367802513513198000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10546724695823546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10546724695823546000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3384791130409538000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3384791130409538000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18247698178336170000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18247698178336170000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18445860710028005000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 18445860710028005000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6982284974523161000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 6982284974523161000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10255750286559338000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 10255750286559338000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3288866795563353600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3288866795563353600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 1011783710552468100
+Skipping introspection query 1272159477619595000
+Skipping introspection query 1011783710552468100
+Skipping introspection query 1272159477619595000
+Skipping introspection query 314248598547641150
+Skipping introspection query 1272159477619595000
+Skipping introspection query 314248598547641150
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16139563167301792000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 16139563167301792000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3762021867494043000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3762021867494043000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9410908785016950000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 9410908785016950000
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3148552255842307600
+Skipping introspection query 1272159477619595000
+Skipping introspection query 3148552255842307600
+Skipping introspection query 1272159477619595000
+Matched 53 queries out of 1023
+GITHUB_TOKEN=undefined
+No GitHub token provided, review will not be created
+Generating report (GitHub)
+No GitHub token or PR number provided, review will not be created undefined
+No GitHub token or PR number provided, review will not be created undefined
+total: 3024ms

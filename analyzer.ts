@@ -2,13 +2,18 @@ import type { ParseResult, Node } from "@pgsql/types";
 import { parse } from "@libpg-query/parser";
 import { deparseSync } from "pgsql-deparser";
 import { RootIndexCandidate } from "./optimizer/genalgo.ts";
-import { TableMetadata } from "./optimizer/statistics.ts";
+import { ExportedStats } from "./optimizer/statistics.ts";
+import {
+  magenta,
+  blue,
+  yellow,
+  bgMagenta,
+  bgBrightMagenta,
+} from "@std/fmt/colors";
 
 export interface DatabaseDriver {
   query(query: string, params: unknown[]): Promise<unknown[]>;
 }
-
-type CheckableIndex = string[];
 
 export const ignoredIdentifier = "__qd_placeholder";
 
@@ -35,6 +40,7 @@ type ColumnReferencePart = {
   text: string;
   start?: number;
   quoted: boolean;
+  alias?: string;
 };
 
 type DiscoveredColumnReference = {
@@ -49,6 +55,15 @@ type DiscoveredColumnReference = {
    * Parts of the column reference separated by dots in the query.
    * The table reference (if it exists) is resolved if the query
    * uses an alias.
+   *
+   * Has 3 different potential configurations (in theory)
+   * `a.b.c` - a column reference with a table and a schema reference
+   * `a.b` - a column reference with a table reference but no schema
+   * `a` - a column reference with no table reference.
+   *
+   * We use a simple array here to allow parsing of any syntactically correct
+   * but logically incorrect query. The checks happen later when we're deriving
+   * potential indexes from parts of a column reference in `deriveIndexes`
    */
   parts: ColumnReferencePart[];
   /**
@@ -62,22 +77,34 @@ type DiscoveredColumnReference = {
   };
 };
 
+/**
+ * Analyzes a query and returns a list of column references that
+ * should be indexed.
+ *
+ * This should be instantiated once per analyzed query.
+ */
 export class Analyzer {
+  private readonly mappings = new Map<string, ColumnReferencePart>();
+  private readonly tempTables = new Set<string>();
+
   async analyze(
     query: string,
+    /** We don't use parameters at all... for now */
     _params: unknown[]
   ): Promise<{
     indexesToCheck: DiscoveredColumnReference[];
     ansiHighlightedQuery: string;
     referencedTables: string[];
+    shadowedAliases: ColumnReferencePart[];
   }> {
-    const mappings: Map<string, ColumnReferencePart> = new Map();
-    const tempTables: Set<string> = new Set();
+    this.mappings.clear();
+    this.tempTables.clear();
     const highlightPositions = new Set<number>();
     // used for tallying the amount of times we see stuff so
     // we have a better idea of what to start off the algorithm with
     const seenReferences = new Map<string, number>();
     const ast = (await parse(query)) as ParseResult;
+    const shadowedAliases: ColumnReferencePart[] = [];
     if (!ast.stmts) {
       throw new Error("Query did not have any statements");
     }
@@ -98,7 +125,6 @@ export class Analyzer {
         console.error(node);
         throw new Error("Column reference must have fields");
       }
-      let columnQuoted = false;
       let runningLength: number = node.ColumnRef.location;
       const parts: ColumnReferencePart[] = node.ColumnRef.fields.map(
         (field, i, length) => {
@@ -141,7 +167,7 @@ export class Analyzer {
         seenReferences.set(highlighted, (seen ?? 0) + 1);
       }
       highlights.push({
-        frequency: seen ?? 0,
+        frequency: seen ?? 1,
         representation: highlighted,
         parts,
         ignored: ignored ?? false,
@@ -152,23 +178,59 @@ export class Analyzer {
       });
     }
     walk(stmt, [], (node, stack) => {
+      // results cannot be indexed in any way
+      // with alias as (select ...)
+      //      ^^^^^
       if (is(node, "CommonTableExpr")) {
         if (node.CommonTableExpr.ctename) {
-          tempTables.add(node.CommonTableExpr.ctename);
+          this.tempTables.add(node.CommonTableExpr.ctename);
         }
       }
+      // results cannot be indexed in any way
+      // select ... from (...) as alias
+      //                          ^^^^^
+      if (is(node, "RangeSubselect")) {
+        if (node.RangeSubselect.alias?.aliasname) {
+          this.tempTables.add(node.RangeSubselect.alias.aliasname);
+        }
+      }
+      // can be indexed as it refers to a regular table
+      // select ... from table as alias
       if (is(node, "RangeVar") && node.RangeVar.relname) {
-        mappings.set(node.RangeVar.relname, {
+        this.mappings.set(node.RangeVar.relname, {
           text: node.RangeVar.relname,
           start: node.RangeVar.location,
           quoted: false,
         });
+        // In theory we can't blindly map aliases to table names
+        // it's possible that two aliases point to different tables
+        // which postgres allows but is tricky to determine by just walking
+        // the AST like we're doing currently.
         if (node.RangeVar.alias?.aliasname) {
-          mappings.set(node.RangeVar.alias.aliasname, {
-            text: node.RangeVar.alias.aliasname,
+          const aliasName = node.RangeVar.alias.aliasname;
+          const existingMapping = this.mappings.get(aliasName);
+          const part: ColumnReferencePart = {
+            text: node.RangeVar.relname,
             start: node.RangeVar.location,
-            quoted: false,
-          });
+            // what goes here? the text here doesn't _really_ exist.
+            // so it can't be quoted or not quoted.
+            // Does it even matter?
+            quoted: true,
+            alias: aliasName,
+          };
+          // Postgres supports shadowing table aliases created in different levels of queries
+          // but we're very unlikely to see this in practice. Every ORM I've seen so far
+          // has produced globally unique aliases. This is not worth the complexity currently.
+          if (existingMapping) {
+            console.warn(
+              `Ignoring alias ${aliasName} as it shadows an existing mapping. We currently do not support alias shadowing.`
+            );
+            console.log(query);
+            // Let the user know what happened but don't stop the show.
+            shadowedAliases.push(part);
+            return;
+          }
+          this.mappings.set(aliasName, part);
         }
       }
       if (is(node, "JoinExpr") && node.JoinExpr.quals) {
@@ -226,33 +288,27 @@ export class Analyzer {
     );
     let currQuery = query;
     for (const highlight of sortedHighlights) {
-      const parts = highlight.parts.map((part) => {
-        const mapping = mappings.get(part.text);
-        if (mapping) {
-          return mapping;
-        }
-        return part;
-      });
+      // our parts might have
+      const parts = this.resolveTableAliases(highlight.parts);
       if (parts.length === 0) {
         console.error(highlight);
         throw new Error("Highlight must have at least one part");
       }
-      let color;
+      let color = (a: string) => a;
       let skip = false;
       if (highlight.ignored) {
-        color = "\x1b[33m";
+        color = yellow;
         skip = true;
-      } else if (tempTables.has(parts[0].text)) {
-        color = "\x1b[34m";
+      } else if (parts.length === 2 && this.tempTables.has(parts[0].text)) {
+        color = blue;
         skip = true;
       } else {
-        color = "\x1b[48;5;205m";
+        color = bgBrightMagenta;
       }
       const queryRepr = highlight.representation;
-      currQuery = `${currQuery.slice(
-        0,
-        highlight.position.start
-      )}${color}${queryRepr}\x1b[0m${currQuery.slice(highlight.position.end)}`;
+      currQuery = `${currQuery.slice(0, highlight.position.start)}${color(
+        queryRepr
+      )}${currQuery.slice(highlight.position.end)}`;
       if (indexRepresentations.has(queryRepr)) {
         skip = true;
       }
@@ -261,66 +317,136 @@ export class Analyzer {
         indexRepresentations.add(queryRepr);
       }
     }
-    const referencedTables = Array.from(mappings.keys());
+    const referencedTables = Array.from(this.mappings.keys());
     return {
       indexesToCheck,
       ansiHighlightedQuery: currQuery,
       referencedTables,
+      shadowedAliases,
     };
   }
 
   deriveIndexes(
-    tables: TableMetadata[],
+    tables: ExportedStats[],
     discovered: DiscoveredColumnReference[]
   ): RootIndexCandidate[] {
+    /**
+     * There are 3 different kinds of parts a col reference can have
+     * {a} = just a column within context. Find out the table
+     * {a, b} = a column reference with a table reference. There's still ambiguity here
+     * with what the schema could be in case there are 2 tables with the same name in different schemas.
+     * {a, b, c} = a column reference with a table reference and a schema reference.
+     * This is the best case scenario.
+     */
     const allIndexes: RootIndexCandidate[] = [];
+    const seenIndexes = new Set<string>();
+    function addIndex(index: RootIndexCandidate) {
+      const key = `${index.schema}:${index.table}:${index.column}`;
+      if (seenIndexes.has(key)) {
+        return;
+      }
+      seenIndexes.add(key);
+      allIndexes.push(index);
+    }
     for (const colReference of discovered) {
-      const noPrefix = colReference.parts.length === 1;
-      if (noPrefix) {
-        // can we do this directly in postgres?
+      const partsCount = colReference.parts.length;
+      const columnOnlyReference = partsCount === 1;
+      const tableReference = partsCount === 2;
+      const fullReference = partsCount === 3;
+      if (columnOnlyReference) {
+        // select c from x
         const [column] = colReference.parts;
-        const referencedColumn = column.quoted
-          ? column.text
-          : // postgres automatically lowercases column names if not quoted
-            column.text.toLowerCase();
+        const referencedColumn = this.normalize(column);
+        // TODO: this is not a good guess
+        // we can absolutely infer the schema name
+        // much better from the surrounding context
+        // this will lead to problems where we use
+        // tables like `auth.users` instead of `public.users`
+        // just because `auth` might have alphabetic priority
         const matchingTables = tables.filter((table) => {
-          return table.columns.some((column) => {
-            return column.columnName === referencedColumn;
-          });
+          return (
+            table.columns?.some((column) => {
+              return column.columnName === referencedColumn;
+            }) ?? false
+          );
         });
         for (const table of matchingTables) {
-          allIndexes.push({
+          addIndex({
             schema: table.schemaName,
             table: table.tableName,
             column: referencedColumn,
           });
         }
-      } else {
+      } else if (tableReference) {
+        // select b.c from x
         const [table, column] = colReference.parts;
-        const referencedTable = table.quoted
-          ? table.text
-          : // postgres automatically lowercases column names if not quoted
-            table.text.toLowerCase();
-        const referencedColumn = column.quoted
-          ? column.text
-          : // postgres automatically lowercases column names if not quoted
-            column.text.toLowerCase();
+        const referencedTable = this.normalize(table);
+        const referencedColumn = this.normalize(column);
         const matchingTable = tables.find((table) => {
-          const hasMatchingColumn = table.columns.some((column) => {
-            return column.columnName === referencedColumn;
-          });
+          const hasMatchingColumn =
+            table.columns?.some((column) => {
+              return column.columnName === referencedColumn;
+            }) ?? false;
           return table.tableName === referencedTable && hasMatchingColumn;
         });
         if (matchingTable) {
-          allIndexes.push({
+          addIndex({
             schema: matchingTable.schemaName,
             table: referencedTable,
             column: referencedColumn,
           });
         }
+      } else if (fullReference) {
+        // select a.b.c from x
+        const [schema, table, column] = colReference.parts;
+        const referencedSchema = this.normalize(schema);
+        const referencedTable = this.normalize(table);
+        const referencedColumn = this.normalize(column);
+        addIndex({
+          schema: referencedSchema,
+          table: referencedTable,
+          column: referencedColumn,
+        });
+      } else {
+        // select huh.a.b.c from x
+        console.error(
+          "Column reference has too many parts. The query is malformed",
+          colReference
+        );
+        continue;
       }
     }
     return allIndexes;
+  }
+
+  /**
+   * Resolves aliases such as `a.b` to `x.b` if `a` is a known
+   * alias to a table called x.
+   *
+   * Ignores all other combination of parts such as `a.b.c`
+   */
+  private resolveTableAliases(
+    parts: ColumnReferencePart[]
+  ): ColumnReferencePart[] {
+    // we don't want to resolve aliases for references such as
+    // `a.b.c` - this is fully qualified with a schema and can't be an alias
+    // `c` - because there's no table reference here (as far as we can tell)
+    if (parts.length !== 2) {
+      return parts;
+    }
+    const tablePart = parts[0];
+    const mapping = this.mappings.get(tablePart.text);
+    if (mapping) {
+      parts[0] = mapping;
+    }
+    return parts;
+  }
+
+  private normalize(columnReference: ColumnReferencePart): string {
+    return columnReference.quoted
+      ? columnReference.text
+      : // postgres automatically lowercases column names if not quoted
+        columnReference.text.toLowerCase();
   }
 }
 

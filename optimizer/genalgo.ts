@@ -1,6 +1,6 @@
 import { gray, green, red } from "@std/fmt/colors";
 import postgres from "postgresjs";
-import { IndexedTable, TableMetadata } from "./statistics.ts";
+import { IndexedTable, Statistics, TableMetadata } from "./statistics.ts";
 import { IndexIdentifier } from "../reporters/reporter.ts";
 import { DEBUG } from "../env.ts";
 
@@ -11,16 +11,16 @@ type IndexRecommendation = PermutedIndexCandidate & {
 export class IndexOptimizer {
   constructor(
     private readonly sql: postgres.Sql,
+    private readonly statistics: Statistics,
     private readonly existingIndexes: IndexedTable[]
   ) {}
 
   async run(
     query: string,
     params: string[],
-    indexes: RootIndexCandidate[],
-    tables: TableMetadata[]
+    indexes: RootIndexCandidate[]
   ): Promise<OptimizeResult> {
-    const baseExplain = await this.runWithReltuples(query, params, tables);
+    const baseExplain = await this.testQueryWithStats(query, params);
     const baseCost: number = Number(baseExplain["Total Cost"]);
     if (baseCost === 0) {
       return {
@@ -50,10 +50,9 @@ export class IndexOptimizer {
           continue;
         }
         let indexDefinition: string = "?";
-        const explain = await this.runWithReltuples(
+        const explain = await this.testQueryWithStats(
           query,
           params,
-          tables,
           async (sql) => {
             const indexName = `__qd_${schema}_${table}_${columns.join("_")}`;
             const indexDefinitionRaw = `${schema}.${table}(${columns
@@ -92,7 +91,7 @@ export class IndexOptimizer {
             `${
               previousCost === explain["Total Cost"]
                 ? ` ${gray("00.00%")}`
-                : ` ${red(
+                : `${red(
                     `-${Math.abs(costDeltaPercentage)
                       .toFixed(2)
                       .padStart(5, "0")}%`
@@ -111,10 +110,9 @@ export class IndexOptimizer {
         });
       }
     }
-    const finalExplain = await this.runWithReltuples(
+    const finalExplain = await this.testQueryWithStats(
       query,
       params,
-      tables,
       async (sql) => {
         for (const { table, schema, columns } of nextStage) {
           await sql.unsafe(
@@ -138,15 +136,18 @@ export class IndexOptimizer {
       );
     } else if (finalExplain["Total Cost"] > baseCost) {
       console.log(
-        ` 👍👍👍 ${gray("If there's a better index, we haven't tried it")}`
+        `${red(
+          `-${Math.abs(deltaPercentage).toFixed(2).padStart(5, "0")}%`
+        )} ${gray("If there's a better index, we haven't tried it")}`
       );
     }
     const { newIndexes, existingIndexes: existingIndexesUsedByQuery } =
       this.findUsedIndexes(finalExplain);
+    const finalCost = Number(finalExplain["Total Cost"]);
     return {
       kind: "ok",
       baseCost,
-      finalCost: Number(finalExplain["Total Cost"]),
+      finalCost,
       newIndexes,
       existingIndexes: existingIndexesUsedByQuery,
       triedIndexes,
@@ -167,21 +168,19 @@ export class IndexOptimizer {
     );
   }
 
-  async runWithReltuples(
+  async testQueryWithStats(
     query: string,
     params: string[],
-    allTableNames: TableMetadata[],
     f?: (sql: postgres.Sql) => Promise<void>
   ): Promise<any> {
     try {
-      await this.sql.begin(async (sql) => {
-        await f?.(sql);
-        const reltuplesTrick = `update pg_class set reltuples = 1000000, relpages = 1000 where relname IN (${allTableNames
-          .map((t) => `'${t.tableName}'`)
-          .join(",")}); -- @qd_introspection`;
-        await sql.unsafe(reltuplesTrick);
-        const explainString = `explain (generic_plan, verbose, format json) ${query} -- @qd_introspection`;
-        const result = await sql.unsafe(explainString, params as any);
+      await this.sql.begin(async (tx) => {
+        await f?.(tx);
+
+        await this.statistics.restoreStats(tx);
+        const explainString = `explain (generic_plan, verbose, format json) ${query}; -- @qd_introspection`;
+        // should params be passed in here?
+        const result = await tx.unsafe(explainString);
         const out = result[0]["QUERY PLAN"][0].Plan;
         throw new RollbackError(out);
       });
@@ -232,6 +231,7 @@ export class IndexOptimizer {
         }
       }
     }
+    // console.log("explain", explain);
     go(explain);
     return {
       newIndexes,

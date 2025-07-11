@@ -115,3 +115,117 @@ jobs:
     runs-on: ubuntu-latest
     ...
 ```
+
+## Statistics synchronization
+
+To make sure that we can most accurately emulate your production database, we need access to its stats.
+
+You can use the following function to dump the stats for your database. Copy paste this into psql to create the function.
+
+Since Postgres also keeps track of things like "most common values in table", part of the statistics table includes copies of cells from all tables. `include_sensitive_info`
+
+```sql
+CREATE OR REPLACE FUNCTION _qd_dump_stats(include_sensitive_info boolean) RETURNS jsonb AS $$
+SELECT
+  json_agg(t)
+  FROM (
+    SELECT
+  c.table_name as "tableName",
+  c.table_schema as "schemaName",
+  cl.reltuples,
+  cl.relpages,
+  cl.relallvisible,
+  n.nspname as "schemaName",
+  json_agg(
+    json_build_object(
+      'columnName', c.column_name,
+      'dataType', c.data_type,
+      'isNullable', (c.is_nullable = 'YES')::boolean,
+      'characterMaximumLength', c.character_maximum_length,
+      'numericPrecision', c.numeric_precision,
+      'numericScale', c.numeric_scale,
+      'columnDefault', c.column_default,
+      'stats', (
+        select json_build_object(
+          'starelid', s.starelid,
+          'staattnum', s.staattnum,
+          'stainherit', s.stainherit,
+          'stanullfrac', s.stanullfrac,
+          'stawidth', s.stawidth,
+          'stadistinct', s.stadistinct,
+          -- slot 1
+          'stakind1', s.stakind1,
+          'staop1', s.staop1,
+          'stacoll1', s.stacoll1,
+          'stanumbers1', s.stanumbers1,
+          -- slot 2
+          'stakind2', s.stakind2,
+          'staop2', s.staop2,
+          'stacoll2', s.stacoll2,
+          'stanumbers2', s.stanumbers2,
+          -- slot 3
+          'stakind3', s.stakind3,
+          'staop3', s.staop3,
+          'stacoll3', s.stacoll3,
+          'stanumbers3', s.stanumbers3,
+          -- slot 4
+          'stakind4', s.stakind4,
+          'staop4', s.staop4,
+          'stacoll4', s.stacoll4,
+          'stanumbers4', s.stanumbers4,
+          -- slot 5
+          'stakind5', s.stakind5,
+          'staop5', s.staop5,
+          'stacoll5', s.stacoll5,
+          'stanumbers5', s.stanumbers5,
+          -- non-anonymous stats
+          'stavalues1', case when $1 then s.stavalues1 else null end,
+          'stavalues2', case when $1 then s.stavalues2 else null end,
+          'stavalues3', case when $1 then s.stavalues3 else null end,
+          'stavalues4', case when $1 then s.stavalues4 else null end,
+          'stavalues5', case when $1 then s.stavalues5 else null end
+        )
+          from pg_statistic s
+        where
+          s.starelid = a.attrelid
+          and s.staattnum = a.attnum
+      )
+    )
+  ORDER BY c.ordinal_position) as columns
+FROM
+    information_schema.columns c
+JOIN
+    pg_attribute a
+    ON a.attrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass
+    AND a.attname = c.column_name
+JOIN
+    pg_class cl
+    ON cl.relname = c.table_name
+JOIN
+    pg_namespace n
+    ON n.oid = cl.relnamespace
+WHERE
+    c.table_name not like 'pg_%'
+    and n.nspname <> 'information_schema'
+    and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
+GROUP BY
+    c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname /* @qd_introspection */
+) t;
+$$ LANGUAGE sql STABLE SECURITY DEFINER;
+```
+
+Note: The function is defined with `SECURITY DEFINER` so that it can be called either manually, or automatically by the analyzer if you set up stats pull integration.
+
+#### Regular PSQL
+
+```shell
+psql -d <yourdb> -At -F "" -c "select _qd_dump_stats(false)" > stats.json
+```
+
+#### Postgres in Kubernetes
+
+This example uses cloudnative-pg, but it can apply to any pod that has access to psql as superuser.
+
+```shell
+kubectl exec <podname> -n cnpg-system -c postgres -- psql -d <yourdb> -At -F "" -c "select _qd_dump_stats(false)" > stats.json
+```
