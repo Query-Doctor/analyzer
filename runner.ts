@@ -156,7 +156,6 @@ export class Runner {
         }
         continue;
       }
-      console.log(indexCandidates);
       await core.group(`query:${fingerprintNum}`, async () => {
         console.time(`timing`);
         matching++;

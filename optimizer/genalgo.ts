@@ -1,19 +1,9 @@
-import {
-  bgGreen,
-  blue,
-  cyan,
-  gray,
-  green,
-  magenta,
-  red,
-  yellow,
-} from "@std/fmt/colors";
+import { blue, gray, green, magenta, red, yellow } from "@std/fmt/colors";
 import postgres from "postgresjs";
-import { IndexedTable, Statistics, TableMetadata } from "./statistics.ts";
+import { IndexedTable, Statistics } from "./statistics.ts";
 import { IndexIdentifier } from "../reporters/reporter.ts";
 import { DEBUG } from "../env.ts";
-import { DiscoveredColumnReference, SortContext } from "../analyzer.ts";
-import { measureMemory } from "node:vm";
+import { SortContext } from "../analyzer.ts";
 import { NullTestType } from "@pgsql/types";
 
 type IndexRecommendation = PermutedIndexCandidate & {
@@ -49,7 +39,7 @@ export class IndexOptimizer {
     // const permutedIndexes = permuteWithFeedback(indexes);
     // await this.sql`vacuum;`;
     const baseIndexes = this.findUsedIndexes(baseExplain);
-    console.log(baseIndexes);
+    console.log(baseIndexes.existingIndexes);
     for (const { table, schema, columns } of permutedIndexes.values()) {
       const permutations = permuteWithFeedback(Array.from(columns));
       let iter = permutations.next(PROCEED);

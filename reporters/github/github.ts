@@ -47,7 +47,6 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
       return;
     }
     try {
@@ -70,7 +69,7 @@ export class GithubReporter implements Reporter {
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
+      console.log("No GitHub token or PR number provided, review will not be created");
       if (this.isInGithubActions) {
         await core.summary.addRaw(review, true).write();
       }

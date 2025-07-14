@@ -261,7 +261,6 @@ export class Analyzer {
             console.warn(
               `Ignoring alias ${aliasName} as it shadows an existing mapping. We currently do not support alias shadowing.`
             );
-            console.log(query);
             // Let the user know what happened but don't stop the show.
             shadowedAliases.push(part);
             return;
