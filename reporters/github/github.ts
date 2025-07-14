@@ -1,4 +1,5 @@
 import * as github from "@actions/github";
+import * as core from "@actions/core"
 import success from "./success.md.j2" with { type: "text" };
 import * as n from "nunjucks";
 import {
@@ -14,8 +15,10 @@ export class GithubReporter implements Reporter {
   private static readonly REVIEW_COMMENT_PREFIX = "<!-- qd-review-comment -->";
   private readonly prNumber?: number;
   private readonly octokit?: ReturnType<typeof github.getOctokit>;
+  private readonly isInGithubActions?: boolean;
   constructor(githubToken?: string) {
     this.prNumber = github.context.payload.pull_request?.number;
+    this.isInGithubActions = typeof github.context.workflow !== "undefined";
     if (githubToken) {
       this.octokit = github.getOctokit(githubToken);
     } else {
@@ -68,6 +71,9 @@ export class GithubReporter implements Reporter {
       typeof this.prNumber === "undefined"
     ) {
       console.log("No GitHub token or PR number provided, review will not be created", this.prNumber);
+      if (this.isInGithubActions) {
+        await core.summary.addRaw(review, true).write();
+      }
       return;
     }
     try {
