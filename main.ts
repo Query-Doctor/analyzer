@@ -19,6 +19,7 @@ import {
   POSTGRES_URL,
   STATISTICS_PATH,
 } from "./env.ts";
+import * as github from "@actions/github";
 import { Runner } from "./runner.ts";
 
 async function main() {

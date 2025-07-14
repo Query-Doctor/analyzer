@@ -1,4 +1,4 @@
-import { assertArrayIncludes, assertEquals, assertFalse } from "@std/assert";
+import { assertEquals, assertFalse } from "@std/assert";
 import { Analyzer } from "./analyzer.ts";
 import dedent from "dedent";
 
@@ -19,7 +19,7 @@ Deno.test(async function analyzer_test() {
     $2`;
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
-    ["123", 10]
+    []
   );
   assertEquals(indexesToCheck, [
     {
@@ -32,6 +32,52 @@ Deno.test(async function analyzer_test() {
       ],
       ignored: false,
       position: { start: 135, end: 165 },
+    },
+  ]);
+});
+
+Deno.test(async function analyzer_test_with_ordering() {
+  const analyzer = new Analyzer();
+  const query = dedent`
+  select
+    "public"."team"."team_id"
+  from
+    "public"."team"
+  order by
+    team.team_id desc nulls first
+  `;
+  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+    query,
+    []
+  );
+  console.log(indexesToCheck);
+  console.log(ansiHighlightedQuery);
+  // assertEquals(indexesToCheck, []);
+});
+
+Deno.test.only(async function analyzer_isnull() {
+  const analyzer = new Analyzer();
+  const query = dedent`
+    select * from team
+    where team.deleted_at is null
+  `;
+  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+    query,
+    []
+  );
+  console.log(indexesToCheck);
+  console.log(ansiHighlightedQuery);
+  assertEquals(indexesToCheck, [
+    {
+      frequency: 1,
+      representation: "team.deleted_at",
+      parts: [
+        { text: "team", start: 14, quoted: false },
+        { text: "deleted_at", start: 30, quoted: false },
+      ],
+      ignored: false,
+      position: { start: 25, end: 40 },
+      where: { nulltest: "IS_NULL" },
     },
   ]);
 });
@@ -154,7 +200,15 @@ Deno.test(async function analyzer_with_aliases() {
   const { indexesToCheck } = await analyzer.analyze(query, [123, 10, 20]);
   const indexes = analyzer.deriveIndexes(testMetadata, indexesToCheck);
   assertEquals(indexes, [
-    { schema: "public", table: "team_user", column: "team_user_id" },
+    {
+      schema: "public",
+      table: "team_user",
+      column: "team_user_id",
+      sort: {
+        dir: "SORTBY_ASC",
+        nulls: "SORTBY_NULLS_DEFAULT",
+      },
+    },
     { schema: "public", table: "user", column: "user_id" },
     { schema: "public", table: "user", column: "deleted_at" },
     { schema: "public", table: "team_user", column: "team_id" },

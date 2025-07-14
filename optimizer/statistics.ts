@@ -471,7 +471,7 @@ export class Statistics {
         from jsonb_to_recordset($1::jsonb)
             as v(reltuples real, relpages integer, relname text, schema_name text)
         where pg_class.relname = v.relname
-        and pg_class.relnamespace = 2200
+        and pg_class.relnamespace = (select oid from pg_namespace where nspname = v.schema_name)
         returning pg_class.relname, pg_class.relnamespace, pg_class.reltuples, pg_class.relpages;
         `;
 

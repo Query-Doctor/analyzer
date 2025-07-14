@@ -1,12 +1,25 @@
-import { gray, green, red } from "@std/fmt/colors";
+import {
+  bgGreen,
+  blue,
+  cyan,
+  gray,
+  green,
+  magenta,
+  red,
+  yellow,
+} from "@std/fmt/colors";
 import postgres from "postgresjs";
 import { IndexedTable, Statistics, TableMetadata } from "./statistics.ts";
 import { IndexIdentifier } from "../reporters/reporter.ts";
 import { DEBUG } from "../env.ts";
+import { DiscoveredColumnReference, SortContext } from "../analyzer.ts";
+import { measureMemory } from "node:vm";
+import { NullTestType } from "@pgsql/types";
 
 type IndexRecommendation = PermutedIndexCandidate & {
   definition: IndexIdentifier;
 };
+type Color = (a: string) => string;
 
 export class IndexOptimizer {
   constructor(
@@ -54,19 +67,21 @@ export class IndexOptimizer {
           query,
           params,
           async (sql) => {
-            const indexName = `__qd_${schema}_${table}_${columns.join("_")}`;
-            const indexDefinitionRaw = `${schema}.${table}(${columns
-              .map((c) => `"${c}"`)
-              .join(", ")})`;
+            const indexName = `__qd_${schema}_${table}_${columns
+              .map((c) => c.column)
+              .join("_")}`;
+            const { raw, colored } = this.toDefinition({
+              columns,
+              schema,
+              table,
+            });
             const shortenedSchema = schema === "public" ? "" : `${schema}.`;
             // TODO: this is silly, turn this into a data structure here ONLY
             const indexDefinitionClean = `${shortenedSchema}${table}(${columns
-              .map((c) => `"${c}"`)
+              .map((c) => `"${c.column}"`)
               .join(", ")})`;
-            indexDefinition = `${shortenedSchema}${table}(${columns
-              .map((c) => green(`"${c}"`))
-              .join(", ")})`;
-            const sqlString = `create index ${indexName} on ${indexDefinitionRaw};`;
+            indexDefinition = colored;
+            const sqlString = `create index ${indexName} on ${raw};`;
             triedIndexes.set(indexName, {
               schema,
               table,
@@ -114,13 +129,14 @@ export class IndexOptimizer {
       query,
       params,
       async (sql) => {
-        for (const { table, schema, columns } of nextStage) {
+        for (const permutation of nextStage) {
+          const { table, schema, columns } = permutation;
           await sql.unsafe(
-            `create index __qd_${schema}_${table}_${columns.join(
-              "_"
-            )} on ${schema}.${table}(${columns
-              .map((c) => `"${c}"`)
-              .join(",")}); -- @qd_introspection`
+            `create index __qd_${schema}_${table}_${columns
+              .map((c) => c.column)
+              .join("_")} on ${
+              this.toDefinition(permutation).raw
+            }; -- @qd_introspection`
           );
         }
       }
@@ -157,15 +173,104 @@ export class IndexOptimizer {
 
   private indexAlreadyExists(
     table: string,
-    columns: string[]
+    columns: RootIndexCandidate[]
   ): IndexedTable | undefined {
     return this.existingIndexes.find(
       (index) =>
         index.index_type === "btree" &&
         index.table_name === table &&
         index.index_columns.length === columns.length &&
-        index.index_columns.every((c, i) => columns[i] === c.name)
+        index.index_columns.every((c, i) => columns[i].column === c.name)
     );
+  }
+
+  private toDefinition(permuted: PermutedIndexCandidate) {
+    const make = (col: Color, order: Color, where: Color, keyword: Color) => {
+      // let clauses: string[] = [];
+      // const columns = [...permuted.columns];
+      // // TODO
+      // for (let i = columns.length - 1; i >= 0; i--) {
+      //   const c = columns[i];
+      //   const clause = this.whereClause(c, col, where);
+      //   if (clause) {
+      //     clauses.push(clause);
+      //     // TODO: make this
+      //     if (columns.length > 1) {
+      //       columns.splice(i, 1);
+      //     }
+      //   }
+      // }
+      const baseColumn = `${permuted.schema}.${
+        permuted.table
+      }(${permuted.columns
+        .map((c) => {
+          const direction = c.sort && this.sortDirection(c.sort);
+          const nulls = c.sort && this.nullsOrder(c.sort);
+          let sort = col(`"${c.column}"`);
+          if (direction) {
+            sort += ` ${order(direction)}`;
+          }
+          if (nulls) {
+            sort += ` ${order(nulls)}`;
+          }
+          return sort;
+        })
+        .join(", ")})`;
+      // TODO: add support for generating partial indexes
+      // if (clauses.length > 0) {
+      //   return `${baseColumn} ${where("where")} ${clauses.join(" and ")}`;
+      // }
+      return baseColumn;
+    };
+    const id: Color = (a) => a;
+    const raw = make(id, id, id, id);
+    const colored = make(green, yellow, magenta, blue);
+    return { raw, colored };
+  }
+
+  private whereClause(c: RootIndexCandidate, col: Color, keyword: Color) {
+    if (!c.where) {
+      return "";
+    }
+    if (c.where.nulltest === "IS_NULL") {
+      return `${col(`"${c.column}"`)} is ${keyword("null")}`;
+    }
+    if (c.where.nulltest === "IS_NOT_NULL") {
+      return `${col(`"${c.column}"`)} is not ${keyword("null")}`;
+    }
+    return "";
+  }
+
+  private nullsOrder(s: SortContext) {
+    if (!s.nulls) {
+      return "";
+    }
+    switch (s.nulls) {
+      case "SORTBY_NULLS_FIRST":
+        return "nulls first";
+      case "SORTBY_NULLS_LAST":
+        return "nulls last";
+      case "SORTBY_NULLS_DEFAULT":
+      default:
+        return "";
+    }
+  }
+
+  private sortDirection(s: SortContext) {
+    if (!s.dir) {
+      return "";
+    }
+    switch (s.dir) {
+      case "SORTBY_DESC":
+        return "desc";
+      case "SORTBY_ASC":
+        return "asc";
+      case "SORTBY_DEFAULT":
+      // god help us if we ever run into this
+      case "SORTBY_USING":
+      default:
+        return "";
+    }
   }
 
   async testQueryWithStats(
@@ -176,7 +281,6 @@ export class IndexOptimizer {
     try {
       await this.sql.begin(async (tx) => {
         await f?.(tx);
-
         await this.statistics.restoreStats(tx);
         const explainString = `explain (generic_plan, verbose, format json) ${query}; -- @qd_introspection`;
         // should params be passed in here?
@@ -196,17 +300,17 @@ export class IndexOptimizer {
   private tableColumnIndexCandidates(indexes: RootIndexCandidate[]) {
     const tableColumns: Map<
       string,
-      { schema: string; table: string; columns: Set<string> }
+      { schema: string; table: string; columns: RootIndexCandidate[] }
     > = new Map();
     for (const index of indexes) {
       const existing = tableColumns.get(`${index.schema}.${index.table}`);
       if (existing) {
-        existing.columns.add(index.column);
+        existing.columns.push(index);
       } else {
         tableColumns.set(`${index.schema}.${index.table}`, {
           table: index.table,
           schema: index.schema,
-          columns: new Set([index.column]),
+          columns: [index],
         });
       }
     }
@@ -263,15 +367,16 @@ class RollbackError<T> {
 export type RootIndexCandidate = {
   schema: string;
   table: string;
-  // TODO: functional indexes
   column: string;
-  where?: string;
+  sort?: SortContext;
+  where?: { nulltest?: NullTestType };
 };
 
 export type PermutedIndexCandidate = {
   schema: string;
   table: string;
-  columns: string[];
+  columns: RootIndexCandidate[];
+  // TODO: functional indexes
   where?: string;
 };
 

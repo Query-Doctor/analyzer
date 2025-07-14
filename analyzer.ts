@@ -1,15 +1,15 @@
-import type { ParseResult, Node } from "@pgsql/types";
+import type {
+  ParseResult,
+  Node,
+  SortByDir,
+  SortByNulls,
+  NullTestType,
+} from "@pgsql/types";
 import { parse } from "@libpg-query/parser";
 import { deparseSync } from "pgsql-deparser";
 import { RootIndexCandidate } from "./optimizer/genalgo.ts";
 import { ExportedStats } from "./optimizer/statistics.ts";
-import {
-  magenta,
-  blue,
-  yellow,
-  bgMagenta,
-  bgBrightMagenta,
-} from "@std/fmt/colors";
+import { blue, yellow, bgBrightMagenta, green } from "@std/fmt/colors";
 
 export interface DatabaseDriver {
   query(query: string, params: unknown[]): Promise<unknown[]>;
@@ -43,7 +43,12 @@ type ColumnReferencePart = {
   alias?: string;
 };
 
-type DiscoveredColumnReference = {
+export type SortContext = {
+  dir: SortByDir;
+  nulls: SortByNulls;
+};
+
+export type DiscoveredColumnReference = {
   /** How often the column reference appears in the query. */
   frequency: number;
   /**
@@ -75,6 +80,12 @@ type DiscoveredColumnReference = {
     start: number;
     end: number;
   };
+  /**
+   * A sort direction associated by the column reference.
+   * Only relevant to references from sorts
+   */
+  sort?: SortContext;
+  where?: { nulltest?: NullTestType };
 };
 
 /**
@@ -115,7 +126,11 @@ export class Analyzer {
     const highlights: DiscoveredColumnReference[] = [];
     function add(
       node: Extract<Node, { ColumnRef: unknown }>,
-      ignored?: boolean
+      options?: {
+        ignored?: boolean;
+        sort?: SortContext;
+        where?: { nulltest?: NullTestType };
+      }
     ) {
       if (!node.ColumnRef.location) {
         console.error(`Node did not have a location. Skipping`, node);
@@ -125,6 +140,7 @@ export class Analyzer {
         console.error(node);
         throw new Error("Column reference must have fields");
       }
+      let ignored = options?.ignored ?? false;
       let runningLength: number = node.ColumnRef.location;
       const parts: ColumnReferencePart[] = node.ColumnRef.fields.map(
         (field, i, length) => {
@@ -166,7 +182,7 @@ export class Analyzer {
       if (!ignored) {
         seenReferences.set(highlighted, (seen ?? 0) + 1);
       }
-      highlights.push({
+      const ref: DiscoveredColumnReference = {
         frequency: seen ?? 1,
         representation: highlighted,
         parts,
@@ -175,7 +191,14 @@ export class Analyzer {
           start: node.ColumnRef.location,
           end,
         },
-      });
+      };
+      if (options?.sort) {
+        ref.sort = options.sort;
+      }
+      if (options?.where) {
+        ref.where = options.where;
+      }
+      highlights.push(ref);
     }
     walk(stmt, [], (node, stack) => {
       // results cannot be indexed in any way
@@ -192,6 +215,19 @@ export class Analyzer {
       if (is(node, "RangeSubselect")) {
         if (node.RangeSubselect.alias?.aliasname) {
           this.tempTables.add(node.RangeSubselect.alias.aliasname);
+        }
+      }
+      // where col is null
+      //           ^^^^^^^
+      if (is(node, "NullTest")) {
+        if (
+          node.NullTest.arg &&
+          node.NullTest.nulltesttype &&
+          is(node.NullTest.arg, "ColumnRef")
+        ) {
+          add(node.NullTest.arg, {
+            where: { nulltest: node.NullTest.nulltesttype },
+          });
         }
       }
       // can be indexed as it refers to a regular table
@@ -233,6 +269,16 @@ export class Analyzer {
           this.mappings.set(aliasName, part);
         }
       }
+      if (is(node, "SortBy")) {
+        if (node.SortBy.node && is(node.SortBy.node, "ColumnRef")) {
+          add(node.SortBy.node, {
+            sort: {
+              dir: node.SortBy.sortby_dir ?? "SORTBY_DEFAULT",
+              nulls: node.SortBy.sortby_nulls ?? "SORTBY_NULLS_DEFAULT",
+            },
+          });
+        }
+      }
       if (is(node, "JoinExpr") && node.JoinExpr.quals) {
         if (is(node.JoinExpr.quals, "A_Expr")) {
           if (
@@ -257,7 +303,7 @@ export class Analyzer {
             stack[i + 2] === "val" &&
             stack[i + 3] === "ColumnRef";
           if (inReturningList) {
-            add(node, true);
+            add(node, { ignored: true });
             return;
           }
           if (
@@ -268,13 +314,13 @@ export class Analyzer {
             stack[i + 4] === "ColumnRef"
           ) {
             // we don't want to index the columns that are being selected
-            add(node, true);
+            add(node, { ignored: true });
             return;
           }
 
           if (stack[i] === "FuncCall" && stack[i + 1] === "args") {
             // args of a function call can't be indexed (without functional indexes)
-            add(node, true);
+            add(node, { ignored: true });
             return;
           }
         }
@@ -308,7 +354,20 @@ export class Analyzer {
       const queryRepr = highlight.representation;
       currQuery = `${currQuery.slice(0, highlight.position.start)}${color(
         queryRepr
-      )}${currQuery.slice(highlight.position.end)}`;
+      )}${currQuery
+        .slice(highlight.position.end)
+        .replace(
+          // eh? This kinda sucks
+          /(^\s+)(asc|desc)?(\s+(nulls first|nulls last))?/i,
+          (_, pre, dir, spaceNulls, nulls) => {
+            return `${pre}${dir ? bgBrightMagenta(dir) : ""}${
+              nulls ? spaceNulls.replace(nulls, bgBrightMagenta(nulls)) : ""
+            }`;
+          }
+        )
+        .replace(/(^\s+)(is (null|not null))/i, (_, pre, nulltest) => {
+          return `${pre}${bgBrightMagenta(nulltest)}`;
+        })}`;
       if (indexRepresentations.has(queryRepr)) {
         skip = true;
       }
@@ -371,11 +430,18 @@ export class Analyzer {
           );
         });
         for (const table of matchingTables) {
-          addIndex({
+          const index: RootIndexCandidate = {
             schema: table.schemaName,
             table: table.tableName,
             column: referencedColumn,
-          });
+          };
+          if (colReference.sort) {
+            index.sort = colReference.sort;
+          }
+          if (colReference.where) {
+            index.where = colReference.where;
+          }
+          addIndex(index);
         }
       } else if (tableReference) {
         // select b.c from x
@@ -390,11 +456,18 @@ export class Analyzer {
           return table.tableName === referencedTable && hasMatchingColumn;
         });
         if (matchingTable) {
-          addIndex({
+          const index: RootIndexCandidate = {
             schema: matchingTable.schemaName,
             table: referencedTable,
             column: referencedColumn,
-          });
+          };
+          if (colReference.sort) {
+            index.sort = colReference.sort;
+          }
+          if (colReference.where) {
+            index.where = colReference.where;
+          }
+          addIndex(index);
         }
       } else if (fullReference) {
         // select a.b.c from x
@@ -402,11 +475,18 @@ export class Analyzer {
         const referencedSchema = this.normalize(schema);
         const referencedTable = this.normalize(table);
         const referencedColumn = this.normalize(column);
-        addIndex({
+        const index: RootIndexCandidate = {
           schema: referencedSchema,
           table: referencedTable,
           column: referencedColumn,
-        });
+        };
+        if (colReference.sort) {
+          index.sort = colReference.sort;
+        }
+        if (colReference.where) {
+          index.where = colReference.where;
+        }
+        addIndex(index);
       } else {
         // select huh.a.b.c from x
         console.error(

@@ -16,7 +16,7 @@ import {
   ReportIndexRecommendation,
   deriveIndexStatistics,
 } from "./reporters/reporter.ts";
-import { bgBrightMagenta } from "@std/fmt/colors";
+import { bgBrightMagenta, blue, green, yellow } from "@std/fmt/colors";
 
 export class Runner {
   constructor(
@@ -241,8 +241,8 @@ export class Runner {
   private printLegend() {
     console.log(`--Legend--------------------------`);
     console.log(`| ${bgBrightMagenta(" column ")} | Candidate            |`);
-    console.log(`| \x1b[33m column \x1b[0m | Ignored              |`);
-    console.log(`| \x1b[34m column \x1b[0m | Temp table reference |`);
+    console.log(`| ${yellow(" column ")} | Ignored              |`);
+    console.log(`| ${blue(" column ")} | Temp table reference |`);
     console.log(`-----------------------------------`);
     console.log();
   }

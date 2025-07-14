@@ -18,6 +18,7 @@
     "@std/data-structures": "jsr:@std/data-structures@^1.0.8",
     "@std/fmt": "jsr:@std/fmt@^1.0.8",
     "@types/nunjucks": "npm:@types/nunjucks@^3.2.6",
+    "chokidar": "npm:chokidar@^4.0.3",
     "dedent": "npm:dedent@^1.6.0",
     "fast-csv": "npm:fast-csv@^5.0.2",
     "nunjucks": "npm:nunjucks@^3.2.4",
