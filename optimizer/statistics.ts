@@ -20,13 +20,17 @@ export type Path = string;
 
 export type StatisticsMode =
   | { kind: "fromAssumption"; reltuples: number; relpages: number }
-  | { kind: "fromStatisticsExport"; stats: ExportedStats[] };
+  | {
+    kind: "fromStatisticsExport";
+    stats: ExportedStats[];
+    source: { kind: "path"; path: string } | { kind: "inline" };
+  };
 
 const DEFAULT_RELTUPLES = 10_000_000;
 const DEFAULT_RELPAGES = 1_000;
 
 export class Statistics {
-  private statisticsMode: StatisticsMode = {
+  readonly mode: StatisticsMode = {
     kind: "fromAssumption",
     reltuples: DEFAULT_RELTUPLES,
     relpages: DEFAULT_RELPAGES,
@@ -36,11 +40,14 @@ export class Statistics {
     public readonly postgresVersion: PostgresVersion,
     private readonly exportedMetadata: ExportedStats[] | undefined,
     public readonly ownMetadata: ExportedStats[],
+    // TODO: refactor this
+    source: { kind: "path"; path: string } | { kind: "inline" },
   ) {
     if (this.exportedMetadata) {
-      this.statisticsMode = {
+      this.mode = {
         kind: "fromStatisticsExport",
         stats: this.exportedMetadata,
+        source,
       };
     }
   }
@@ -59,7 +66,15 @@ export class Statistics {
       stats = metadataOrPath;
     }
     const ownStats = await ownStatsPromise;
-    return new Statistics(sql, postgresVersion, stats, ownStats);
+    return new Statistics(
+      sql,
+      postgresVersion,
+      stats,
+      ownStats,
+      typeof metadataOrPath === "string"
+        ? { kind: "path", path: metadataOrPath }
+        : { kind: "inline" },
+    );
   }
 
   restoreStats(tx: postgres.TransactionSql) {
@@ -68,8 +83,6 @@ export class Statistics {
     // }
     // return this.restoreStats18(tx);
   }
-
-  mode() {}
 
   private supportedStatisticKinds = [3, 5];
 
@@ -426,9 +439,9 @@ export class Statistics {
         reltuples = targetTable.reltuples;
         relpages = targetTable.relpages;
         // }
-      } else if (this.statisticsMode.kind === "fromAssumption") {
-        reltuples = this.statisticsMode.reltuples;
-        relpages = this.statisticsMode.relpages;
+      } else if (this.mode.kind === "fromAssumption") {
+        reltuples = this.mode.reltuples;
+        relpages = this.mode.relpages;
       } else {
         // we want to warn about tables that are in the test but not in the exported stats
         // this can happen in case a new table is created in a PR

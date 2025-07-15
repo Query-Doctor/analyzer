@@ -23,6 +23,34 @@ The following indexes are likely to make the most impact to your queries. They'r
 Couldn't find any new indexes to recommend.
 {% endif %}
 
+{% if statisticsMode.kind === "fromAssumption" %}
+#### Statistics Mode
+When generating recommendations, we made the following changes to your database statistics:
+
+`fixed rows per table`
+
+<ul>
+  <li>Rows per table: {{ statisticsMode.reltuples }}</li>
+  <li>Pages per table: {{ statisticsMode.relpages }}</li>
+</ul>
+
+Instead of assuming a fixed number of rows per table (which can cause unnecessary recommendations), you can export statistics from your production database and import it using the `STATISTICS_PATH` environment variable. You can read more about how to sync stats [here](https://github.com/Query-Doctor/analyze#statistics-synchronization).
+```yaml
+- name: Analyze
+  uses: query-doctor/analyzer@v0
+  env:
+    STATISTICS_PATH: ./statistics.json
+```
+{% elif statisticsMode.kind === "fromStatisticsExport" %}
+{% if statisticsMode.source.kind === "path" %}
+#### Statistics Mode
+When generating recommendations, we used statistics from the file <code>{{ statisticsMode.source.path }}</code>.
+{% elif statisticsMode.source.kind === "inline" %}
+#### Statistics Mode
+When generating recommendations, we used statistics from an inlined JSON object.
+{% endif %}
+{% endif %}
+
 {% if recommendations.length > 0 %}
 ### Optimization Overview
 

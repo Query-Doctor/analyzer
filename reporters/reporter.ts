@@ -1,3 +1,5 @@
+import type { StatisticsMode } from "../optimizer/statistics.ts";
+
 export interface Reporter {
   provider(): string;
   report(ctx: ReportContext): Promise<void>;
@@ -41,6 +43,7 @@ declare const s: unique symbol;
 export type IndexIdentifier = string & { [s]: never };
 
 export interface ReportContext {
+  statisticsMode: StatisticsMode;
   recommendations: ReportIndexRecommendation[];
   queryStats: {
     /** All queries seen in the log */

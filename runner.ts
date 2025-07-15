@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import postgres from "postgresjs";
 import { fingerprint } from "@libpg-query/parser";
 import { Analyzer } from "./analyzer.ts";
-import { DEBUG, GITHUB_TOKEN, STATISTICS_PATH } from "./env.ts";
+import { DEBUG, GITHUB_TOKEN } from "./env.ts";
 import { preprocessEncodedJson } from "./json.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import { getPostgresVersion, Statistics } from "./optimizer/statistics.ts";
@@ -16,7 +16,7 @@ import {
   ReportContext,
   ReportIndexRecommendation,
 } from "./reporters/reporter.ts";
-import { bgBrightMagenta, blue, green, yellow } from "@std/fmt/colors";
+import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 
 export class Runner {
   constructor(
@@ -217,6 +217,7 @@ export class Runner {
     const timeElapsed = Date.now() - startDate.getTime();
     console.log(`Generating report (${reporter.provider()})`);
     const reportContext: ReportContext = {
+      statisticsMode: stats.mode,
       recommendations,
       queryStats,
       statistics,
