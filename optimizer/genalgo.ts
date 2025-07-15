@@ -36,8 +36,6 @@ export class IndexOptimizer {
     const permutedIndexes = this.tableColumnIndexCandidates(indexes);
     const nextStage: PermutedIndexCandidate[] = [];
     const triedIndexes: Map<string, IndexRecommendation> = new Map();
-    // const permutedIndexes = permuteWithFeedback(indexes);
-    // await this.sql`vacuum;`;
     const baseIndexes = this.findUsedIndexes(baseExplain);
     console.log(baseIndexes.existingIndexes);
     for (const { table, schema, columns } of permutedIndexes.values()) {

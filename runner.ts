@@ -28,14 +28,11 @@ export class Runner {
     const startDate = new Date();
     const logSize = Deno.statSync(this.logPath).size;
     console.log(`logPath=${this.logPath},fileSize=${logSize}`);
-    // core.setOutput("time", new Date().toLocaleTimeString());
     const args = [
       "--dump-raw-csv",
       "--no-progressbar",
       "-f",
       "stderr",
-      // "--begin",
-      // "2025-06-24 10:00:00",
       this.logPath,
     ];
     const command = new Deno.Command("pgbadger", {
@@ -57,14 +54,14 @@ export class Runner {
 
     const seenQueries = new Set<number>();
     const recommendations: ReportIndexRecommendation[] = [];
-    let allQueries = 0;
-    let matching = 0;
-    let skipped = {};
+    let queryStats: ReportContext["queryStats"] = {
+      total: 0,
+      matched: 0,
+      optimized: 0,
+      errored: 0,
+    };
     const pg = postgres(this.postgresUrl);
     const pgVersion = await getPostgresVersion(pg);
-    // if (!STATISTICS_PATH) {
-    //   // return;
-    // }
     const stats = await Statistics.fromPostgres(
       pg,
       pgVersion,
@@ -110,7 +107,7 @@ export class Runner {
         );
         continue;
       }
-      allQueries++;
+      queryStats.total++;
       const { query, parameters } = parsed;
       const queryFingerprint = await fingerprint(query);
       const fingerprintNum = parseInt(queryFingerprint, 16);
@@ -158,11 +155,11 @@ export class Runner {
       }
       await core.group(`query:${fingerprintNum}`, async () => {
         console.time(`timing`);
-        matching++;
         this.printLegend();
         console.log(ansiHighlightedQuery);
         // TODO: give concrete type
         let out: Awaited<ReturnType<typeof optimizer.run>>;
+        queryStats.matched++;
         try {
           out = await optimizer.run(query, parameters, indexCandidates);
         } catch (err) {
@@ -170,10 +167,12 @@ export class Runner {
           console.error(
             `Something went wrong while running this query. Skipping`,
           );
+          queryStats.errored++;
           console.timeEnd(`timing`);
           return;
         }
         if (out.kind === "ok" && out.newIndexes.size > 0) {
+          queryStats.optimized++;
           const newIndexes = Array.from(out.newIndexes)
             .map((n) => out.triedIndexes.get(n)?.definition)
             .filter((n) => n !== undefined);
@@ -210,16 +209,16 @@ export class Runner {
       });
     }
     await output.status;
-    console.log(`Matched ${matching} queries out of ${allQueries}`);
-    console.log(`GITHUB_TOKEN=${GITHUB_TOKEN}`);
+    console.log(
+      `Matched ${queryStats.matched} queries out of ${queryStats.total}`,
+    );
     const reporter = new GithubReporter(GITHUB_TOKEN);
     const statistics = deriveIndexStatistics(recommendations);
     const timeElapsed = Date.now() - startDate.getTime();
     console.log(`Generating report (${reporter.provider()})`);
     const reportContext: ReportContext = {
       recommendations,
-      queriesMatched: matching,
-      queriesSeen: allQueries,
+      queryStats,
       statistics,
       error,
       metadata: { logSize, timeElapsed },

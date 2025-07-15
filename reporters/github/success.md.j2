@@ -106,10 +106,14 @@ Couldn't find any new indexes to recommend.
     <dd>{{ metadata.logSize or '?' }} bytes</dd>
     <dt>Time elapsed</dt>
     <dd>{{ metadata.timeElapsed or '?' }}ms</dd>
-    <dt>Queries processed</dt>
-    <dd>{{ queriesMatched or 'unknown' }}</dd>
-    <dt>Total queries found</dt>
-    <dd>{{ queriesSeen or 'unknown' }}</dd>
+    <dt>Queries Seen</dt>
+    <dd>{{ queryStats.total or 'unknown' }}</dd>
+    <dt>Queries matched</dt>
+    <dd>{{ queryStats.matched or 'unknown' }}</dd>
+    <dt>Queries optimized</dt>
+    <dd>{{ queryStats.optimized or 'unknown' }}</dd>
+    <dt>Queries errored</dt>
+    <dd>{{ queryStats.errored or 'unknown' }}</dd>
   </dl>
 </details>
 

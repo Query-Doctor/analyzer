@@ -42,10 +42,18 @@ export type IndexIdentifier = string & { [s]: never };
 
 export interface ReportContext {
   recommendations: ReportIndexRecommendation[];
+  queryStats: {
+    /** All queries seen in the log */
+    total: number;
+    /** Queries that matched the query pattern */
+    matched: number;
+    /** Queries that had an index recommendation */
+    optimized: number;
+    /** Queries that errored out and were skipped */
+    errored: number;
+  };
   statistics: [IndexIdentifier, IndexStatistic][];
   metadata: ReportMetadata;
-  queriesMatched: number;
-  queriesSeen: number;
   error?: Error;
 }
 
