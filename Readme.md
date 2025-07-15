@@ -1,9 +1,18 @@
-`analyzer` is capable of giving index recommendations after going through your postgres logs. It works with all languages, ORMs and query builders!
+`analyzer` is capable of giving index recommendations after going through your
+postgres logs. It works with all languages, ORMs and query builders!
 
 There are a couple assumptions about your CI pipeline we make for this to work.
 
-1. There are database queries that hit up a real postgres database in your pipeline. The source is not important, it could be e2e, load or integration tests. The queries can be run in a rolled-back transaction and it will still work fine.
-2. The final schema (after migrations run) is available for analyzer to introspect. And that every table has at least 1 row in it as part of your db seed. We use the database to do extra work by testing your query against different index configurations with your production stats, but all of that work is done in a transaction that’s always rolled back. Data is never modified
+1. There are database queries that hit up a real postgres database in your
+   pipeline. The source is not important, it could be e2e, load or integration
+   tests. The queries can be run in a rolled-back transaction and it will still
+   work fine.
+2. The final schema (after migrations run) is available for analyzer to
+   introspect. And that every table has at least 1 row in it as part of your db
+   seed. We use the database to do extra work by testing your query against
+   different index configurations with your production stats, but all of that
+   work is done in a transaction that’s always rolled back. Data is never
+   modified
 3. Your `postgres.conf` is configured with at least the following options.
 
 ```bash
@@ -20,17 +29,25 @@ log_filename='postgres.log' # or any name you like
 
 ### Optional
 
-You have a production database you can pull statistics from (using a query given by us)
+You have a production database you can pull statistics from (using a query given
+by us)
 
 ---
 
 # Steps for setup
 
-Currently we only support GitHub actions but it would not be difficult to add support for other CI platforms like azure pipelines.
+Currently we only support GitHub actions but it would not be difficult to add
+support for other CI platforms like azure pipelines.
 
 ## Github Actions
 
-`ubuntu` runners in github already ships with postgres as part of the default image, so we try to leverage that. Because github workflows does not support specifying arguments to services https://github.com/actions/runner/pull/1152, we can’t run postgres as a container. And trying to run postgres in docker directly causes network problems because it seems `--network=host` is also not supported in dind (docker-in-docker). So we instead copy an explicit setup to the existing postgres, which boots up 10x faster than docker anyway.
+`ubuntu` runners in github already ships with postgres as part of the default
+image, so we try to leverage that. Because github workflows does not support
+specifying arguments to services https://github.com/actions/runner/pull/1152, we
+can’t run postgres as a container. And trying to run postgres in docker directly
+causes network problems because it seems `--network=host` is also not supported
+in dind (docker-in-docker). So we instead copy an explicit setup to the existing
+postgres, which boots up 10x faster than docker anyway.
 
 1. Copy the setup script
 
@@ -64,9 +81,13 @@ jobs:
           sudo chmod 666 /var/log/postgresql/postgres.log
 ```
 
-you can change `sudo -u postgres createuser -s -d -r -w me` to create a new user with a name of your choosing and `sudo -u postgres createdb testing` to create a db with a different name.
+you can change `sudo -u postgres createuser -s -d -r -w me` to create a new user
+with a name of your choosing and `sudo -u postgres createdb testing` to create a
+db with a different name.
 
-1. Run your migrations and seed scripts. This is just an example showing that the migrations should target the postgres instance that was set up with the previous command
+1. Run your migrations and seed scripts. This is just an example showing that
+   the migrations should target the postgres instance that was set up with the
+   previous command
 
 ```yaml
 jobs:
@@ -80,8 +101,10 @@ jobs:
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
-1. Run your test suite against the same database. You can do this with any tool and use any query builder or ORM you like.
-2. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR reviewing the indexes found in your database.
+1. Run your test suite against the same database. You can do this with any tool
+   and use any query builder or ORM you like.
+2. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
+   reviewing the indexes found in your database.
 
 ```yaml
 jobs:
@@ -113,16 +136,20 @@ jobs:
       contents: read
       pull-requests: write
     runs-on: ubuntu-latest
-    ...
+...
 ```
 
 ## Statistics synchronization
 
-To make sure that we can most accurately emulate your production database, we need access to its stats.
+To make sure that we can most accurately emulate your production database, we
+need access to its stats.
 
-You can use the following function to dump the stats for your database. Copy paste this into psql to create the function.
+You can use the following function to dump the stats for your database. Copy
+paste this into psql to create the function.
 
-Since Postgres also keeps track of things like "most common values in table", part of the statistics table includes copies of cells from all tables. `include_sensitive_info`
+Since Postgres also keeps track of things like "most common values in table",
+part of the statistics table includes copies of cells from all tables.
+`include_sensitive_info`
 
 ```sql
 CREATE OR REPLACE FUNCTION _qd_dump_stats(include_sensitive_info boolean) RETURNS jsonb AS $$
@@ -214,7 +241,9 @@ GROUP BY
 $$ LANGUAGE sql STABLE SECURITY DEFINER;
 ```
 
-Note: The function is defined with `SECURITY DEFINER` so that it can be called either manually, or automatically by the analyzer if you set up stats pull integration.
+Note: The function is defined with `SECURITY DEFINER` so that it can be called
+either manually, or automatically by the analyzer if you set up stats pull
+integration.
 
 #### Regular PSQL
 
@@ -224,7 +253,8 @@ psql -d <yourdb> -At -F "" -c "select _qd_dump_stats(false)" > stats.json
 
 #### Postgres in Kubernetes
 
-This example uses cloudnative-pg, but it can apply to any pod that has access to psql as superuser.
+This example uses cloudnative-pg, but it can apply to any pod that has access to
+psql as superuser.
 
 ```shell
 kubectl exec <podname> -n cnpg-system -c postgres -- psql -d <yourdb> -At -F "" -c "select _qd_dump_stats(false)" > stats.json

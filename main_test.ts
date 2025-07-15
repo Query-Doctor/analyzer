@@ -19,7 +19,6 @@ Deno.test(async function analyzer_test() {
     $2`;
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
-    []
   );
   assertEquals(indexesToCheck, [
     {
@@ -48,14 +47,13 @@ Deno.test(async function analyzer_test_with_ordering() {
   `;
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
-    []
   );
   console.log(indexesToCheck);
   console.log(ansiHighlightedQuery);
   // assertEquals(indexesToCheck, []);
 });
 
-Deno.test.only(async function analyzer_isnull() {
+Deno.test(async function analyzer_isnull() {
   const analyzer = new Analyzer();
   const query = dedent`
     select * from team
@@ -63,7 +61,6 @@ Deno.test.only(async function analyzer_isnull() {
   `;
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
-    []
   );
   console.log(indexesToCheck);
   console.log(ansiHighlightedQuery);
@@ -112,7 +109,7 @@ Deno.test(async function analyzer_test() {
       offset
         $2
     ) as "sub"`;
-  const { indexesToCheck } = await analyzer.analyze(query, []);
+  const { indexesToCheck } = await analyzer.analyze(query);
   assertEquals(indexesToCheck, [
     {
       frequency: 1,
@@ -123,6 +120,9 @@ Deno.test(async function analyzer_test() {
       ],
       ignored: false,
       position: { start: 449, end: 463 },
+      where: {
+        nulltest: "IS_NOT_NULL",
+      },
     },
     {
       frequency: 1,
@@ -155,15 +155,32 @@ Deno.test(async function analyzer_test() {
       ],
       ignored: false,
       position: { start: 144, end: 172 },
+      where: {
+        nulltest: "IS_NULL",
+      },
     },
   ]);
 
   const indexes = analyzer.deriveIndexes(testMetadata, indexesToCheck);
   assertEquals(indexes, [
-    { schema: "public", table: "team_user", column: "team_id" },
+    {
+      schema: "public",
+      table: "team_user",
+      column: "team_id",
+      where: {
+        nulltest: "IS_NOT_NULL",
+      },
+    },
     { schema: "public", table: "team", column: "team_id" },
     { schema: "public", table: "team_user", column: "user_id" },
-    { schema: "public", table: "team", column: "deleted_at" },
+    {
+      schema: "public",
+      table: "team",
+      column: "deleted_at",
+      where: {
+        nulltest: "IS_NULL",
+      },
+    },
   ]);
 });
 
@@ -197,7 +214,7 @@ Deno.test(async function analyzer_with_aliases() {
   offset
     $3
   `;
-  const { indexesToCheck } = await analyzer.analyze(query, [123, 10, 20]);
+  const { indexesToCheck } = await analyzer.analyze(query);
   const indexes = analyzer.deriveIndexes(testMetadata, indexesToCheck);
   assertEquals(indexes, [
     {
@@ -209,8 +226,22 @@ Deno.test(async function analyzer_with_aliases() {
         nulls: "SORTBY_NULLS_DEFAULT",
       },
     },
-    { schema: "public", table: "user", column: "user_id" },
-    { schema: "public", table: "user", column: "deleted_at" },
+    {
+      schema: "public",
+      table: "user",
+      column: "user_id",
+      where: {
+        nulltest: "IS_NOT_NULL",
+      },
+    },
+    {
+      schema: "public",
+      table: "user",
+      column: "deleted_at",
+      where: {
+        nulltest: "IS_NULL",
+      },
+    },
     { schema: "public", table: "team_user", column: "team_id" },
     { schema: "public", table: "team_user", column: "user_id" },
   ]);
@@ -291,17 +322,16 @@ Deno.test(async function analyzer_does_not_pickup_aggregate_aliases() {
       $3`;
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
-    []
   );
   console.log(ansiHighlightedQuery);
   assertFalse(
     indexesToCheck.some((i) =>
       /aggr_selection_0_Website/.test(i.representation)
-    )
+    ),
   );
   assertFalse(
     indexesToCheck.some((i) =>
       /aggr_selection_1_TeamUser/.test(i.representation)
-    )
+    ),
   );
 });

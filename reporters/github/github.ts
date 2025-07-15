@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import * as core from "@actions/core"
+import * as core from "@actions/core";
 import success from "./success.md.j2" with { type: "text" };
 import * as n from "nunjucks";
 import {
@@ -56,7 +56,8 @@ export class GithubReporter implements Reporter {
         pull_number: this.prNumber,
       });
       return reviews.data.find(
-        (r) => r.body && r.body.startsWith(GithubReporter.REVIEW_COMMENT_PREFIX),
+        (r) =>
+          r.body && r.body.startsWith(GithubReporter.REVIEW_COMMENT_PREFIX),
       );
     } catch (err) {
       console.error(err);
@@ -65,14 +66,16 @@ export class GithubReporter implements Reporter {
   }
 
   private async createReview(review: string, existingReview?: { id: number }) {
+    if (this.isInGithubActions) {
+      await core.summary.addRaw(review, true).write();
+    }
     if (
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      console.log("No GitHub token or PR number provided, review will not be created");
-      if (this.isInGithubActions) {
-        await core.summary.addRaw(review, true).write();
-      }
+      console.log(
+        "No GitHub token or PR number provided, review will not be created",
+      );
       return;
     }
     try {

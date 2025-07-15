@@ -1,15 +1,15 @@
 import type {
-  ParseResult,
   Node,
+  NullTestType,
+  ParseResult,
   SortByDir,
   SortByNulls,
-  NullTestType,
 } from "@pgsql/types";
 import { parse } from "@libpg-query/parser";
 import { deparseSync } from "pgsql-deparser";
 import { RootIndexCandidate } from "./optimizer/genalgo.ts";
 import { ExportedStats } from "./optimizer/statistics.ts";
-import { blue, yellow, bgBrightMagenta, green } from "@std/fmt/colors";
+import { bgBrightMagenta, blue, green, yellow } from "@std/fmt/colors";
 
 export interface DatabaseDriver {
   query(query: string, params: unknown[]): Promise<unknown[]>;
@@ -21,17 +21,17 @@ export const ignoredIdentifier = "__qd_placeholder";
 
 type TransactionResult<T> =
   | {
-      kind: "commit";
-      result: T;
-    }
+    kind: "commit";
+    result: T;
+  }
   | {
-      kind: "rollback";
-      result?: T;
-    };
+    kind: "rollback";
+    result?: T;
+  };
 
 interface TransactionDatabaseDriver extends DatabaseDriver {
   transaction<T>(
-    callback: (tx: DatabaseDriver) => Promise<TransactionResult<T>>
+    callback: (tx: DatabaseDriver) => Promise<TransactionResult<T>>,
   ): Promise<TransactionResult<T>>;
 }
 
@@ -100,8 +100,6 @@ export class Analyzer {
 
   async analyze(
     query: string,
-    /** We don't use parameters at all... for now */
-    _params: unknown[]
   ): Promise<{
     indexesToCheck: DiscoveredColumnReference[];
     ansiHighlightedQuery: string;
@@ -130,7 +128,7 @@ export class Analyzer {
         ignored?: boolean;
         sort?: SortContext;
         where?: { nulltest?: NullTestType };
-      }
+      },
     ) {
       if (!node.ColumnRef.location) {
         console.error(`Node did not have a location. Skipping`, node);
@@ -170,7 +168,7 @@ export class Analyzer {
             start,
             quoted,
           };
-        }
+        },
       );
       const end = runningLength;
       if (highlightPositions.has(node.ColumnRef.location)) {
@@ -217,8 +215,8 @@ export class Analyzer {
           this.tempTables.add(node.RangeSubselect.alias.aliasname);
         }
       }
-      // where col is null
-      //           ^^^^^^^
+      // select ... from (...) where col is null
+      //                                 ^^^^^^^
       if (is(node, "NullTest")) {
         if (
           node.NullTest.arg &&
@@ -232,6 +230,7 @@ export class Analyzer {
       }
       // can be indexed as it refers to a regular table
       // select ... from table as alias
+      //                          ^^^^^
       if (is(node, "RangeVar") && node.RangeVar.relname) {
         this.mappings.set(node.RangeVar.relname, {
           text: node.RangeVar.relname,
@@ -259,7 +258,7 @@ export class Analyzer {
           // has produced globally unique aliases. This is not worth the complexity currently.
           if (existingMapping) {
             console.warn(
-              `Ignoring alias ${aliasName} as it shadows an existing mapping. We currently do not support alias shadowing.`
+              `Ignoring alias ${aliasName} as it shadows an existing mapping. We currently do not support alias shadowing.`,
             );
             // Let the user know what happened but don't stop the show.
             shadowedAliases.push(part);
@@ -268,6 +267,8 @@ export class Analyzer {
           this.mappings.set(aliasName, part);
         }
       }
+      // select ... from table order by col asc
+      //                                 ^^^^^
       if (is(node, "SortBy")) {
         if (node.SortBy.node && is(node.SortBy.node, "ColumnRef")) {
           add(node.SortBy.node, {
@@ -278,6 +279,8 @@ export class Analyzer {
           });
         }
       }
+      // select ... from table1 join table2 t2 on table1.col = t2.col
+      //                                    ^^
       if (is(node, "JoinExpr") && node.JoinExpr.quals) {
         if (is(node.JoinExpr.quals, "A_Expr")) {
           if (
@@ -294,10 +297,10 @@ export class Analyzer {
           }
         }
       }
+      // any column reference anywhere
       if (is(node, "ColumnRef")) {
         for (let i = 0; i < stack.length; i++) {
-          const inReturningList =
-            stack[i] === "returningList" &&
+          const inReturningList = stack[i] === "returningList" &&
             stack[i + 1] === "ResTarget" &&
             stack[i + 2] === "val" &&
             stack[i + 3] === "ColumnRef";
@@ -329,7 +332,7 @@ export class Analyzer {
     const indexRepresentations = new Set<string>();
     const indexesToCheck: DiscoveredColumnReference[] = [];
     const sortedHighlights = highlights.sort(
-      (a, b) => b.position.end - a.position.end
+      (a, b) => b.position.end - a.position.end,
     );
     let currQuery = query;
     for (const highlight of sortedHighlights) {
@@ -351,22 +354,26 @@ export class Analyzer {
         color = bgBrightMagenta;
       }
       const queryRepr = highlight.representation;
-      currQuery = `${currQuery.slice(0, highlight.position.start)}${color(
-        queryRepr
-      )}${currQuery
-        .slice(highlight.position.end)
-        .replace(
-          // eh? This kinda sucks
-          /(^\s+)(asc|desc)?(\s+(nulls first|nulls last))?/i,
-          (_, pre, dir, spaceNulls, nulls) => {
-            return `${pre}${dir ? bgBrightMagenta(dir) : ""}${
-              nulls ? spaceNulls.replace(nulls, bgBrightMagenta(nulls)) : ""
-            }`;
-          }
+      currQuery = `${currQuery.slice(0, highlight.position.start)}${
+        color(
+          queryRepr,
         )
-        .replace(/(^\s+)(is (null|not null))/i, (_, pre, nulltest) => {
-          return `${pre}${bgBrightMagenta(nulltest)}`;
-        })}`;
+      }${
+        currQuery
+          .slice(highlight.position.end)
+          .replace(
+            // eh? This kinda sucks
+            /(^\s+)(asc|desc)?(\s+(nulls first|nulls last))?/i,
+            (_, pre, dir, spaceNulls, nulls) => {
+              return `${pre}${dir ? bgBrightMagenta(dir) : ""}${
+                nulls ? spaceNulls.replace(nulls, bgBrightMagenta(nulls)) : ""
+              }`;
+            },
+          )
+          .replace(/(^\s+)(is (null|not null))/i, (_, pre, nulltest) => {
+            return `${pre}${bgBrightMagenta(nulltest)}`;
+          })
+      }`;
       if (indexRepresentations.has(queryRepr)) {
         skip = true;
       }
@@ -386,7 +393,7 @@ export class Analyzer {
 
   deriveIndexes(
     tables: ExportedStats[],
-    discovered: DiscoveredColumnReference[]
+    discovered: DiscoveredColumnReference[],
   ): RootIndexCandidate[] {
     /**
      * There are 3 different kinds of parts a col reference can have
@@ -448,10 +455,9 @@ export class Analyzer {
         const referencedTable = this.normalize(table);
         const referencedColumn = this.normalize(column);
         const matchingTable = tables.find((table) => {
-          const hasMatchingColumn =
-            table.columns?.some((column) => {
-              return column.columnName === referencedColumn;
-            }) ?? false;
+          const hasMatchingColumn = table.columns?.some((column) => {
+            return column.columnName === referencedColumn;
+          }) ?? false;
           return table.tableName === referencedTable && hasMatchingColumn;
         });
         if (matchingTable) {
@@ -490,7 +496,7 @@ export class Analyzer {
         // select huh.a.b.c from x
         console.error(
           "Column reference has too many parts. The query is malformed",
-          colReference
+          colReference,
         );
         continue;
       }
@@ -505,7 +511,7 @@ export class Analyzer {
    * Ignores all other combination of parts such as `a.b.c`
    */
   private resolveTableAliases(
-    parts: ColumnReferencePart[]
+    parts: ColumnReferencePart[],
   ): ColumnReferencePart[] {
     // we don't want to resolve aliases for references such as
     // `a.b.c` - this is fully qualified with a schema and can't be an alias
@@ -524,15 +530,15 @@ export class Analyzer {
   private normalize(columnReference: ColumnReferencePart): string {
     return columnReference.quoted
       ? columnReference.text
-      : // postgres automatically lowercases column names if not quoted
-        columnReference.text.toLowerCase();
+      // postgres automatically lowercases column names if not quoted
+      : columnReference.text.toLowerCase();
   }
 }
 
 type KeysOfUnion<T> = T extends T ? keyof T : never;
 export function is<K extends KeysOfUnion<Node>>(
   node: Node,
-  kind: K
+  kind: K,
 ): node is Extract<Node, Record<K, unknown>> {
   return kind in node;
 }
@@ -545,7 +551,7 @@ function getNodeKind(node: Node): KeysOfUnion<Node> {
 function walk(
   node: unknown,
   stack: (KeysOfUnion<Node> | string)[],
-  callback: (node: Node, stack: (KeysOfUnion<Node> | string)[]) => void
+  callback: (node: Node, stack: (KeysOfUnion<Node> | string)[]) => void,
 ) {
   if (isANode(node)) {
     callback(node, [...stack, getNodeKind(node)]);

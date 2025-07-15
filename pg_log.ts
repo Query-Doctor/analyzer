@@ -3,7 +3,7 @@ export class ExplainedLog {
   private static readonly paramPattern =
     /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
   constructor(
-    stringifiedJson: string
+    stringifiedJson: string,
     // public readonly timestamp: Date,
     // public readonly query: string,
     // public readonly plan: string,

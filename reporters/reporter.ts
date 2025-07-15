@@ -28,7 +28,7 @@ export function deriveIndexStatistics(indexes: ReportIndexRecommendation[]) {
     }
   }
   return Array.from(indexUsage.entries()).sort(
-    (a, b) => b[1].usageCount - a[1].usageCount
+    (a, b) => b[1].usageCount - a[1].usageCount,
   );
 }
 

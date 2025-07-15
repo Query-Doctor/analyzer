@@ -1,15 +1,13 @@
 import postgres from "postgresjs";
 import dedent from "dedent";
 import { gray } from "@std/fmt/colors";
-import { number, z } from "zod";
-import { stringify } from "node:querystring";
-import { RPC_S_NAME_SERVICE_UNAVAILABLE } from "https://deno.land/std@0.132.0/node/internal_binding/_winerror.ts";
+import { z } from "zod";
 
 declare const brand: unique symbol;
 type PostgresVersion = string & { [brand]: never };
 
 export async function getPostgresVersion(
-  sql: postgres.Sql
+  sql: postgres.Sql,
 ): Promise<PostgresVersion> {
   return (await sql`show server_version_num`)[0]
     .server_version_num as PostgresVersion;
@@ -18,62 +16,39 @@ export async function getPostgresVersion(
 type ColumnMappings = Map<string, Record<string, number>>;
 type ValueKind = "real" | "text" | "boolean" | null;
 
-async function getColumnOids(sql: postgres.Sql, metadata: ExportedStats[]) {
-  const tableNames: string[] = [];
-  const columnNames: string[] = [];
-  for (const t of metadata) {
-    if (!t.columns) {
-      continue;
-    }
-    for (const c of t.columns) {
-      tableNames.push(t.tableName);
-      columnNames.push(c.columnName);
-    }
-  }
-
-  const query = dedent`
-  SELECT attrelid::regclass as "tableName", attname as "columnName", attnum as "columnOid"
-  FROM pg_attribute
-  JOIN (
-    SELECT unnest($1::text[]) AS table_name,
-           unnest($2::text[]) AS column_name
-  ) AS input ON attrelid = (select oid from pg_class where pg_class.relname = input.table_name) AND attname = input.column_name
-  WHERE NOT attisdropped
-    AND attnum > 0; -- @qd_introspection;
-  `;
-  const result = await sql.unsafe<
-    {
-      tableName: string;
-      columnName: string;
-      columnOid: number;
-    }[]
-  >(query, [tableNames, columnNames]);
-  const map: ColumnMappings = new Map();
-  for (const r of result) {
-    const data = map.get(r.tableName) || {};
-    data[r.columnName] = r.columnOid;
-    map.set(r.tableName, data);
-  }
-  return map;
-}
-
 export type Path = string;
 
+export type StatisticsMode =
+  | { kind: "fromAssumption"; reltuples: number; relpages: number }
+  | { kind: "fromStatisticsExport"; stats: ExportedStats[] };
+
+const DEFAULT_RELTUPLES = 10_000_000;
+const DEFAULT_RELPAGES = 1_000;
+
 export class Statistics {
-  private static readonly DEFAULT_RELTUPLES = 10_000_000;
-  private static readonly DEFAULT_RELPAGES = 1_000;
+  private statisticsMode: StatisticsMode = {
+    kind: "fromAssumption",
+    reltuples: DEFAULT_RELTUPLES,
+    relpages: DEFAULT_RELPAGES,
+  };
   constructor(
     private readonly sql: postgres.Sql,
     public readonly postgresVersion: PostgresVersion,
     private readonly exportedMetadata: ExportedStats[] | undefined,
     public readonly ownMetadata: ExportedStats[],
-    private readonly columnOids: ColumnMappings
-  ) {}
+  ) {
+    if (this.exportedMetadata) {
+      this.statisticsMode = {
+        kind: "fromStatisticsExport",
+        stats: this.exportedMetadata,
+      };
+    }
+  }
 
   static async fromPostgres(
     sql: postgres.Sql,
     postgresVersion: PostgresVersion,
-    metadataOrPath?: Path | ExportedStats[]
+    metadataOrPath?: Path | ExportedStats[],
   ): Promise<Statistics> {
     const ownStatsPromise = Statistics.dumpStats(sql, postgresVersion, "full");
     let stats: ExportedStats[] | undefined;
@@ -84,8 +59,7 @@ export class Statistics {
       stats = metadataOrPath;
     }
     const ownStats = await ownStatsPromise;
-    const columnOids = await getColumnOids(sql, ownStats);
-    return new Statistics(sql, postgresVersion, stats, ownStats, columnOids);
+    return new Statistics(sql, postgresVersion, stats, ownStats);
   }
 
   restoreStats(tx: postgres.TransactionSql) {
@@ -94,6 +68,8 @@ export class Statistics {
     // }
     // return this.restoreStats18(tx);
   }
+
+  mode() {}
 
   private supportedStatisticKinds = [3, 5];
 
@@ -178,7 +154,8 @@ export class Statistics {
       for (const table of this.ownMetadata) {
         const targetTable = this.exportedMetadata.find(
           (m) =>
-            m.tableName === table.tableName && m.schemaName === table.schemaName
+            m.tableName === table.tableName &&
+            m.schemaName === table.schemaName,
         );
         if (!targetTable?.columns) {
           continue;
@@ -436,11 +413,12 @@ export class Statistics {
       if (this.exportedMetadata) {
         targetTable = this.exportedMetadata.find(
           (m) =>
-            m.tableName === table.tableName && m.schemaName === table.schemaName
+            m.tableName === table.tableName &&
+            m.schemaName === table.schemaName,
         );
       }
-      let reltuples: number = Statistics.DEFAULT_RELTUPLES;
-      let relpages: number = Statistics.DEFAULT_RELPAGES;
+      let reltuples: number;
+      let relpages: number;
       if (targetTable) {
         // don't want to run our prod stats with -1 reltuples
         // we warn the user about this later
@@ -448,14 +426,17 @@ export class Statistics {
         reltuples = targetTable.reltuples;
         relpages = targetTable.relpages;
         // }
+      } else if (this.statisticsMode.kind === "fromAssumption") {
+        reltuples = this.statisticsMode.reltuples;
+        relpages = this.statisticsMode.relpages;
       } else {
-        if (this.exportedMetadata) {
-          // we want to warn about tables that are in the test but not in the exported stats
-          // this can happen in case a new table is created in a PR
-          warnings.tablesNotInExports.push(
-            `${table.schemaName}.${table.tableName}`
-          );
-        }
+        // we want to warn about tables that are in the test but not in the exported stats
+        // this can happen in case a new table is created in a PR
+        warnings.tablesNotInExports.push(
+          `${table.schemaName}.${table.tableName}`,
+        );
+        reltuples = DEFAULT_RELTUPLES;
+        relpages = DEFAULT_RELPAGES;
       }
       reltuplesValues.push({
         relname: table.tableName,
@@ -486,15 +467,15 @@ export class Statistics {
     if (this.exportedMetadata) {
       for (const table of this.exportedMetadata) {
         const tableExists = processedTables.has(
-          `${table.schemaName}.${table.tableName}`
+          `${table.schemaName}.${table.tableName}`,
         );
         if (tableExists && table.reltuples === -1) {
           console.warn(
-            `Table ${table.tableName} has reltuples -1. Your production database is probably not analyzed properly`
+            `Table ${table.tableName} has reltuples -1. Your production database is probably not analyzed properly`,
           );
           // we expect production stats to have real numbers
           warnings.tableNotAnalyzed.push(
-            `${table.schemaName}.${table.tableName}`
+            `${table.schemaName}.${table.tableName}`,
           );
         }
         if (tableExists) {
@@ -524,7 +505,7 @@ export class Statistics {
   static async dumpStats(
     sql: postgres.Sql,
     postgresVersion: PostgresVersion,
-    kind: "anonymous" | "full"
+    kind: "anonymous" | "full",
   ): Promise<ExportedStats[]> {
     const fullDump = kind === "full";
     console.log(`dumping stats for postgres ${gray(postgresVersion)}`);
@@ -618,7 +599,7 @@ GROUP BY
     c.table_name, c.table_schema, cl.reltuples, cl.relpages, cl.relallvisible, n.nspname /* @qd_introspection */
 ) t;
       `,
-      [fullDump]
+      [fullDump],
     );
     return stats[0].json_agg;
   }

@@ -5,16 +5,16 @@ import { Readable } from "node:stream";
 import postgres from "postgresjs";
 import { fingerprint } from "@libpg-query/parser";
 import { Analyzer } from "./analyzer.ts";
-import { STATISTICS_PATH, DEBUG, GITHUB_TOKEN } from "./env.ts";
+import { DEBUG, GITHUB_TOKEN, STATISTICS_PATH } from "./env.ts";
 import { preprocessEncodedJson } from "./json.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import { getPostgresVersion, Statistics } from "./optimizer/statistics.ts";
 import { ExplainedLog } from "./pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
+  deriveIndexStatistics,
   ReportContext,
   ReportIndexRecommendation,
-  deriveIndexStatistics,
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, green, yellow } from "@std/fmt/colors";
 
@@ -22,7 +22,7 @@ export class Runner {
   constructor(
     private readonly postgresUrl: string,
     private readonly logPath: string,
-    private readonly statisticsPath?: string
+    private readonly statisticsPath?: string,
   ) {}
   async run() {
     const startDate = new Date();
@@ -68,7 +68,7 @@ export class Runner {
     const stats = await Statistics.fromPostgres(
       pg,
       pgVersion,
-      this.statisticsPath
+      this.statisticsPath,
     );
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
@@ -106,7 +106,7 @@ export class Runner {
       } catch (e) {
         console.log(e);
         console.log(
-          "Log line that looked like valid auto_explain was not valid json?"
+          "Log line that looked like valid auto_explain was not valid json?",
         );
         continue;
       }
@@ -130,7 +130,7 @@ export class Runner {
 
       const analyzer = new Analyzer();
       const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
-        await analyzer.analyze(this.formatQuery(query), parameters);
+        await analyzer.analyze(this.formatQuery(query));
 
       const selectsCatalog = referencedTables.find((table) =>
         table.startsWith("pg_")
@@ -140,14 +140,14 @@ export class Runner {
           console.log(
             "Skipping query that selects from catalog tables",
             selectsCatalog,
-            fingerprintNum
+            fingerprintNum,
           );
         }
         continue;
       }
       const indexCandidates = analyzer.deriveIndexes(
         stats.ownMetadata,
-        indexesToCheck
+        indexesToCheck,
       );
       if (indexCandidates.length === 0) {
         if (DEBUG) {
@@ -168,7 +168,7 @@ export class Runner {
         } catch (err) {
           console.error(err);
           console.error(
-            `Something went wrong while running this query. Skipping`
+            `Something went wrong while running this query. Skipping`,
           );
           console.timeEnd(`timing`);
           return;
@@ -180,14 +180,14 @@ export class Runner {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
               const existing = existingIndexes.find(
-                (e) => e.index_name === index
+                (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${
-                  existing.table_name
-                }(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")})`;
+                return `${existing.schema_name}.${existing.table_name}(${
+                  existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")
+                })`;
               }
             })
             .filter((i) => i !== undefined);
