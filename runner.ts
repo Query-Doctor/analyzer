@@ -15,6 +15,7 @@ import {
   deriveIndexStatistics,
   ReportContext,
   ReportIndexRecommendation,
+  ReportQueryCostWarning,
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 
@@ -23,6 +24,7 @@ export class Runner {
     private readonly postgresUrl: string,
     private readonly logPath: string,
     private readonly statisticsPath?: string,
+    private readonly maxCost?: number,
   ) {}
   async run() {
     const startDate = new Date();
@@ -54,6 +56,7 @@ export class Runner {
 
     const seenQueries = new Set<number>();
     const recommendations: ReportIndexRecommendation[] = [];
+    const queriesPastThreshold: ReportQueryCostWarning[] = [];
     let queryStats: ReportContext["queryStats"] = {
       total: 0,
       matched: 0,
@@ -151,6 +154,17 @@ export class Runner {
           console.log(ansiHighlightedQuery);
           console.log("No index candidates found", fingerprintNum);
         }
+        if (
+          typeof this.maxCost === "number" && parsed.plan.cost > this.maxCost
+        ) {
+          queriesPastThreshold.push({
+            fingerprint: fingerprintNum,
+            formattedQuery: this.formatQuery(query),
+            baseCost: parsed.plan.cost,
+            explainPlan: parsed.plan.json,
+            maxCost: this.maxCost,
+          });
+        }
         continue;
       }
       await core.group(`query:${fingerprintNum}`, async () => {
@@ -171,11 +185,7 @@ export class Runner {
           console.timeEnd(`timing`);
           return;
         }
-        if (out.kind === "ok" && out.newIndexes.size > 0) {
-          queryStats.optimized++;
-          const newIndexes = Array.from(out.newIndexes)
-            .map((n) => out.triedIndexes.get(n)?.definition)
-            .filter((n) => n !== undefined);
+        if (out.kind === "ok") {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
               const existing = existingIndexes.find(
@@ -190,20 +200,48 @@ export class Runner {
               }
             })
             .filter((i) => i !== undefined);
-          console.log(`New indexes: ${newIndexes.join(", ")}`);
-          recommendations.push({
-            fingerprint: fingerprintNum,
-            formattedQuery: this.formatQuery(query),
-            baseCost: out.baseCost,
-            optimizedCost: out.finalCost,
-            existingIndexes: existingIndexesForQuery,
-            proposedIndexes: newIndexes,
-            explainPlan: out.explainPlan,
-          });
+          if (out.newIndexes.size > 0) {
+            queryStats.optimized++;
+            const newIndexes = Array.from(out.newIndexes)
+              .map((n) => out.triedIndexes.get(n)?.definition)
+              .filter((n) => n !== undefined);
+            console.log(`New indexes: ${newIndexes.join(", ")}`);
+            recommendations.push({
+              fingerprint: fingerprintNum,
+              formattedQuery: this.formatQuery(query),
+              baseCost: out.baseCost,
+              optimizedCost: out.finalCost,
+              existingIndexes: existingIndexesForQuery,
+              proposedIndexes: newIndexes,
+              explainPlan: out.explainPlan,
+            });
+          } else {
+            console.log("No new indexes found");
+            if (
+              typeof this.maxCost === "number" && out.finalCost > this.maxCost
+            ) {
+              console.log(
+                "Query cost is too high",
+                out.finalCost,
+                this.maxCost,
+              );
+              queriesPastThreshold.push({
+                fingerprint: fingerprintNum,
+                formattedQuery: this.formatQuery(query),
+                baseCost: out.baseCost,
+                optimization: {
+                  newCost: out.finalCost,
+                  existingIndexes: existingIndexesForQuery,
+                  proposedIndexes: [],
+                },
+                explainPlan: out.explainPlan,
+                maxCost: this.maxCost,
+              });
+            }
+          }
         } else if (out.kind === "zero_cost_plan") {
-          console.log("Zero cost plan found", out);
-        } else {
-          console.log("No new indexes found");
+          console.log("Zero cost plan found");
+          console.log(out);
         }
         console.timeEnd(`timing`);
       });
@@ -219,6 +257,7 @@ export class Runner {
     const reportContext: ReportContext = {
       statisticsMode: stats.mode,
       recommendations,
+      queriesPastThreshold,
       queryStats,
       statistics,
       error,

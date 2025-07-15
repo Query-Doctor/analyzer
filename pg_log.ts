@@ -77,4 +77,11 @@ class Plan {
     }
     return this.json["Node Type"];
   }
+
+  get cost(): number {
+    if (!("Total Cost" in this.json)) {
+      return -1;
+    }
+    return Number(this.json["Total Cost"]);
+  }
 }

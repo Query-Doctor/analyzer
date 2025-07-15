@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { LOG_PATH, POSTGRES_URL, STATISTICS_PATH } from "./env.ts";
+import { LOG_PATH, MAX_COST, POSTGRES_URL, STATISTICS_PATH } from "./env.ts";
 import { Runner } from "./runner.ts";
 
 async function main() {
@@ -11,7 +11,12 @@ async function main() {
     core.setFailed("LOG_PATH environment variable is not set");
     Deno.exit(1);
   }
-  const runner = new Runner(POSTGRES_URL, LOG_PATH, STATISTICS_PATH);
+  const runner = new Runner(
+    POSTGRES_URL,
+    LOG_PATH,
+    STATISTICS_PATH,
+    MAX_COST ? Number(MAX_COST) : undefined,
+  );
   await runner.run();
   Deno.exit();
 }

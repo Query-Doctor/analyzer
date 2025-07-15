@@ -45,6 +45,7 @@ export type IndexIdentifier = string & { [s]: never };
 export interface ReportContext {
   statisticsMode: StatisticsMode;
   recommendations: ReportIndexRecommendation[];
+  queriesPastThreshold: ReportQueryCostWarning[];
   queryStats: {
     /** All queries seen in the log */
     total: number;
@@ -72,4 +73,18 @@ export interface ReportIndexRecommendation {
   existingIndexes: string[];
   proposedIndexes: IndexIdentifier[];
   explainPlan: object;
+}
+
+export interface ReportQueryCostWarning {
+  fingerprint: number;
+  formattedQuery: string;
+  baseCost: number;
+  explainPlan: object;
+  maxCost: number;
+  /** if the query was optimized */
+  optimization?: {
+    newCost: number;
+    existingIndexes: string[];
+    proposedIndexes: IndexIdentifier[];
+  };
 }

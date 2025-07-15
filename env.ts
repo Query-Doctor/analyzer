@@ -3,3 +3,4 @@ export const LOG_PATH = Deno.env.get("LOG_PATH");
 export const POSTGRES_URL = Deno.env.get("POSTGRES_URL");
 export const DEBUG = Deno.env.get("DEBUG");
 export const STATISTICS_PATH = Deno.env.get("STATISTICS_PATH");
+export const MAX_COST = Deno.env.get("MAX_COST");
