@@ -103,17 +103,19 @@ Couldn't find any new indexes to recommend.
 <summary>Execution metadata</summary>
   <dl>
     <dt>Log size</dt>
-    <dd>{{ metadata.logSize or '?' }} bytes</dd>
+    <dd>{{ metadata.logSize | default('?') }} bytes</dd>
     <dt>Time elapsed</dt>
-    <dd>{{ metadata.timeElapsed or '?' }}ms</dd>
+    <dd>{{ metadata.timeElapsed | default('?') }}ms</dd>
     <dt>Queries Seen</dt>
-    <dd>{{ queryStats.total or 'unknown' }}</dd>
+    <dd>{{ queryStats.total | default('unknown') }}</dd>
     <dt>Queries matched</dt>
-    <dd>{{ queryStats.matched or 'unknown' }}</dd>
+    <dd>{{ queryStats.matched | default('unknown') }}</dd>
     <dt>Queries optimized</dt>
-    <dd>{{ queryStats.optimized or 'unknown' }}</dd>
+    <dd>{{ queryStats.optimized | default('unknown') }}</dd>
+    {% if queryStats.errored > 0 %}
     <dt>Queries errored</dt>
-    <dd>{{ queryStats.errored or 'unknown' }}</dd>
+    <dd>{{ queryStats.errored | default('unknown') }}</dd>
+    {% endif %}
   </dl>
 </details>
 
