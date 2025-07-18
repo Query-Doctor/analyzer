@@ -28,7 +28,6 @@ export class IndexOptimizer {
     if (baseCost === 0) {
       return {
         kind: "zero_cost_plan",
-        table: baseExplain["Relation Name"],
         explainPlan: baseExplain,
       };
     }
@@ -357,7 +356,6 @@ export type OptimizeResult =
   }
   | {
     kind: "zero_cost_plan";
-    table: string;
     explainPlan: object;
   };
 
