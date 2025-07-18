@@ -40,7 +40,7 @@ export class IndexOptimizer {
     for (const { table, schema, columns } of permutedIndexes.values()) {
       const permutations = permuteWithFeedback(Array.from(columns));
       let iter = permutations.next(PROCEED);
-      let previousCost: number = baseCost;
+      const previousCost: number = baseCost;
       while (!iter.done) {
         const columns = iter.value;
         const existingIndex = this.indexAlreadyExists(table, columns);
@@ -93,7 +93,6 @@ export class IndexOptimizer {
             } ${indexDefinition} `,
           );
           iter = permutations.next(PROCEED);
-          previousCost = explain["Total Cost"];
         } else {
           console.log(
             `${
@@ -113,7 +112,6 @@ export class IndexOptimizer {
           // TODO: can we safely call skip?
           // iter = permutations.next(SKIP);
           iter = permutations.next(PROCEED);
-          previousCost = baseCost;
         }
         nextStage.push({
           schema,
