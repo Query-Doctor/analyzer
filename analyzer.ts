@@ -17,7 +17,10 @@ export interface DatabaseDriver {
 
 export const ignoredIdentifier = "__qd_placeholder";
 
-// type ColumnReferenceKind = "valid" | "select" | "" | "functionCallArg";
+export interface SQLCommenterTag {
+  key: string;
+  value: string;
+}
 
 type TransactionResult<T> =
   | {
@@ -105,6 +108,7 @@ export class Analyzer {
     ansiHighlightedQuery: string;
     referencedTables: string[];
     shadowedAliases: ColumnReferencePart[];
+    tags: SQLCommenterTag[];
   }> {
     this.mappings.clear();
     this.tempTables.clear();
@@ -199,6 +203,8 @@ export class Analyzer {
       highlights.push(ref);
     }
     walk(stmt, [], (node, stack) => {
+      // comments are not parsed here as they seem to be ignored.
+      //
       // results cannot be indexed in any way
       // with alias as (select ...)
       //      ^^^^^
@@ -383,11 +389,13 @@ export class Analyzer {
       }
     }
     const referencedTables = Array.from(this.mappings.keys());
+    const tags = this.extractSqlcommenter(query);
     return {
       indexesToCheck,
       ansiHighlightedQuery: currQuery,
       referencedTables,
       shadowedAliases,
+      tags,
     };
   }
 
@@ -532,6 +540,45 @@ export class Analyzer {
       ? columnReference.text
       // postgres automatically lowercases column names if not quoted
       : columnReference.text.toLowerCase();
+  }
+
+  private extractSqlcommenter(query: string): SQLCommenterTag[] {
+    const trimmedQuery = query.trimEnd();
+    const startPosition = trimmedQuery.lastIndexOf("/*");
+    const endPosition = trimmedQuery.lastIndexOf("*/");
+    if (startPosition === -1 || endPosition === -1) {
+      return [];
+    }
+    const tagString = trimmedQuery.slice(startPosition + 2, endPosition);
+    if (!tagString || typeof tagString !== "string") {
+      return [];
+    }
+    const tags: SQLCommenterTag[] = [];
+    for (const match of tagString.split(",")) {
+      const [key, value] = match.split("=");
+      if (!key || !value) {
+        console.warn(`Invalid sqlcommenter tag: ${match}. Ignoring`);
+        continue;
+      }
+      try {
+        let sliceStart = 0;
+        if (value.startsWith("'")) {
+          sliceStart = 1;
+        }
+        let sliceEnd = value.length;
+        if (value.endsWith("'")) {
+          sliceEnd -= 1;
+        }
+
+        const decoded = decodeURIComponent(value.slice(sliceStart, sliceEnd));
+        // should we be trimming here?
+        tags.push({ key: key.trim(), value: decoded });
+      } catch (err) {
+        // we want to be very conservative with this parser and ignore errors
+        console.error(err);
+      }
+    }
+    return tags;
   }
 }
 

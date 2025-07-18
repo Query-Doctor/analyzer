@@ -45,12 +45,23 @@ Deno.test(async function analyzer_test_with_ordering() {
   order by
     team.team_id desc nulls first
   `;
-  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+  const { indexesToCheck } = await analyzer.analyze(
     query,
   );
-  console.log(indexesToCheck);
-  console.log(ansiHighlightedQuery);
-  // assertEquals(indexesToCheck, []);
+  assertEquals(indexesToCheck, [{
+    frequency: 1,
+    representation: "team.team_id",
+    parts: [
+      { quoted: false, start: 42, text: "team" },
+      { quoted: false, start: 74, text: "team_id" },
+    ],
+    ignored: false,
+    position: { start: 69, end: 81 },
+    sort: {
+      dir: "SORTBY_DESC",
+      nulls: "SORTBY_NULLS_FIRST",
+    },
+  }]);
 });
 
 Deno.test(async function analyzer_isnull() {
@@ -62,8 +73,6 @@ Deno.test(async function analyzer_isnull() {
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
   );
-  console.log(indexesToCheck);
-  console.log(ansiHighlightedQuery);
   assertEquals(indexesToCheck, [
     {
       frequency: 1,
@@ -323,7 +332,6 @@ Deno.test(async function analyzer_does_not_pickup_aggregate_aliases() {
   const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
     query,
   );
-  console.log(ansiHighlightedQuery);
   assertFalse(
     indexesToCheck.some((i) =>
       /aggr_selection_0_Website/.test(i.representation)
@@ -334,4 +342,25 @@ Deno.test(async function analyzer_does_not_pickup_aggregate_aliases() {
       /aggr_selection_1_TeamUser/.test(i.representation)
     ),
   );
+});
+
+Deno.test(async function sqlcommenter_test() {
+  const analyzer = new Analyzer();
+  const query = dedent`
+    SELECT * FROM FOO /*action='%2Fparam*d',controller='index',framework='spring',
+    traceparent='00-5bd66ef5095369c7b0d1f8f4bd33716a-c532cb4098ac3dd2-01',
+    tracestate='congo%3Dt61rcWkgMzE%2Crojo%3D00f067aa0ba902b7'*/
+  `;
+
+  const { tags } = await analyzer.analyze(query);
+  assertEquals(tags, [
+    { key: "action", value: "/param*d" },
+    { key: "controller", value: "index" },
+    { key: "framework", value: "spring" },
+    {
+      key: "traceparent",
+      value: "00-5bd66ef5095369c7b0d1f8f4bd33716a-c532cb4098ac3dd2-01",
+    },
+    { key: "tracestate", value: "congo=t61rcWkgMzE,rojo=00f067aa0ba902b7" },
+  ]);
 });
