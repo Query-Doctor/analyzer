@@ -42,20 +42,22 @@ export type ReportMetadata = {
 declare const s: unique symbol;
 export type IndexIdentifier = string & { [s]: never };
 
+export interface ReportStatistics {
+  /** Total number of queries seen in the log */
+  total: number;
+  /** Number of queries that matched the query pattern */
+  matched: number;
+  /** Number of queries that had an index recommendation */
+  optimized: number;
+  /** Number of queries that errored out and were skipped */
+  errored: number;
+}
+
 export interface ReportContext {
   statisticsMode: StatisticsMode;
   recommendations: ReportIndexRecommendation[];
   queriesPastThreshold: ReportQueryCostWarning[];
-  queryStats: {
-    /** All queries seen in the log */
-    total: number;
-    /** Queries that matched the query pattern */
-    matched: number;
-    /** Queries that had an index recommendation */
-    optimized: number;
-    /** Queries that errored out and were skipped */
-    errored: number;
-  };
+  queryStats: Readonly<ReportStatistics>;
   statistics: [IndexIdentifier, IndexStatistic][];
   metadata: ReportMetadata;
   error?: Error;
@@ -69,6 +71,7 @@ export interface ReportIndexRecommendation {
   fingerprint: number;
   formattedQuery: string;
   baseCost: number;
+  baseExplainPlan: object;
   optimizedCost: number;
   existingIndexes: string[];
   proposedIndexes: IndexIdentifier[];

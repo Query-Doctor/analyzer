@@ -104,6 +104,15 @@ When generating recommendations, we used statistics from an inlined JSON object.
 ```
   {% endif %}
   <details>
+    <summary>View Explain Plan <i>(before optimization)</i></summary>
+
+```json
+{{ renderExplain(recommendation.baseExplainPlan) }}
+```
+
+  </details>
+
+  <details>
     <summary>View Explain Plan <i>(after optimization)</i></summary>
 
 ```json

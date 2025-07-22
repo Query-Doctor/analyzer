@@ -12,6 +12,8 @@ import {
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
 export class GithubReporter implements Reporter {
+  // This might be much longer https://github.com/dead-claudia/github-limits?tab=readme-ov-file#pr-body
+  private static MAX_REVIEW_BODY_LENGTH = 65536;
   private static readonly REVIEW_COMMENT_PREFIX = "<!-- qd-review-comment -->";
   private readonly prNumber?: number;
   private readonly octokit?: ReturnType<typeof github.getOctokit>;
@@ -77,6 +79,11 @@ export class GithubReporter implements Reporter {
         "No GitHub token or PR number provided, review will not be created",
       );
       return;
+    }
+    if (review.length > GithubReporter.MAX_REVIEW_BODY_LENGTH) {
+      console.log(
+        `Review body is possibly too long? ${review.length} > ${GithubReporter.MAX_REVIEW_BODY_LENGTH}`,
+      );
     }
     try {
       if (typeof existingReview === "undefined") {

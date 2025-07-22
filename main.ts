@@ -11,12 +11,12 @@ async function main() {
     core.setFailed("LOG_PATH environment variable is not set");
     Deno.exit(1);
   }
-  const runner = new Runner(
-    POSTGRES_URL,
-    LOG_PATH,
-    STATISTICS_PATH,
-    MAX_COST ? Number(MAX_COST) : undefined,
-  );
+  const runner = await Runner.build({
+    postgresUrl: POSTGRES_URL,
+    statisticsPath: STATISTICS_PATH,
+    logPath: LOG_PATH,
+    maxCost: MAX_COST ? Number(MAX_COST) : undefined,
+  });
   await runner.run();
   Deno.exit();
 }

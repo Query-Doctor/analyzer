@@ -16,7 +16,7 @@ export class IndexOptimizer {
     private readonly sql: postgres.Sql,
     private readonly statistics: Statistics,
     private readonly existingIndexes: IndexedTable[],
-  ) {}
+  ) { }
 
   async run(
     query: string,
@@ -54,11 +54,10 @@ export class IndexOptimizer {
           query,
           params,
           async (sql) => {
-            const indexName = `__qd_${schema}_${table}_${
-              columns
-                .map((c) => c.column)
-                .join("_")
-            }`;
+            const indexName = `__qd_${schema}_${table}_${columns
+              .map((c) => c.column)
+              .join("_")
+              }`;
             const { raw, colored } = this.toDefinition({
               columns,
               schema,
@@ -66,11 +65,10 @@ export class IndexOptimizer {
             });
             const shortenedSchema = schema === "public" ? "" : `${schema}.`;
             // TODO: this is silly, turn this into a data structure here ONLY
-            const indexDefinitionClean = `${shortenedSchema}${table}(${
-              columns
-                .map((c) => `"${c.column}"`)
-                .join(", ")
-            })`;
+            const indexDefinitionClean = `${shortenedSchema}${table}(${columns
+              .map((c) => `"${c.column}"`)
+              .join(", ")
+              })`;
             indexDefinition = colored;
             const sqlString = `create index ${indexName} on ${raw};`;
             triedIndexes.set(indexName, {
@@ -86,27 +84,23 @@ export class IndexOptimizer {
           ((previousCost - explain["Total Cost"]) / previousCost) * 100;
         if (previousCost > explain["Total Cost"]) {
           console.log(
-            `${
-              green(
-                `+${costDeltaPercentage.toFixed(2).padStart(5, "0")}%`,
-              )
+            `${green(
+              `+${costDeltaPercentage.toFixed(2).padStart(5, "0")}%`,
+            )
             } ${indexDefinition} `,
           );
           iter = permutations.next(PROCEED);
         } else {
           console.log(
-            `${
-              previousCost === explain["Total Cost"]
-                ? ` ${gray("00.00%")}`
-                : `${
-                  red(
-                    `-${
-                      Math.abs(costDeltaPercentage)
-                        .toFixed(2)
-                        .padStart(5, "0")
-                    }%`,
-                  )
-                }`
+            `${previousCost === explain["Total Cost"]
+              ? ` ${gray("00.00%")}`
+              : `${red(
+                `-${Math.abs(costDeltaPercentage)
+                  .toFixed(2)
+                  .padStart(5, "0")
+                }%`,
+              )
+              }`
             } ${indexDefinition}`,
           );
           // TODO: can we safely call skip?
@@ -127,10 +121,9 @@ export class IndexOptimizer {
         for (const permutation of nextStage) {
           const { table, schema, columns } = permutation;
           await sql.unsafe(
-            `create index __qd_${schema}_${table}_${
-              columns
-                .map((c) => c.column)
-                .join("_")
+            `create index __qd_${schema}_${table}_${columns
+              .map((c) => c.column)
+              .join("_")
             } on ${this.toDefinition(permutation).raw}; -- @qd_introspection`,
           );
         }
@@ -147,10 +140,9 @@ export class IndexOptimizer {
       );
     } else if (finalExplain["Total Cost"] > baseCost) {
       console.log(
-        `${
-          red(
-            `-${Math.abs(deltaPercentage).toFixed(2).padStart(5, "0")}%`,
-          )
+        `${red(
+          `-${Math.abs(deltaPercentage).toFixed(2).padStart(5, "0")}%`,
+        )
         } ${gray("If there's a better index, we haven't tried it")}`,
       );
     }
@@ -164,6 +156,7 @@ export class IndexOptimizer {
       newIndexes,
       existingIndexes: existingIndexesUsedByQuery,
       triedIndexes,
+      baseExplainPlan: baseExplain,
       explainPlan: finalExplain,
     };
   }
@@ -197,22 +190,21 @@ export class IndexOptimizer {
       //     }
       //   }
       // }
-      const baseColumn = `${permuted.schema}.${permuted.table}(${
-        permuted.columns
-          .map((c) => {
-            const direction = c.sort && this.sortDirection(c.sort);
-            const nulls = c.sort && this.nullsOrder(c.sort);
-            let sort = col(`"${c.column}"`);
-            if (direction) {
-              sort += ` ${order(direction)}`;
-            }
-            if (nulls) {
-              sort += ` ${order(nulls)}`;
-            }
-            return sort;
-          })
-          .join(", ")
-      })`;
+      const baseColumn = `${permuted.schema}.${permuted.table}(${permuted.columns
+        .map((c) => {
+          const direction = c.sort && this.sortDirection(c.sort);
+          const nulls = c.sort && this.nullsOrder(c.sort);
+          let sort = col(`"${c.column}"`);
+          if (direction) {
+            sort += ` ${order(direction)}`;
+          }
+          if (nulls) {
+            sort += ` ${order(nulls)}`;
+          }
+          return sort;
+        })
+        .join(", ")
+        })`;
       // TODO: add support for generating partial indexes
       // if (clauses.length > 0) {
       //   return `${baseColumn} ${where("where")} ${clauses.join(" and ")}`;
@@ -345,6 +337,7 @@ export class IndexOptimizer {
 export type OptimizeResult =
   | {
     kind: "ok";
+    baseExplainPlan: object;
     baseCost: number;
     finalCost: number;
     newIndexes: Set<string>;
@@ -358,7 +351,7 @@ export type OptimizeResult =
   };
 
 class RollbackError<T> {
-  constructor(public readonly value?: T) {}
+  constructor(public readonly value?: T) { }
 }
 
 export type RootIndexCandidate = {

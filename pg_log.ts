@@ -1,14 +1,16 @@
 export class ExplainedLog {
-  private readonly json: object;
   private static readonly paramPattern =
     /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
   constructor(
-    stringifiedJson: string,
-    // public readonly timestamp: Date,
-    // public readonly query: string,
-    // public readonly plan: string,
+    private readonly json: object,
   ) {
-    this.json = JSON.parse(stringifiedJson);
+  }
+
+  static fromLog(
+    stringifiedJson: string,
+  ) {
+    const json = JSON.parse(stringifiedJson);
+    return new ExplainedLog(json);
   }
 
   get query(): string {
@@ -65,7 +67,7 @@ export class ExplainedLog {
 }
 
 class Plan {
-  constructor(private readonly json: object) {}
+  constructor(public readonly json: object) {}
 
   get nodeType(): string {
     if (

@@ -8,24 +8,64 @@ import { Analyzer } from "./analyzer.ts";
 import { DEBUG, GITHUB_TOKEN } from "./env.ts";
 import { preprocessEncodedJson } from "./json.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
-import { getPostgresVersion, Statistics } from "./optimizer/statistics.ts";
+import {
+  getPostgresVersion,
+  IndexedTable,
+  Statistics,
+} from "./optimizer/statistics.ts";
 import { ExplainedLog } from "./pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
   deriveIndexStatistics,
-  ReportContext,
-  ReportIndexRecommendation,
-  ReportQueryCostWarning,
+  type ReportContext,
+  type ReportIndexRecommendation,
+  type ReportQueryCostWarning,
+  type ReportStatistics,
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 
 export class Runner {
+  private readonly seenQueries = new Set<number>();
+  public readonly queryStats: ReportStatistics = {
+    total: 0,
+    errored: 0,
+    matched: 0,
+    optimized: 0,
+  };
   constructor(
-    private readonly postgresUrl: string,
+    private readonly optimizer: IndexOptimizer,
+    private readonly existingIndexes: IndexedTable[],
+    private readonly stats: Statistics,
     private readonly logPath: string,
-    private readonly statisticsPath?: string,
     private readonly maxCost?: number,
-  ) {}
+  ) { }
+
+  static async build(
+    options: {
+      postgresUrl: string;
+      statisticsPath?: string;
+      maxCost?: number;
+      logPath: string;
+    },
+  ) {
+    const pg = postgres(options.postgresUrl);
+    const pgVersion = await getPostgresVersion(pg);
+    const stats = await Statistics.fromPostgres(
+      pg,
+      pgVersion,
+      options.statisticsPath,
+    );
+    const existingIndexes = await stats.getExistingIndexes();
+    const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
+    return new Runner(
+      optimizer,
+      existingIndexes,
+      stats,
+      options.logPath,
+      options.maxCost,
+    );
+  }
+
   async run() {
     const startDate = new Date();
     const logSize = Deno.statSync(this.logPath).size;
@@ -54,24 +94,16 @@ export class Runner {
         error = err;
       });
 
-    const seenQueries = new Set<number>();
     const recommendations: ReportIndexRecommendation[] = [];
     const queriesPastThreshold: ReportQueryCostWarning[] = [];
-    let queryStats: ReportContext["queryStats"] = {
-      total: 0,
-      matched: 0,
-      optimized: 0,
-      errored: 0,
-    };
-    const pg = postgres(this.postgresUrl);
-    const pgVersion = await getPostgresVersion(pg);
-    const stats = await Statistics.fromPostgres(
-      pg,
-      pgVersion,
-      this.statisticsPath,
-    );
-    const existingIndexes = await stats.getExistingIndexes();
-    const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
+    // const pg = postgres(this.postgresUrl);
+    // const pgVersion = await getPostgresVersion(pg);
+    // const stats = await Statistics.fromPostgres(
+    //   pg,
+    //   pgVersion,
+    //   this.statisticsPath,
+    // );
+    // const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
 
     console.time("total");
     for await (const chunk of stream) {
@@ -102,7 +134,7 @@ export class Runner {
       }
       let parsed: ExplainedLog;
       try {
-        parsed = new ExplainedLog(json);
+        parsed = ExplainedLog.fromLog(json);
       } catch (e) {
         console.log(e);
         console.log(
@@ -110,111 +142,156 @@ export class Runner {
         );
         continue;
       }
-      queryStats.total++;
-      const { query, parameters } = parsed;
-      const queryFingerprint = await fingerprint(query);
-      const fingerprintNum = parseInt(queryFingerprint, 16);
-      if (parsed.isIntrospection) {
-        if (DEBUG) {
-          console.log("Skipping introspection query", fingerprintNum);
-        }
-        continue;
+      const result = await this.processQuery(parsed);
+      switch (result.kind) {
+        case "error":
+          this.queryStats.errored++;
+          break;
+        case "cost_past_threshold":
+          queriesPastThreshold.push(result.warning);
+          break;
+        case "recommendation":
+          recommendations.push(result.recommendation);
+          break;
+        case "invalid":
+          break;
       }
-      if (seenQueries.has(fingerprintNum)) {
-        if (DEBUG) {
-          console.log("Skipping duplicate query", fingerprintNum);
-        }
-        continue;
-      }
-      seenQueries.add(fingerprintNum);
+    }
+    await output.status;
+    console.log(
+      `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
+    );
+    const reporter = new GithubReporter(GITHUB_TOKEN);
+    const statistics = deriveIndexStatistics(recommendations);
+    const timeElapsed = Date.now() - startDate.getTime();
+    console.log(`Generating report (${reporter.provider()})`);
+    const reportContext: ReportContext = {
+      statisticsMode: this.stats.mode,
+      recommendations,
+      queriesPastThreshold,
+      queryStats: Object.freeze(this.queryStats),
+      statistics,
+      error,
+      metadata: { logSize, timeElapsed },
+    };
+    await reporter.report(reportContext);
+    console.timeEnd("total");
+    return reportContext;
+  }
 
-      const analyzer = new Analyzer();
-      const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
-        await analyzer.analyze(this.formatQuery(query));
-
-      const selectsCatalog = referencedTables.find((table) =>
-        table.startsWith("pg_")
-      );
-      if (selectsCatalog) {
-        if (DEBUG) {
-          console.log(
-            "Skipping query that selects from catalog tables",
-            selectsCatalog,
-            fingerprintNum,
-          );
-        }
-        continue;
+  async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {
+    this.queryStats.total++;
+    const { query, parameters } = log;
+    const queryFingerprint = await fingerprint(query);
+    const fingerprintNum = parseInt(queryFingerprint, 16);
+    if (log.isIntrospection) {
+      if (DEBUG) {
+        console.log("Skipping introspection query", fingerprintNum);
       }
-      const indexCandidates = analyzer.deriveIndexes(
-        stats.ownMetadata,
-        indexesToCheck,
-      );
-      if (indexCandidates.length === 0) {
-        if (DEBUG) {
-          console.log(ansiHighlightedQuery);
-          console.log("No index candidates found", fingerprintNum);
-        }
-        if (
-          typeof this.maxCost === "number" && parsed.plan.cost > this.maxCost
-        ) {
-          queriesPastThreshold.push({
+      return { kind: "invalid" };
+    }
+    if (this.seenQueries.has(fingerprintNum)) {
+      if (DEBUG) {
+        console.log("Skipping duplicate query", fingerprintNum);
+      }
+      return { kind: "invalid" };
+    }
+    this.seenQueries.add(fingerprintNum);
+
+    const analyzer = new Analyzer();
+    const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
+      await analyzer.analyze(this.formatQuery(query));
+
+    const selectsCatalog = referencedTables.find((table) =>
+      table.startsWith("pg_")
+    );
+    if (selectsCatalog) {
+      if (DEBUG) {
+        console.log(
+          "Skipping query that selects from catalog tables",
+          selectsCatalog,
+          fingerprintNum,
+        );
+      }
+      return { kind: "invalid" };
+    }
+    const indexCandidates = analyzer.deriveIndexes(
+      this.stats.ownMetadata,
+      indexesToCheck,
+    );
+    if (indexCandidates.length === 0) {
+      if (DEBUG) {
+        console.log(ansiHighlightedQuery);
+        console.log("No index candidates found", fingerprintNum);
+      }
+      if (
+        typeof this.maxCost === "number" && log.plan.cost > this.maxCost
+      ) {
+        return {
+          kind: "cost_past_threshold",
+          warning: {
             fingerprint: fingerprintNum,
             formattedQuery: this.formatQuery(query),
-            baseCost: parsed.plan.cost,
-            explainPlan: parsed.plan.json,
+            baseCost: log.plan.cost,
+            explainPlan: log.plan.json,
             maxCost: this.maxCost,
-          });
-        }
-        continue;
+          },
+        };
       }
-      await core.group(`query:${fingerprintNum}`, async () => {
+    }
+    return core.group<QueryProcessResult>(
+      `query:${fingerprintNum}`,
+      async (): Promise<QueryProcessResult> => {
         console.time(`timing`);
         this.printLegend();
         console.log(ansiHighlightedQuery);
         // TODO: give concrete type
-        let out: Awaited<ReturnType<typeof optimizer.run>>;
-        queryStats.matched++;
+        let out: Awaited<ReturnType<typeof this.optimizer.run>>;
+        this.queryStats.matched++;
         try {
-          out = await optimizer.run(query, parameters, indexCandidates);
+          out = await this.optimizer.run(query, parameters, indexCandidates);
         } catch (err) {
           console.error(err);
           console.error(
             `Something went wrong while running this query. Skipping`,
           );
-          queryStats.errored++;
+          // this.queryStats.errored++;
           console.timeEnd(`timing`);
-          return;
+          return { kind: "error", error: err as Error };
         }
         if (out.kind === "ok") {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
             .map((index) => {
-              const existing = existingIndexes.find(
+              const existing = this.existingIndexes.find(
                 (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${
-                  existing.index_columns
-                    .map((c) => `"${c.name}" ${c.order}`)
-                    .join(", ")
-                })`;
+                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
+                  .map((c) => `"${c.name}" ${c.order}`)
+                  .join(", ")
+                  })`;
               }
             })
             .filter((i) => i !== undefined);
           if (out.newIndexes.size > 0) {
-            queryStats.optimized++;
+            this.queryStats.optimized++;
             const newIndexes = Array.from(out.newIndexes)
               .map((n) => out.triedIndexes.get(n)?.definition)
               .filter((n) => n !== undefined);
             console.log(`New indexes: ${newIndexes.join(", ")}`);
-            recommendations.push({
-              fingerprint: fingerprintNum,
-              formattedQuery: this.formatQuery(query),
-              baseCost: out.baseCost,
-              optimizedCost: out.finalCost,
-              existingIndexes: existingIndexesForQuery,
-              proposedIndexes: newIndexes,
-              explainPlan: out.explainPlan,
-            });
+            return {
+              kind: "recommendation",
+              recommendation: {
+                fingerprint: fingerprintNum,
+                formattedQuery: this.formatQuery(query),
+                baseCost: out.baseCost,
+                baseExplainPlan: out.baseExplainPlan,
+                optimizedCost: out.finalCost,
+                existingIndexes: existingIndexesForQuery,
+                proposedIndexes: newIndexes,
+                explainPlan: out.explainPlan,
+              },
+            };
           } else {
             console.log("No new indexes found");
             if (
@@ -225,47 +302,38 @@ export class Runner {
                 out.finalCost,
                 this.maxCost,
               );
-              queriesPastThreshold.push({
-                fingerprint: fingerprintNum,
-                formattedQuery: this.formatQuery(query),
-                baseCost: out.baseCost,
-                optimization: {
-                  newCost: out.finalCost,
-                  existingIndexes: existingIndexesForQuery,
-                  proposedIndexes: [],
+              return {
+                kind: "cost_past_threshold",
+                warning: {
+                  fingerprint: fingerprintNum,
+                  formattedQuery: this.formatQuery(query),
+                  baseCost: out.baseCost,
+                  optimization: {
+                    newCost: out.finalCost,
+                    existingIndexes: existingIndexesForQuery,
+                    proposedIndexes: [],
+                  },
+                  explainPlan: out.explainPlan,
+                  maxCost: this.maxCost,
                 },
-                explainPlan: out.explainPlan,
-                maxCost: this.maxCost,
-              });
+              };
             }
+            return { kind: "invalid" };
           }
         } else if (out.kind === "zero_cost_plan") {
           console.log("Zero cost plan found");
           console.log(out);
+          console.timeEnd(`timing`);
+          return {
+            kind: "zero_cost_plan",
+            explainPlan: out.explainPlan,
+          };
         }
         console.timeEnd(`timing`);
-      });
-    }
-    await output.status;
-    console.log(
-      `Matched ${queryStats.matched} queries out of ${queryStats.total}`,
+        console.error(out)
+        throw new Error(`Unexpected output: ${out}`);
+      },
     );
-    const reporter = new GithubReporter(GITHUB_TOKEN);
-    const statistics = deriveIndexStatistics(recommendations);
-    const timeElapsed = Date.now() - startDate.getTime();
-    console.log(`Generating report (${reporter.provider()})`);
-    const reportContext: ReportContext = {
-      statisticsMode: stats.mode,
-      recommendations,
-      queriesPastThreshold,
-      queryStats,
-      statistics,
-      error,
-      metadata: { logSize, timeElapsed },
-    };
-    await reporter.report(reportContext);
-    console.timeEnd("total");
-    return reportContext;
   }
 
   private formatQuery(query: string) {
@@ -285,3 +353,19 @@ export class Runner {
     console.log();
   }
 }
+
+export type QueryProcessResult = {
+  kind: "invalid";
+} | {
+  kind: "cost_past_threshold";
+  warning: ReportQueryCostWarning;
+} | {
+  kind: "recommendation";
+  recommendation: ReportIndexRecommendation;
+} | {
+  kind: "error";
+  error: Error;
+} | {
+  kind: "zero_cost_plan";
+  explainPlan: object;
+};
