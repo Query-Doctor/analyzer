@@ -13,7 +13,25 @@ export function isQueryLong(query: string): boolean {
   return lines > 10;
 }
 
+function walkExplain(explainPlan: object, callback: (node: object) => void) {
+  if (typeof explainPlan === "object" && explainPlan !== null) {
+    callback(explainPlan);
+    for (const key in explainPlan) {
+      walkExplain(explainPlan[key as keyof typeof explainPlan], callback);
+    }
+  }
+}
+
 export function renderExplain(explainPlan: object): string {
+  walkExplain(explainPlan, (node) => {
+    if (node && "Output" in node && Array.isArray(node.Output)) {
+      const output = node.Output as string[];
+      if (output.length > 4) {
+        output[3] = `... ${output.length - 4} selected columns omitted ...`;
+      }
+      node.Output = output.slice(0, 4);
+    }
+  });
   return JSON.stringify(explainPlan, null, 2);
 }
 
