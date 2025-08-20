@@ -5,7 +5,8 @@ RUN apk add --no-cache \
     perl \
     wget \
     make \
-    git
+    git \
+    postgresql-client
 
 # Download, build, and install pgBadger
 ARG PGBADGER_VERSION=13.1
@@ -25,6 +26,7 @@ WORKDIR /app
 
 # Copy dependency files
 COPY deno.json deno.lock* ./
+ENV PG_DUMP_BINARY=/usr/bin/pg_dump
 
 RUN deno install --frozen-lockfile
 
