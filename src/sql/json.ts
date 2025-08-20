@@ -26,8 +26,8 @@ function unescapeEncodedJson(jsonString: string) {
     jsonString
       .replace(/\\n/g, "\n")
       // there are random control characters in the json lol
-      // deno-lint-ignore no-control-regex
       .replace(
+        // deno-lint-ignore no-control-regex
         /[\u0000-\u001F]+/g,
         (c) =>
           c === "\n" ? "\\n" : c === "\r" ? "\\r" : c === "\t" ? "\\t" : "",

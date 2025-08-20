@@ -4,16 +4,15 @@ import csv from "fast-csv";
 import { Readable } from "node:stream";
 import postgres from "postgresjs";
 import { fingerprint } from "@libpg-query/parser";
-import { Analyzer } from "./analyzer.ts";
-import { DEBUG, GITHUB_TOKEN } from "./env.ts";
-import { preprocessEncodedJson } from "./json.ts";
+import { Analyzer } from "./sql/analyzer.ts";
+import { preprocessEncodedJson } from "./sql/json.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
 import {
   getPostgresVersion,
   IndexedTable,
   Statistics,
 } from "./optimizer/statistics.ts";
-import { ExplainedLog } from "./pg_log.ts";
+import { ExplainedLog } from "./sql/pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
   deriveIndexStatistics,
@@ -23,6 +22,7 @@ import {
   type ReportStatistics,
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
+import { env } from "./env.ts";
 
 export class Runner {
   private readonly seenQueries = new Set<number>();
@@ -161,7 +161,7 @@ export class Runner {
     console.log(
       `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
     );
-    const reporter = new GithubReporter(GITHUB_TOKEN);
+    const reporter = new GithubReporter(env.GITHUB_TOKEN);
     const statistics = deriveIndexStatistics(recommendations);
     const timeElapsed = Date.now() - startDate.getTime();
     console.log(`Generating report (${reporter.provider()})`);
@@ -185,13 +185,13 @@ export class Runner {
     const queryFingerprint = await fingerprint(query);
     const fingerprintNum = parseInt(queryFingerprint, 16);
     if (log.isIntrospection) {
-      if (DEBUG) {
+      if (env.DEBUG) {
         console.log("Skipping introspection query", fingerprintNum);
       }
       return { kind: "invalid" };
     }
     if (this.seenQueries.has(fingerprintNum)) {
-      if (DEBUG) {
+      if (env.DEBUG) {
         console.log("Skipping duplicate query", fingerprintNum);
       }
       return { kind: "invalid" };
@@ -206,7 +206,7 @@ export class Runner {
       table.startsWith("pg_")
     );
     if (selectsCatalog) {
-      if (DEBUG) {
+      if (env.DEBUG) {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
@@ -220,7 +220,7 @@ export class Runner {
       indexesToCheck,
     );
     if (indexCandidates.length === 0) {
-      if (DEBUG) {
+      if (env.DEBUG) {
         console.log(ansiHighlightedQuery);
         console.log("No index candidates found", fingerprintNum);
       }
@@ -330,7 +330,7 @@ export class Runner {
           };
         }
         console.timeEnd(`timing`);
-        console.error(out)
+        console.error(out);
         throw new Error(`Unexpected output: ${out}`);
       },
     );

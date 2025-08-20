@@ -17,7 +17,7 @@ Deno.test(async function analyzer_test() {
     )
   offset
     $2`;
-  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+  const { indexesToCheck } = await analyzer.analyze(
     query,
   );
   assertEquals(indexesToCheck, [
@@ -70,7 +70,7 @@ Deno.test(async function analyzer_isnull() {
     select * from team
     where team.deleted_at is null
   `;
-  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+  const { indexesToCheck } = await analyzer.analyze(
     query,
   );
   assertEquals(indexesToCheck, [
@@ -329,7 +329,7 @@ Deno.test(async function analyzer_does_not_pickup_aggregate_aliases() {
       $2
     offset
       $3`;
-  const { indexesToCheck, ansiHighlightedQuery } = await analyzer.analyze(
+  const { indexesToCheck } = await analyzer.analyze(
     query,
   );
   assertFalse(

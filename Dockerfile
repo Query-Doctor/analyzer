@@ -30,7 +30,7 @@ RUN deno install --frozen-lockfile
 
 COPY . .
 
-RUN deno compile --allow-run --allow-read --allow-write --allow-env --allow-net -o analyzer main.ts
+RUN deno compile --allow-run --allow-read --allow-write --allow-env --allow-net -o analyzer src/main.ts
 RUN ls -la /app
 
 # Development command

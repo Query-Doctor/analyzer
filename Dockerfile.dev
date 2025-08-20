@@ -27,8 +27,5 @@ WORKDIR /app
 COPY deno.json deno.lock* ./
 
 RUN deno install --frozen-lockfile
-# Cache dependencies
-# RUN deno cache main.ts
-
 # Development command
 CMD ["deno", "run", "dev"]

@@ -24,6 +24,8 @@ jobs:
       - name: Export version
         run: |
           echo "DENO_VERSION=$(jq -r '.version' deno.json)" >> $GITHUB_ENV
+      - name: Typecheck
+        run: deno check
 
       - name: Upload files to release
         uses: softprops/action-gh-release@v2

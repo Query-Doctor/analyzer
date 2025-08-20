@@ -54,4 +54,5 @@ runs:
       working-directory: ${{ github.action_path }}
       run: deno run start
       env:
+        CI: "true"
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}

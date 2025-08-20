@@ -1,4 +1,4 @@
-import { permuteWithFeedback, PROCEED, SKIP } from "./optimizer/genalgo.ts";
+import { permuteWithFeedback, PROCEED, SKIP } from "../optimizer/genalgo.ts";
 import { assertEquals } from "@std/assert";
 
 Deno.test("permutations", () => {
