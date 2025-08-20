@@ -32,7 +32,7 @@ runs:
       if: steps.pgbadger-cache.outputs.cache-hit != 'true'
       run: |
         sudo apt-get update
-        sudo apt-get install -y perl make wget
+        sudo apt-get install -y perl make wget postgresql-client
 
     # Download, build, and install pgBadger
     - name: Download and Install pgBadger
@@ -54,5 +54,6 @@ runs:
       working-directory: ${{ github.action_path }}
       run: deno run start
       env:
+        PG_DUMP_BINARY: /usr/bin/pg_dump
         CI: "true"
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
