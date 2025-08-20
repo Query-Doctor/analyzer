@@ -54,10 +54,10 @@ async function main() {
       env.STATISTICS_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,
     );
+    Deno.exit();
   } else {
     runOutsideCI();
   }
-  Deno.exit();
 }
 
 if (import.meta.main) {
