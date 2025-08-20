@@ -218,7 +218,6 @@ export class Statistics {
             _value_type4: this.stavalueKind(stats.stavalues4),
             _value_type5: this.stavalueKind(stats.stavalues5),
           });
-          // TODO: support stavaluesN as well
         }
       }
       /**

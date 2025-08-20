@@ -1,0 +1,28 @@
+version: "1"
+services:
+  # # US
+  - type: web
+    name: sync
+    runtime: docker
+    repo: https://github.com/Query-Doctor/sync
+    branch: main
+    plan: free
+    envVars: &env
+      - key: HOSTED
+        value: "true"
+    region: oregon
+    dockerContext: .
+    dockerfilePath: Dockerfile
+  # EU
+  - type: web
+    name: sync
+    runtime: docker
+    repo: https://github.com/Query-Doctor/sync
+    branch: main
+    plan: free
+    envVars:
+      - key: HOSTED
+        value: "true"
+    region: frankfurt
+    dockerContext: .
+    dockerfilePath: Dockerfile
