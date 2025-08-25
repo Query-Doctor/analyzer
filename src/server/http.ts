@@ -7,8 +7,9 @@ import { ZodError } from "zod/v4";
 import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
+import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
 
-const syncer = new PostgresSyncer();
+const syncer = new PostgresSyncer(wrapGenericPostgresInterface);
 
 async function onSync(req: Request) {
   const startTime = Date.now();
@@ -67,6 +68,7 @@ async function onSync(req: Request) {
   } catch (error) {
     // We don't throw errors randomly so this should only happen if there's a bug
     if (error instanceof Error && !env.HOSTED) {
+      console.error(error);
       return Response.json(
         { kind: "error", type: "unexpected_error", error: error.message },
         { status: 500 },
@@ -116,7 +118,6 @@ async function onSync(req: Request) {
         },
       );
     } else if (result.type === "postgres_connection_error") {
-      console.log(result);
       log.error(result.error.message, "http:sync");
       return Response.json(
         {

@@ -2,16 +2,11 @@ import * as core from "@actions/core";
 import { format } from "sql-formatter";
 import csv from "fast-csv";
 import { Readable } from "node:stream";
-import postgres from "postgresjs";
 import { fingerprint } from "@libpg-query/parser";
 import { Analyzer } from "./sql/analyzer.ts";
 import { preprocessEncodedJson } from "./sql/json.ts";
 import { IndexOptimizer } from "./optimizer/genalgo.ts";
-import {
-  getPostgresVersion,
-  IndexedTable,
-  Statistics,
-} from "./optimizer/statistics.ts";
+import { IndexedTable, Statistics } from "./optimizer/statistics.ts";
 import { ExplainedLog } from "./sql/pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
@@ -23,6 +18,7 @@ import {
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 import { env } from "./env.ts";
+import { wrapGenericPostgresInterface } from "./sql/postgresjs.ts";
 
 export class Runner {
   private readonly seenQueries = new Set<number>();
@@ -38,7 +34,7 @@ export class Runner {
     private readonly stats: Statistics,
     private readonly logPath: string,
     private readonly maxCost?: number,
-  ) { }
+  ) {}
 
   static async build(
     options: {
@@ -48,15 +44,16 @@ export class Runner {
       logPath: string;
     },
   ) {
-    const pg = postgres(options.postgresUrl);
-    const pgVersion = await getPostgresVersion(pg);
+    const db = wrapGenericPostgresInterface({ url: options.postgresUrl });
+    // const pgVersion = await getPostgresVersion(db);
+    const pgVersion = await db.serverNum();
     const stats = await Statistics.fromPostgres(
-      pg,
+      db,
       pgVersion,
       options.statisticsPath,
     );
     const existingIndexes = await stats.getExistingIndexes();
-    const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
+    const optimizer = new IndexOptimizer(db, stats, existingIndexes);
     return new Runner(
       optimizer,
       existingIndexes,
@@ -96,14 +93,6 @@ export class Runner {
 
     const recommendations: ReportIndexRecommendation[] = [];
     const queriesPastThreshold: ReportQueryCostWarning[] = [];
-    // const pg = postgres(this.postgresUrl);
-    // const pgVersion = await getPostgresVersion(pg);
-    // const stats = await Statistics.fromPostgres(
-    //   pg,
-    //   pgVersion,
-    //   this.statisticsPath,
-    // );
-    // const optimizer = new IndexOptimizer(pg, stats, existingIndexes);
 
     console.time("total");
     for await (const chunk of stream) {
@@ -266,10 +255,11 @@ export class Runner {
                 (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")
-                  })`;
+                return `${existing.schema_name}.${existing.table_name}(${
+                  existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")
+                })`;
               }
             })
             .filter((i) => i !== undefined);

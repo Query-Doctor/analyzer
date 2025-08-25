@@ -1,17 +1,11 @@
-import postgres from "postgresjs";
 import dedent from "dedent";
 import { gray } from "@std/fmt/colors";
 import { z } from "zod";
-
-declare const brand: unique symbol;
-type PostgresVersion = string & { [brand]: never };
-
-export async function getPostgresVersion(
-  sql: postgres.Sql,
-): Promise<PostgresVersion> {
-  return (await sql`show server_version_num`)[0]
-    .server_version_num as PostgresVersion;
-}
+import type {
+  Postgres,
+  PostgresTransaction,
+  PostgresVersion,
+} from "../sql/database.ts";
 
 type ColumnMappings = Map<string, Record<string, number>>;
 type ValueKind = "real" | "text" | "boolean" | null;
@@ -36,7 +30,7 @@ export class Statistics {
     relpages: DEFAULT_RELPAGES,
   };
   constructor(
-    private readonly sql: postgres.Sql,
+    private readonly db: Postgres,
     public readonly postgresVersion: PostgresVersion,
     private readonly exportedMetadata: ExportedStats[] | undefined,
     public readonly ownMetadata: ExportedStats[],
@@ -53,11 +47,11 @@ export class Statistics {
   }
 
   static async fromPostgres(
-    sql: postgres.Sql,
+    db: Postgres,
     postgresVersion: PostgresVersion,
     metadataOrPath?: Path | ExportedStats[],
   ): Promise<Statistics> {
-    const ownStatsPromise = Statistics.dumpStats(sql, postgresVersion, "full");
+    const ownStatsPromise = Statistics.dumpStats(db, postgresVersion, "full");
     let stats: ExportedStats[] | undefined;
     if (typeof metadataOrPath === "string") {
       const text = await Deno.readTextFile(metadataOrPath);
@@ -67,7 +61,7 @@ export class Statistics {
     }
     const ownStats = await ownStatsPromise;
     return new Statistics(
-      sql,
+      db,
       postgresVersion,
       stats,
       ownStats,
@@ -77,7 +71,7 @@ export class Statistics {
     );
   }
 
-  restoreStats(tx: postgres.TransactionSql) {
+  restoreStats(tx: PostgresTransaction) {
     // if (this.postgresVersion < "180000") {
     return this.restoreStats17(tx);
     // }
@@ -109,7 +103,7 @@ export class Statistics {
     return "text";
   }
 
-  private async restoreStats17(tx: postgres.TransactionSql) {
+  private async restoreStats17(tx: PostgresTransaction) {
     const warnings = {
       tablesNotInExports: [] as string[],
       tablesNotInTest: [] as string[],
@@ -123,7 +117,7 @@ export class Statistics {
     };
     const processedTables = new Set<string>();
 
-    let columnStatsUpdatePromise: Promise<postgres.RowList<any>> | undefined;
+    let columnStatsUpdatePromise: Promise<any> | undefined;
     const columnStatsValues: Array<{
       schema_name: string;
       table_name: string;
@@ -399,7 +393,7 @@ export class Statistics {
     select * from updated union all (select * from inserted); -- @qd_introspection`;
 
       columnStatsUpdatePromise = tx
-        .unsafe(sql, [columnStatsValues])
+        .exec(sql, [columnStatsValues])
         .catch((err) => {
           console.error("Something wrong wrong updating column stats");
           console.error(err);
@@ -409,7 +403,6 @@ export class Statistics {
         });
     }
 
-    let reltuplesPromise: Promise<postgres.RowList<any>>;
     const reltuplesValues: Array<{
       reltuples: number;
       relpages: number;
@@ -468,8 +461,8 @@ export class Statistics {
         returning pg_class.relname, pg_class.relnamespace, pg_class.reltuples, pg_class.relpages;
         `;
 
-    reltuplesPromise = tx
-      .unsafe(reltuplesQuery, [reltuplesValues])
+    const reltuplesPromise = tx
+      .exec(reltuplesQuery, [reltuplesValues])
       .catch((err) => {
         console.error("Something went wrong updating reltuples/relpages");
         console.error(err);
@@ -515,15 +508,14 @@ export class Statistics {
   }
 
   static async dumpStats(
-    sql: postgres.Sql,
+    db: PostgresTransaction,
     postgresVersion: PostgresVersion,
     kind: "anonymous" | "full",
   ): Promise<ExportedStats[]> {
     const fullDump = kind === "full";
     console.log(`dumping stats for postgres ${gray(postgresVersion)}`);
     // certain things are only supported with pg17
-    // if (postgresVersion < "170000") {
-    const stats = await sql.unsafe<{ json_agg: ExportedStats[] }[]>(
+    const stats = await db.exec<{ json_agg: ExportedStats[] }>(
       `
 SELECT
   json_agg(t)
@@ -621,7 +613,7 @@ GROUP BY
    * ONLY handles regular btree indexes
    */
   async getExistingIndexes(): Promise<IndexedTable[]> {
-    const indexes = await this.sql<IndexedTable[]>`
+    const indexes = await this.db.exec<IndexedTable>(`
       WITH partitioned_tables AS (
           SELECT
               inhparent::regclass AS parent_table,
@@ -668,7 +660,7 @@ GROUP BY
           n.nspname, COALESCE(pt.parent_table::text, t.relname), i.relname, am.amname
       ORDER BY
           COALESCE(pt.parent_table::text, t.relname), i.relname; -- @qd_introspection
-      `;
+      `);
     return indexes;
   }
 }

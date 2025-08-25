@@ -7,8 +7,8 @@ import type {
 } from "@pgsql/types";
 import { parse } from "@libpg-query/parser";
 import { deparseSync } from "pgsql-deparser";
-import { RootIndexCandidate } from "../optimizer/genalgo.ts";
-import { ExportedStats } from "../optimizer/statistics.ts";
+import type { RootIndexCandidate } from "../optimizer/genalgo.ts";
+import type { ExportedStats } from "../optimizer/statistics.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 
 export interface DatabaseDriver {
@@ -360,23 +360,26 @@ export class Analyzer {
         color = bgBrightMagenta;
       }
       const queryRepr = highlight.representation;
-      currQuery = `${currQuery.slice(0, highlight.position.start)}${color(
-        queryRepr,
-      )
-        }${currQuery
+      currQuery = `${currQuery.slice(0, highlight.position.start)}${
+        color(
+          queryRepr,
+        )
+      }${
+        currQuery
           .slice(highlight.position.end)
           .replace(
             // eh? This kinda sucks
             /(^\s+)(asc|desc)?(\s+(nulls first|nulls last))?/i,
             (_, pre, dir, spaceNulls, nulls) => {
-              return `${pre}${dir ? bgBrightMagenta(dir) : ""}${nulls ? spaceNulls.replace(nulls, bgBrightMagenta(nulls)) : ""
-                }`;
+              return `${pre}${dir ? bgBrightMagenta(dir) : ""}${
+                nulls ? spaceNulls.replace(nulls, bgBrightMagenta(nulls)) : ""
+              }`;
             },
           )
           .replace(/(^\s+)(is (null|not null))/i, (_, pre, nulltest) => {
             return `${pre}${bgBrightMagenta(nulltest)}`;
           })
-        }`;
+      }`;
       if (indexRepresentations.has(queryRepr)) {
         skip = true;
       }
