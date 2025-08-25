@@ -10,8 +10,8 @@ export type TableStats = {
 
 export class PostgresSchemaLink {
   private static readonly PG_DUMP_VERSION = "17.2";
-  public static readonly pgDumpBinaryPath =
-    PostgresSchemaLink.findPgDumpBinary();
+  public static readonly pgDumpBinaryPath = PostgresSchemaLink
+    .findPgDumpBinary();
   constructor(public readonly url: string, public readonly schema: string) {}
 
   static findPgDumpBinary(): string {
@@ -19,13 +19,14 @@ export class PostgresSchemaLink {
     if (forcePath) {
       log.info(
         `Using pg_dump binary from env(PG_DUMP_BINARY): ${forcePath}`,
-        "schema:setup"
+        "schema:setup",
       );
       return forcePath;
     }
     const os = Deno.build.os;
     const arch = Deno.build.arch;
-    const shippedPath = `./bin/pg_dump-${this.PG_DUMP_VERSION}/pg_dump.${os}-${arch}`;
+    const shippedPath =
+      `./bin/pg_dump-${this.PG_DUMP_VERSION}/pg_dump.${os}-${arch}`;
     if (!Deno.statSync(shippedPath).isFile) {
       throw new Error(`pg_dump binary not found at ${shippedPath}`);
     }
@@ -66,10 +67,9 @@ export class PostgresSchemaLink {
     const decoder = new TextDecoder();
     span?.setAttribute("outputBytes", output.stdout.byteLength);
     return withSpan("decodeResponse", () => {
-      const stderr =
-        output.stderr.byteLength > 0
-          ? decoder.decode(output.stderr)
-          : undefined;
+      const stderr = output.stderr.byteLength > 0
+        ? decoder.decode(output.stderr)
+        : undefined;
       if (stderr) {
         console.warn(stderr);
       }
@@ -80,7 +80,7 @@ export class PostgresSchemaLink {
       }
       log.info(
         `Dumped schema. bytes=${output.stdout.byteLength}`,
-        "schema:sync"
+        "schema:sync",
       );
       const stdout = decoder.decode(output.stdout);
       return this.sanitizeSchema(stdout);

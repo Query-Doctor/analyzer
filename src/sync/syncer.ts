@@ -1,4 +1,3 @@
-import postgres from "postgresjs";
 import {
   DependencyAnalyzer,
   type DependencyAnalyzerOptions,
@@ -14,6 +13,7 @@ import { PostgresSchemaLink } from "./schema.ts";
 import { withSpan } from "../otel.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { Connectable } from "./connectable.ts";
+import type { Postgres, PostgresFactory } from "../sql/database.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
 
@@ -52,8 +52,8 @@ export type SyncResult =
   | FindAllDependenciesError;
 
 export class PostgresSyncer {
-  private readonly connections = new Map<string, postgres.Sql>();
-  constructor() {}
+  private readonly connections = new Map<string, Postgres>();
+  constructor(private readonly factory: PostgresFactory) {}
 
   async syncWithUrl(
     connectable: Connectable,
@@ -63,7 +63,7 @@ export class PostgresSyncer {
     const urlString = connectable.toString();
     let sql = this.connections.get(urlString);
     if (!sql) {
-      sql = postgres(urlString, { max: 50 });
+      sql = this.factory({ url: urlString });
       this.connections.set(urlString, sql);
     }
     const connector = new PostgresConnector(sql);
@@ -153,17 +153,11 @@ export class PostgresSyncer {
     return connector.getRecentQueries();
   }
 
-  private checkConnection(sql: postgres.Sql) {
-    return withSpan("checkConnection", async () => {
-      await sql`select 1`;
-    })();
-  }
-
   private getConnection(connectable: Connectable) {
     const urlString = connectable.toString();
     let sql = this.connections.get(urlString);
     if (!sql) {
-      sql = postgres(urlString);
+      sql = this.factory({ url: urlString });
       this.connections.set(urlString, sql);
     }
     return sql;

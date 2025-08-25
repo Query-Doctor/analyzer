@@ -1,4 +1,3 @@
-import postgres from "postgresjs";
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -10,9 +9,10 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
+import { Postgres } from "../sql/database.ts";
 
 const ctidSymbol = Symbol("ctid");
-type Row = NonNullable<postgres.Row & Iterable<postgres.Row>> & {
+type Row = NonNullable<unknown> & {
   [ctidSymbol]: string;
 };
 
@@ -86,11 +86,13 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    * Otherwise we use the `order by random()` instead.
    */
   private static readonly MIN_SIZE_FOR_TABLESAMPLE = 10_000;
-  constructor(private readonly sql: postgres.Sql) {}
+  constructor(private readonly db: Postgres) {}
 
   async onStartAnalyze(_schema: string): Promise<void> {
     const results = await this
-      .sql`SELECT relname AS table, n_live_tup AS count FROM pg_stat_user_tables`;
+      .db.exec<{ table: string; count: number }>(
+        `SELECT relname AS table, n_live_tup AS count FROM pg_stat_user_tables`,
+      );
     for (const result of results) {
       this.tupleEstimates.set(result.table, result.count);
     }
@@ -101,11 +103,12 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    *
    * The table and column names are quoted according to postgres rules
    */
-  async dependencies(schema: string) {
+  async dependencies(schema: string): Promise<Dependency[]> {
     const out = await withSpan(
       "connector.dependencies",
       () =>
-        this.sql<Dependency[]>`
+        this.db.exec<Dependency>(
+          `
 SELECT
     quote_ident(pg_tables.schemaname)  as "sourceSchema",
     quote_ident(pg_tables.tablename) AS "sourceTable",
@@ -151,7 +154,7 @@ LEFT JOIN LATERAL (
         pc.contype = 'f' -- 'f' stands for foreign key
         AND pa.attnum > 0 -- Skip system columns
         AND pa.attisdropped = false -- Skip dropped columns
-        AND pgn.nspname = ${schema}
+        AND pgn.nspname = $1
         AND pgc.relname = pg_tables.tablename
     GROUP BY
         pgc.relname, pc.oid, ref_ns.nspname, ref_cl.relname
@@ -159,10 +162,12 @@ LEFT JOIN LATERAL (
         pgc.relname
 ) AS fk ON TRUE
 WHERE
-    pg_tables.schemaname = ${schema}
+    pg_tables.schemaname = $1
 ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
+          [schema],
+        ),
     )();
 
     return out;
@@ -179,14 +184,15 @@ ORDER BY
     log.debug(`${sqlString} : [${params.join(", ")}]`, "pg-connector:get");
     const data = await withSpan(
       "connector.get",
-      () =>
-        this.sql.unsafe(sqlString, params as postgres.ParameterOrJSON<never>[]),
+      () => this.db.exec<Row & { ctid?: string }>(sqlString, params),
     )();
     if (data.length === 0) {
       return;
     }
-    const newValue = data[0] as Row;
-    newValue[ctidSymbol] = newValue.ctid;
+    const newValue = data[0];
+    if (typeof newValue.ctid !== "undefined") {
+      newValue[ctidSymbol] = newValue.ctid;
+    }
     delete newValue.ctid;
     return {
       table,
@@ -208,6 +214,9 @@ ORDER BY
     table: string,
     options: CursorOptions,
   ): AsyncGenerator<PostgresTuple, void, unknown> {
+    if (!this.db.cursor) {
+      throw new Error("PostgresConnector.cursor is not supported");
+    }
     const tupleEstimate = this.tupleEstimates.get(table);
     if (tupleEstimate === undefined) {
       console.warn(
@@ -215,7 +224,7 @@ ORDER BY
       );
     }
     let cursor: AsyncIterable<
-      NonNullable<postgres.Row & Iterable<postgres.Row>>[],
+      Row & { ctid?: string },
       void,
       unknown
     >;
@@ -223,37 +232,35 @@ ORDER BY
       tupleEstimate === undefined ||
       tupleEstimate < PostgresConnector.MIN_SIZE_FOR_TABLESAMPLE
     ) {
-      await this.sql`select setseed(${options.seed})`;
-      cursor = this.sql
+      await this.db.exec("select setseed($1)", [options.seed]);
+      cursor = this.db
         // we want to make sure the rows we get are deterministic
-        .unsafe(
+        .cursor(
           `select *, ctid from ${schema}.${table} order by random() -- @qd_introspection`,
-        )
-        .cursor(3);
+        );
     } else {
       // this really needs to be tweaked lol
-      cursor = this.sql
-        .unsafe(
+      cursor = this.db
+        .cursor(
           `select *, ctid from ${schema}.${table} tablesample bernoulli(${
             options.requiredRows / tupleEstimate + 10
           }) repeatable(1) -- @qd_introspection`,
-        )
-        .cursor(3);
+        );
     }
-    for await (const [value] of cursor) {
+    for await (const data of cursor) {
       if (shutdownController.signal.aborted) {
         break;
       }
-      if (value === undefined) {
+      if (data === undefined) {
         log.error(
           `Cursor for table ${table} returned an undefined value`,
           "pg-connector:cursor",
         );
         continue;
       }
-      const ctid = value.ctid;
-      const data = value as Row;
-      data[ctidSymbol] = ctid;
+      if (typeof data.ctid !== "undefined") {
+        data[ctidSymbol] = data.ctid;
+      }
       delete data.ctid;
       yield { data, table };
     }
@@ -336,7 +343,7 @@ ORDER BY
       );
       const serialized = await withSpan(
         "connector.get",
-        () => this.sql.unsafe(query, [allCtids]),
+        () => this.db.exec(query, [allCtids]),
       )();
 
       const estimate = this.tupleEstimates.get(table) ?? "?";
@@ -361,7 +368,7 @@ ORDER BY
           `(${
             tableSchema.columns
               .map((col) => {
-                const value = row[col.columnName];
+                const value = (row as Record<string, unknown>)[col.columnName];
                 if (value === null) {
                   return "NULL";
                 }
@@ -394,8 +401,8 @@ ORDER BY
     const results = await withSpan(
       "connector.getSchema",
       () =>
-        this.sql<TableMetadata[]>`
-      SELECT
+        this.db.exec<TableMetadata>(
+          `SELECT
           c.table_name as "tableName",
           n.nspname as "schemaName",
           cl.reltuples as "rowCountEstimate",
@@ -438,25 +445,27 @@ ORDER BY
           ON a.attrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass
           AND a.attname = c.column_name
       WHERE
-          n.nspname = ${schemaName}
+          n.nspname = $1
           and c.table_name not like 'pg_%'
           and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
       GROUP BY
           n.nspname, c.table_name, cl.reltuples, cl.relpages; -- @qd_introspection
     `,
+          [schemaName],
+        ),
     )();
     return results;
   }
 
   public async getDatabaseInfo() {
-    const results = await this.sql<
+    const results = await this.db.exec<
       {
         serverVersion: string;
         serverVersionNum: string;
-      }[]
-    >`
-      select version() as "serverVersion", current_setting('server_version_num') as "serverVersionNum"; -- @qd_introspection
-    `;
+      }
+    >(
+      'select version() as "serverVersion", current_setting(\'server_version_num\') as "serverVersionNum"; -- @qd_introspection',
+    );
     return {
       serverVersion: results[0]!.serverVersion,
       serverVersionNum: results[0]!.serverVersionNum,
@@ -465,7 +474,7 @@ ORDER BY
 
   public async getRecentQueries(): Promise<RecentQueriesResult> {
     try {
-      const results = await this.sql<RecentQuery[]>`
+      const results = await this.db.exec<RecentQuery>(`
       SELECT
         pg_user.usename as "username",
         query,
@@ -478,7 +487,7 @@ ORDER BY
       WHERE query not like '%pg_stat_statements%'
         and query not like '%@qd_introspection%'
         and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
-      `; // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
+      `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
       return {
         kind: "ok",
         queries: results,
@@ -507,11 +516,11 @@ ORDER BY
     username: string;
     isSuperuser: boolean;
   }> {
-    const [results] = await this.sql<
-      { username: string; isSuperuser: boolean }[]
-    >`
-      SELECT usename as "username", usesuper as "isSuperuser" FROM pg_user WHERE usename = current_user; -- @qd_introspection
-    `;
+    const [results] = await this.db.exec<
+      { username: string; isSuperuser: boolean }
+    >(
+      `SELECT usename as "username", usesuper as "isSuperuser" FROM pg_user WHERE usename = current_user; -- @qd_introspection`,
+    );
     if (!results) {
       return { username: "unknown", isSuperuser: false };
     }

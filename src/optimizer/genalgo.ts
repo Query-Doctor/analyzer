@@ -1,10 +1,14 @@
 import { blue, gray, green, magenta, red, yellow } from "@std/fmt/colors";
-import postgres from "postgresjs";
-import { IndexedTable, Statistics } from "./statistics.ts";
-import { IndexIdentifier } from "../reporters/reporter.ts";
-import { SortContext } from "../sql/analyzer.ts";
-import { NullTestType } from "@pgsql/types";
+import type { IndexedTable, Statistics } from "./statistics.ts";
+import type { IndexIdentifier } from "../reporters/reporter.ts";
+import type { SortContext } from "../sql/analyzer.ts";
+import type { NullTestType } from "@pgsql/types";
 import { env } from "../env.ts";
+import type {
+  Postgres,
+  PostgresExplainResult,
+  PostgresTransaction,
+} from "../sql/database.ts";
 
 type IndexRecommendation = PermutedIndexCandidate & {
   definition: IndexIdentifier;
@@ -13,7 +17,7 @@ type Color = (a: string) => string;
 
 export class IndexOptimizer {
   constructor(
-    private readonly sql: postgres.Sql,
+    private readonly db: Postgres,
     private readonly statistics: Statistics,
     private readonly existingIndexes: IndexedTable[],
   ) {}
@@ -79,7 +83,7 @@ export class IndexOptimizer {
               columns,
               definition: indexDefinitionClean as IndexIdentifier,
             });
-            await sql.unsafe(`${sqlString} -- @qd_introspection`);
+            await sql.exec(`${sqlString} -- @qd_introspection`);
           },
         );
         const costDeltaPercentage =
@@ -126,7 +130,7 @@ export class IndexOptimizer {
       async (sql) => {
         for (const permutation of nextStage) {
           const { table, schema, columns } = permutation;
-          await sql.unsafe(
+          await sql.exec(
             `create index __qd_${schema}_${table}_${
               columns
                 .map((c) => c.column)
@@ -169,6 +173,7 @@ export class IndexOptimizer {
     };
   }
 
+  // TODO: this doesn't belong in the optimizer
   private indexAlreadyExists(
     table: string,
     columns: RootIndexCandidate[],
@@ -273,17 +278,17 @@ export class IndexOptimizer {
 
   async testQueryWithStats(
     query: string,
-    params: string[],
-    f?: (sql: postgres.Sql) => Promise<void>,
+    _params: string[],
+    f?: (tx: PostgresTransaction) => Promise<void>,
   ): Promise<any> {
     try {
-      await this.sql.begin(async (tx) => {
+      await this.db.transaction(async (tx) => {
         await f?.(tx);
         await this.statistics.restoreStats(tx);
         const explainString =
           `explain (generic_plan, verbose, format json) ${query}; -- @qd_introspection`;
         // should params be passed in here?
-        const result = await tx.unsafe(explainString);
+        const result = await tx.exec<PostgresExplainResult>(explainString);
         const out = result[0]["QUERY PLAN"][0].Plan;
         throw new RollbackError(out);
       });
@@ -334,7 +339,6 @@ export class IndexOptimizer {
         }
       }
     }
-    // console.log("explain", explain);
     go(explain);
     return {
       newIndexes,
