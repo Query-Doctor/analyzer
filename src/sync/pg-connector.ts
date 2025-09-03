@@ -16,6 +16,8 @@ type Row = NonNullable<unknown> & {
   [ctidSymbol]: string;
 };
 
+type QuotedIdentifier = string;
+
 type ColumnStats = {
   nullFraction: number;
   commonElems: unknown[] | null;
@@ -25,14 +27,14 @@ type ColumnStats = {
   rangeBoundsHistogram: unknown[] | null;
 };
 export type ColumnMetadata = {
-  columnName: string;
+  columnName: QuotedIdentifier;
   dataType: string;
   isNullable: boolean;
   stats: ColumnStats | null;
 };
 export type TableMetadata = {
-  tableName: string;
-  schemaName: string;
+  tableName: QuotedIdentifier;
+  schemaName: QuotedIdentifier;
   rowCountEstimate: number;
   pageCount: number;
   columns: ColumnMetadata[];
@@ -319,24 +321,21 @@ ORDER BY
       const tableSchema = schema.find(
         (s) => s.tableName === table && s.schemaName === schemaName,
       );
-      const allCtids = rows.map((row) => row[ctidSymbol]);
       if (!tableSchema) {
-        console.warn(`No schema found for ${table}. Skipping.`);
+        console.warn(
+          `No schema found for ${table}. Skipping. Is there a quoting mismatch with the table name?`,
+        );
         continue;
       }
-      const columns = tableSchema.columns.map((c) => c.columnName);
-      const quotes = columns.map(
-        (c) => `quote_literal(${doubleQuote(c)}) as ${doubleQuote(c)}`,
+      const allCtids = rows.map((row) => row[ctidSymbol]);
+      const columns = tableSchema.columns.map((c) =>
+        `quote_literal(${c.columnName}) as ${c.columnName}`
       );
       const query = `select ${
-        quotes.join(
+        columns.join(
           ", ",
         )
-      } from (select * from ${schemaName}.${
-        doubleQuote(
-          table,
-        )
-      } where ctid = any($1::tid[])) as samples -- @qd_introspection`;
+      } from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
       log.debug(
         `${query} : [${allCtids.join(", ")}]`,
         "pg-connector:serialize",
@@ -349,15 +348,12 @@ ORDER BY
       const estimate = this.tupleEstimates.get(table) ?? "?";
       const comment =
         `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
-      const insertStatement = `${comment}\nINSERT INTO ${schemaName}.${
-        doubleQuote(
-          table,
-        )
-      } (${
-        tableSchema.columns
-          .map((c) => doubleQuote(c.columnName))
-          .join(", ")
-      }) VALUES\n`;
+      const insertStatement =
+        `${comment}\nINSERT INTO ${schemaName}.${table} (${
+          tableSchema.columns
+            .map((c) => c.columnName)
+            .join(", ")
+        }) VALUES\n`;
       if (serialized.length === 0) {
         console.warn(`No rows found for ${table}. Skipping.`);
         continue;
@@ -368,7 +364,20 @@ ORDER BY
           `(${
             tableSchema.columns
               .map((col) => {
-                const value = (row as Record<string, unknown>)[col.columnName];
+                // TODO: find a better way to do this
+                // We shouldn't just pass around a bare string representing identifiers
+                // and it would be better to turn them into something like
+                // ```ts
+                // type Identifier = { name: string; quoted: boolean; };
+                // ```
+                // but the problem is we often need to use these identifiers as map keys
+                // which doesn't work well with objects.
+                const quotedStrippedColName = col.columnName.replace(
+                  /(^"|"$)/g,
+                  "",
+                );
+                const value =
+                  (row as Record<string, unknown>)[quotedStrippedColName];
                 if (value === null) {
                   return "NULL";
                 }
@@ -403,13 +412,13 @@ ORDER BY
       () =>
         this.db.exec<TableMetadata>(
           `SELECT
-          c.table_name as "tableName",
-          n.nspname as "schemaName",
+          quote_ident(c.table_name) as "tableName",
+          quote_ident(n.nspname) as "schemaName",
           cl.reltuples as "rowCountEstimate",
           cl.relpages as "pageCount",
           json_agg(
             json_build_object(
-              'columnName', c.column_name,
+              'columnName', quote_ident(c.column_name),
               'dataType', c.data_type,
               'isNullable', (c.is_nullable = 'YES')::boolean,
               'stats', (
