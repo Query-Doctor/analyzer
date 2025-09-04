@@ -290,7 +290,7 @@ ORDER BY
     }
     const comments = [
       `-- START:Sampled data`,
-      `-- Sampled by @query-doctor/sync on ${
+      `-- Sampled by @query-doctor/analyzer on ${
         new Date().toISOString()
       } | options = ${
         JSON.stringify(

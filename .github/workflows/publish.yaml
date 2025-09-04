@@ -44,7 +44,7 @@ jobs:
         run: |
           sync_version=$(jq -r '.version' deno.json)
           echo "sync_version=${sync_version}" >> $GITHUB_ENV
-      - name: Build and push @query-doctor/sync
+      - name: Build and push @query-doctor/analyzer
         id: build
         uses: docker/build-push-action@v6
         with:

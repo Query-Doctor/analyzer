@@ -4,7 +4,7 @@ services:
   - type: web
     name: sync
     runtime: docker
-    repo: https://github.com/Query-Doctor/sync
+    repo: https://github.com/Query-Doctor/analyzer
     branch: main
     plan: free
     envVars: &env
@@ -17,7 +17,7 @@ services:
   - type: web
     name: sync
     runtime: docker
-    repo: https://github.com/Query-Doctor/sync
+    repo: https://github.com/Query-Doctor/analyzer
     branch: main
     plan: free
     envVars:

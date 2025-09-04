@@ -184,7 +184,7 @@ export function createServer(hostname: string, port: number) {
       }
       if (url.pathname === "/") {
         return Response.redirect(
-          "https://github.com/Query-Doctor/local-sync",
+          "https://github.com/Query-Doctor/analyzer",
           307,
         );
       }
