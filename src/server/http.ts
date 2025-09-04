@@ -8,6 +8,7 @@ import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
 import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
+import type { RateLimitResult } from "@rabbit-company/rate-limiter";
 
 const syncer = new PostgresSyncer(wrapGenericPostgresInterface);
 
@@ -195,29 +196,30 @@ export function createServer(hostname: string, port: number) {
           limit,
         );
       }
-      function handleResponse(res: Response) {
-        for (const [key, value] of Object.entries(corsHeaders)) {
-          res.headers.set(key, value);
-        }
-        limiter.appendHeaders(res, limit);
-        return res;
-      }
       if (url.pathname === "/postgres/all") {
         if (req.method !== "POST") {
           return new Response("Method not allowed", { status: 405 });
         }
         const res = await onSync(req);
-        return handleResponse(res);
+        return transformResponse(res, limit);
       } else if (url.pathname === "/postgres/live") {
         if (req.method !== "POST") {
           return new Response("Method not allowed", { status: 405 });
         }
         const res = await onSyncLiveQuery(req);
-        return handleResponse(res);
+        return transformResponse(res, limit);
       }
       return new Response("Not found", { status: 404 });
     },
   );
+}
+
+function transformResponse(res: Response, limit: RateLimitResult): Response {
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    res.headers.set(key, value);
+  }
+  limiter.appendHeaders(res, limit);
+  return res;
 }
 
 const corsHeaders = {
