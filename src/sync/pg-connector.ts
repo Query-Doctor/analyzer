@@ -353,7 +353,8 @@ ORDER BY
           tableSchema.columns
             .map((c) => c.columnName)
             .join(", ")
-        }) VALUES\n`;
+        })\nOVERRIDING SYSTEM VALUE VALUES\n`;
+      // overriding system value prevents breaking columns that are (generated always as)
       if (serialized.length === 0) {
         console.warn(`No rows found for ${table}. Skipping.`);
         continue;
