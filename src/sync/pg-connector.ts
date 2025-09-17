@@ -495,6 +495,7 @@ ORDER BY
       FROM pg_stat_statements
       JOIN pg_user ON pg_user.usesysid = pg_stat_statements.userid
       WHERE query not like '%pg_stat_statements%'
+        and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
         and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
