@@ -14,6 +14,7 @@ import { withSpan } from "../otel.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { Connectable } from "./connectable.ts";
 import type { Postgres, PostgresFactory } from "../sql/database.ts";
+import { SegmentedQueryCache } from "./seen-cache.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
 
@@ -53,6 +54,7 @@ export type SyncResult =
 
 export class PostgresSyncer {
   private readonly connections = new Map<string, Postgres>();
+  private readonly segmentedQueryCache = new SegmentedQueryCache();
   constructor(private readonly factory: PostgresFactory) {}
 
   async syncWithUrl(
@@ -66,7 +68,7 @@ export class PostgresSyncer {
       sql = this.factory({ url: urlString });
       this.connections.set(urlString, sql);
     }
-    const connector = new PostgresConnector(sql);
+    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
     const link = new PostgresSchemaLink(urlString, schemaName);
     const analyzer = new DependencyAnalyzer(connector, options);
     // Even though this looks like it can be parallelized, it's not possible to run it
@@ -149,7 +151,7 @@ export class PostgresSyncer {
     connectable: Connectable,
   ): Promise<RecentQueriesResult | PostgresConnectionError> {
     const sql = this.getConnection(connectable);
-    const connector = new PostgresConnector(sql);
+    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
     return connector.getRecentQueries();
   }
 

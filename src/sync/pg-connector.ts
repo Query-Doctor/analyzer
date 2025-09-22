@@ -10,6 +10,7 @@ import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
 import { Postgres } from "../sql/database.ts";
+import { SegmentedQueryCache } from "./seen-cache.ts";
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -52,13 +53,17 @@ export type SerializeResult = {
   sampledRecords: Record<TableName, number>;
 };
 
-export type RecentQuery = {
+export type RawRecentQuery = {
   username: string;
   query: string;
   meanTime: number;
   calls: string;
   rows: string;
   topLevel: boolean;
+};
+
+export type RecentQuery = {
+  firstSeen: number;
 };
 
 export type RecentQueriesError =
@@ -88,7 +93,10 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    * Otherwise we use the `order by random()` instead.
    */
   private static readonly MIN_SIZE_FOR_TABLESAMPLE = 10_000;
-  constructor(private readonly db: Postgres) {}
+  constructor(
+    private readonly db: Postgres,
+    private readonly segmentedQueryCache: SegmentedQueryCache,
+  ) {}
 
   async onStartAnalyze(_schema: string): Promise<void> {
     const results = await this
@@ -484,7 +492,7 @@ ORDER BY
 
   public async getRecentQueries(): Promise<RecentQueriesResult> {
     try {
-      const results = await this.db.exec<RecentQuery>(`
+      const results = await this.db.exec<RawRecentQuery>(`
       SELECT
         pg_user.usename as "username",
         query,
@@ -501,7 +509,7 @@ ORDER BY
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
       return {
         kind: "ok",
-        queries: results,
+        queries: this.segmentedQueryCache.sync(this.db, results),
       };
     } catch (err) {
       if (
