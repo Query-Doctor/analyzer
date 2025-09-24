@@ -6,14 +6,14 @@ import {
   PostgresVersion,
 } from "./database.ts";
 
-const DEFAULT_ITEMS_PER_PAGE = 5;
+const DEFAULT_ITEMS_PER_PAGE = 20;
 
 export function wrapGenericPostgresInterface(
   input: PostgresConnectionInput,
 ): Postgres {
   let pg: postgres.Sql;
   if ("url" in input) {
-    pg = postgres(input.url);
+    pg = postgres(input.url, { max: 20 });
   } else {
     console.error("Invalid input", input);
     throw new Error("Invalid input");
