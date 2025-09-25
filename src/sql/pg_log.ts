@@ -1,14 +1,9 @@
 export class ExplainedLog {
   private static readonly paramPattern =
     /\$(\d+)\s*=\s*(?:'([^']*)'|([^,\s]+))/g;
-  constructor(
-    private readonly json: object,
-  ) {
-  }
+  constructor(private readonly json: object) {}
 
-  static fromLog(
-    stringifiedJson: string,
-  ) {
+  static fromLog(stringifiedJson: string) {
     const json = JSON.parse(stringifiedJson);
     return new ExplainedLog(json);
   }
