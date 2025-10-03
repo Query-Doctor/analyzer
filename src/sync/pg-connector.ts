@@ -1,3 +1,4 @@
+import { format } from "sql-formatter";
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -56,6 +57,7 @@ export type SerializeResult = {
 export type RawRecentQuery = {
   username: string;
   query: string;
+  formattedQuery: string;
   meanTime: number;
   calls: string;
   rows: string;
@@ -507,9 +509,23 @@ ORDER BY
         and query not like '%@qd_introspection%'
         and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
+
+      // this is a horrible place for this code to live, it doesn't belong here
+      // the alternatives are equally as bad: repeat the logic 3 times in the various endpoints
+      const resultsWithFormattedQueries = results.map((r) => {
+        return {
+          ...r,
+          formattedQuery: format(r.query, {
+            language: "postgresql",
+            keywordCase: "upper",
+            linesBetweenQueries: 2,
+          })
+        };
+      });
+
       return {
         kind: "ok",
-        queries: this.segmentedQueryCache.sync(this.db, results),
+        queries: this.segmentedQueryCache.sync(this.db, resultsWithFormattedQueries),
       };
     } catch (err) {
       if (
