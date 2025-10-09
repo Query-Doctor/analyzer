@@ -170,6 +170,30 @@ async function onSyncLiveQuery(req: Request) {
   return Response.json(queries, { status: 200 });
 }
 
+async function onReset(req: Request) {
+  let body: LiveQueryRequest;
+  try {
+    body = LiveQueryRequest.parse(await req.json());
+  } catch (e: unknown) {
+    if (e instanceof ZodError) {
+      return Response.json(
+        {
+          kind: "error",
+          type: "invalid_body",
+          error: e.issues.map((issue) => issue.message).join("\n"),
+        },
+        { status: 400 },
+      );
+    }
+    throw e;
+  }
+  const result = await syncer.reset(body.db);
+  if (result.kind !== "ok") {
+    return Response.json(result, { status: 500 });
+  }
+  return Response.json(result, { status: 200 });
+}
+
 export function createServer(hostname: string, port: number) {
   return Deno.serve(
     { hostname, port, signal: shutdownController.signal },
@@ -207,6 +231,12 @@ export function createServer(hostname: string, port: number) {
           return new Response("Method not allowed", { status: 405 });
         }
         const res = await onSyncLiveQuery(req);
+        return transformResponse(res, limit);
+      } else if (url.pathname === "/postgres/reset") {
+        if (req.method !== "POST") {
+          return new Response("Method not allowed", { status: 405 });
+        }
+        const res = await onReset(req);
         return transformResponse(res, limit);
       }
       return new Response("Not found", { status: 404 });

@@ -57,6 +57,10 @@ export class QueryCache {
       };
     });
   }
+
+  reset() {
+    this.list = {};
+  }
 }
 
 /**
@@ -76,6 +80,11 @@ export class SegmentedQueryCache {
   store(db: Postgres, query: string) {
     const cache = this.getOrCreateCache(db);
     return cache.store(query);
+  }
+
+  reset(db: Postgres) {
+    const cache = this.getOrCreateCache(db);
+    return cache.reset();
   }
 
   private getOrCreateCache(db: Postgres): QueryCache {

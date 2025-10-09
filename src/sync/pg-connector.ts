@@ -87,6 +87,25 @@ export type RecentQueriesResult =
   }
   | RecentQueriesError;
 
+
+export type ResetPgStatStatementsError =
+  | {
+  kind: "error";
+  type: "postgres_error";
+  error: string;
+}
+  | {
+  kind: "error";
+  type: "extension_not_installed";
+  extensionName: string;
+};
+
+export type ResetPgStatStatementsResult =
+  | {
+    kind: "ok";
+  }
+  | ResetPgStatStatementsError;
+
 export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
@@ -531,6 +550,37 @@ ORDER BY
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')
+      ) {
+        return {
+          kind: "error",
+          type: "extension_not_installed",
+          extensionName: "pg_stat_statements",
+        };
+      }
+      console.error(err);
+      return {
+        kind: "error",
+        type: "postgres_error",
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  public async resetPgStatStatements(): Promise<ResetPgStatStatementsResult> {
+    try {
+      await this.db.exec(`
+          SELECT pg_stat_statements_reset(); -- @qd_introspection
+      `);
+
+      this.segmentedQueryCache.reset(this.db);
+
+      return {
+        kind: "ok",
+      };
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        err.message.includes('function pg_stat_statements_reset() does not exist')
       ) {
         return {
           kind: "error",

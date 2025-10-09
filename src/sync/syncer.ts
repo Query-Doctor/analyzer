@@ -7,6 +7,7 @@ import {
 import {
   PostgresConnector,
   RecentQueriesResult,
+  type ResetPgStatStatementsResult,
   type TableMetadata,
 } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema.ts";
@@ -153,6 +154,14 @@ export class PostgresSyncer {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
     return connector.getRecentQueries();
+  }
+
+  reset(
+    connectable: Connectable,
+  ): Promise<ResetPgStatStatementsResult | PostgresConnectionError> {
+    const sql = this.getConnection(connectable);
+    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
+    return connector.resetPgStatStatements();
   }
 
   private getConnection(connectable: Connectable) {
