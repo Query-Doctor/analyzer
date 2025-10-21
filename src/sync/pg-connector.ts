@@ -20,33 +20,16 @@ type Row = NonNullable<unknown> & {
 
 type QuotedIdentifier = string;
 
-type ColumnStats = {
-  nullFraction: number;
-  commonElems: unknown[] | null;
-  commonElemFrequencies: number[] | null;
-  distinctValues: number;
-  histogramBounds: unknown[] | null;
-  rangeBoundsHistogram: unknown[] | null;
-};
 export type ColumnMetadata = {
   columnName: QuotedIdentifier;
-  dataType: string;
-  isNullable: boolean;
-  stats: ColumnStats | null;
 };
 export type TableMetadata = {
   tableName: QuotedIdentifier;
   schemaName: QuotedIdentifier;
-  rowCountEstimate: number;
-  pageCount: number;
   columns: ColumnMetadata[];
 };
 
 type PostgresTuple = { data: Row; table: TableName };
-export type TableStats = {
-  tupleEstimate: bigint;
-  pageCount: number;
-};
 
 export type SerializeResult = {
   serialized: string;
@@ -436,31 +419,9 @@ ORDER BY
           `SELECT
           quote_ident(c.table_name) as "tableName",
           quote_ident(n.nspname) as "schemaName",
-          cl.reltuples as "rowCountEstimate",
-          cl.relpages as "pageCount",
           json_agg(
             json_build_object(
-              'columnName', quote_ident(c.column_name),
-              'dataType', c.data_type,
-              'isNullable', (c.is_nullable = 'YES')::boolean,
-              'stats', (
-                select json_build_object(
-                  'nullFraction', s.null_frac,
-                  'commonElems', s.most_common_elems,
-                  'commonElemFrequencies', s.most_common_elem_freqs,
-                  'distinctValues', s.n_distinct,
-                  'histogramBounds', s.histogram_bounds
-                )
-                  from pg_stats s
-                where
-                  s.schemaname = n.nspname
-                  and s.tablename = c.table_name
-                  and s.attname = c.column_name
-                  -- Skip dropped columns (they still exist in the schema)
-                  and a.attisdropped = false
-                  -- Skip system columns
-                  and a.attnum > 0
-              )
+              'columnName', quote_ident(c.column_name)
             )
           ORDER BY c.ordinal_position) as columns
       FROM

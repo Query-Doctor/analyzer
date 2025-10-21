@@ -171,7 +171,7 @@ export class Runner {
 
   async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {
     this.queryStats.total++;
-    const { query, parameters } = log;
+    const { query } = log;
     const queryFingerprint = await fingerprint(query);
     const fingerprintNum = parseInt(queryFingerprint, 16);
     if (log.isIntrospection) {
