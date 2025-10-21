@@ -1,11 +1,21 @@
 {
   "$schema": "https://raw.githubusercontent.com/denoland/deno/refs/heads/main/cli/schemas/config-file.v1.json",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "unstable": ["raw-imports"],
+  "permissions": {
+    "run": {
+      "sys": true,
+      "run": true,
+      "read": true,
+      "write": true,
+      "env": true,
+      "net": true
+    }
+  },
   "tasks": {
-    "start": "deno run --allow-sys --allow-run --allow-read --allow-write --allow-env --allow-net src/main.ts",
+    "start": "deno run --permission-set run src/main.ts",
     "start:dev": "deno run --env-file=.env -A src/main.ts",
-    "dev": "deno run --env-file=.env -A --watch src/main.ts"
+    "dev": "deno run --env-file=.env --permission-set=run --watch src/main.ts"
   },
   "imports": {
     "@actions/core": "npm:@actions/core@^1.11.1",

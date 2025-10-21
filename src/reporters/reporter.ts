@@ -1,4 +1,4 @@
-import type { StatisticsMode, IndexIdentifier } from "@query-doctor/core";
+import type { IndexIdentifier, StatisticsMode } from "@query-doctor/core";
 
 export interface Reporter {
   provider(): string;

@@ -3,7 +3,7 @@ import { PostgresSyncer } from "../sync/syncer.ts";
 import { log } from "../log.ts";
 import * as limiter from "./rate-limit.ts";
 import { LiveQueryRequest, SyncRequest } from "./sync.dto.ts";
-import { ZodError } from "zod/v4";
+import { ZodError } from "zod";
 import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";

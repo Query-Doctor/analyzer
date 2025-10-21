@@ -49,7 +49,6 @@ export type TableStats = {
 };
 
 export type SerializeResult = {
-  schema: TableMetadata[];
   serialized: string;
   sampledRecords: Record<TableName, number>;
 };
@@ -70,35 +69,34 @@ export type RecentQuery = {
 
 export type RecentQueriesError =
   | {
-      kind: "error";
-      type: "postgres_error";
-      error: string;
-    }
+    kind: "error";
+    type: "postgres_error";
+    error: string;
+  }
   | {
-      kind: "error";
-      type: "extension_not_installed";
-      extensionName: string;
-    };
+    kind: "error";
+    type: "extension_not_installed";
+    extensionName: string;
+  };
 
 export type RecentQueriesResult =
   | {
-      kind: "ok";
-      queries: RecentQuery[];
-    }
+    kind: "ok";
+    queries: RecentQuery[];
+  }
   | RecentQueriesError;
-
 
 export type ResetPgStatStatementsError =
   | {
-  kind: "error";
-  type: "postgres_error";
-  error: string;
-}
+    kind: "error";
+    type: "postgres_error";
+    error: string;
+  }
   | {
-  kind: "error";
-  type: "extension_not_installed";
-  extensionName: string;
-};
+    kind: "error";
+    type: "extension_not_installed";
+    extensionName: string;
+  };
 
 export type ResetPgStatStatementsResult =
   | {
@@ -134,9 +132,11 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    * The table and column names are quoted according to postgres rules
    */
   async dependencies(schema: string): Promise<Dependency[]> {
-    const out = await withSpan("connector.dependencies", () =>
-      this.db.exec<Dependency>(
-        `
+    const out = await withSpan(
+      "connector.dependencies",
+      () =>
+        this.db.exec<Dependency>(
+          `
 SELECT
     quote_ident(pg_tables.schemaname)  as "sourceSchema",
     quote_ident(pg_tables.tablename) AS "sourceTable",
@@ -194,8 +194,8 @@ WHERE
 ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
-        [schema],
-      ),
+          [schema],
+        ),
     )();
 
     return out;
@@ -206,11 +206,13 @@ ORDER BY
       .map((key, i) => `${doubleQuote(key)} = $${i + 1}`)
       .join(" AND ");
     // TODO: pass the schema along
-    const sqlString = `select *, ctid from ${schema}.${table} where ${columnsText} limit 1 -- @qd_introspection`;
+    const sqlString =
+      `select *, ctid from ${schema}.${table} where ${columnsText} limit 1 -- @qd_introspection`;
     const params = Object.values(values);
     log.debug(`${sqlString} : [${params.join(", ")}]`, "pg-connector:get");
-    const data = await withSpan("connector.get", () =>
-      this.db.exec<Row & { ctid?: string }>(sqlString, params),
+    const data = await withSpan(
+      "connector.get",
+      () => this.db.exec<Row & { ctid?: string }>(sqlString, params),
     )();
     if (data.length === 0) {
       return;
@@ -309,9 +311,13 @@ ORDER BY
     }
     const comments = [
       `-- START:Sampled data`,
-      `-- Sampled by @query-doctor/analyzer on ${new Date().toISOString()} | options = ${JSON.stringify(
-        options,
-      )}`,
+      `-- Sampled by @query-doctor/analyzer on ${
+        new Date().toISOString()
+      } | options = ${
+        JSON.stringify(
+          options,
+        )
+      }`,
       "--",
       "-- Note: Using session_replication_role to prevent foreign key constraints from being checked.",
       "-- If adding new rows manually, you might want to put new insert statements after the sampled data.",
@@ -346,22 +352,29 @@ ORDER BY
       const columns = tableSchema.columns.map(
         (c) => `quote_literal(${c.columnName}) as ${c.columnName}`,
       );
-      const query = `select ${columns.join(
-        ", ",
-      )} from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
+      const query = `select ${
+        columns.join(
+          ", ",
+        )
+      } from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
       log.debug(
         `${query} : [${allCtids.join(", ")}]`,
         "pg-connector:serialize",
       );
-      const serialized = await withSpan("connector.get", () =>
-        this.db.exec(query, [allCtids]),
+      const serialized = await withSpan(
+        "connector.get",
+        () => this.db.exec(query, [allCtids]),
       )();
 
       const estimate = this.tupleEstimates.get(table) ?? "?";
-      const comment = `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
-      const insertStatement = `${comment}\nINSERT INTO ${schemaName}.${table} (${tableSchema.columns
-        .map((c) => c.columnName)
-        .join(", ")})\nOVERRIDING SYSTEM VALUE VALUES\n`;
+      const comment =
+        `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
+      const insertStatement =
+        `${comment}\nINSERT INTO ${schemaName}.${table} (${
+          tableSchema.columns
+            .map((c) => c.columnName)
+            .join(", ")
+        })\nOVERRIDING SYSTEM VALUE VALUES\n`;
       // overriding system value prevents breaking columns that are (generated always as)
       if (serialized.length === 0) {
         console.warn(`No rows found for ${table}. Skipping.`);
@@ -370,29 +383,31 @@ ORDER BY
       const serializedRows = [];
       for (const row of serialized) {
         serializedRows.push(
-          `(${tableSchema.columns
-            .map((col) => {
-              // TODO: find a better way to do this
-              // We shouldn't just pass around a bare string representing identifiers
-              // and it would be better to turn them into something like
-              // ```ts
-              // type Identifier = { name: string; quoted: boolean; };
-              // ```
-              // but the problem is we often need to use these identifiers as map keys
-              // which doesn't work well with objects.
-              const quotedStrippedColName = col.columnName.replace(
-                /(^"|"$)/g,
-                "",
-              );
-              const value = (row as Record<string, unknown>)[
-                quotedStrippedColName
-              ];
-              if (value === null) {
-                return "NULL";
-              }
-              return value;
-            })
-            .join(", ")})`,
+          `(${
+            tableSchema.columns
+              .map((col) => {
+                // TODO: find a better way to do this
+                // We shouldn't just pass around a bare string representing identifiers
+                // and it would be better to turn them into something like
+                // ```ts
+                // type Identifier = { name: string; quoted: boolean; };
+                // ```
+                // but the problem is we often need to use these identifiers as map keys
+                // which doesn't work well with objects.
+                const quotedStrippedColName = col.columnName.replace(
+                  /(^"|"$)/g,
+                  "",
+                );
+                const value = (row as Record<string, unknown>)[
+                  quotedStrippedColName
+                ];
+                if (value === null) {
+                  return "NULL";
+                }
+                return value;
+              })
+              .join(", ")
+          })`,
         );
       }
       out += `${insertStatement}  ${serializedRows.join(",\n  ")};\n\n`;
@@ -404,7 +419,6 @@ ORDER BY
     );
     out += `-- END:Sampled data\nSET session_replication_role = 'origin';\n\n`;
     return {
-      schema,
       serialized: out,
       sampledRecords,
     };
@@ -415,9 +429,11 @@ ORDER BY
   }
 
   public async getSchema(schemaName: string): Promise<TableMetadata[]> {
-    const results = await withSpan("connector.getSchema", () =>
-      this.db.exec<TableMetadata>(
-        `SELECT
+    const results = await withSpan(
+      "connector.getSchema",
+      () =>
+        this.db.exec<TableMetadata>(
+          `SELECT
           quote_ident(c.table_name) as "tableName",
           quote_ident(n.nspname) as "schemaName",
           cl.reltuples as "rowCountEstimate",
@@ -466,8 +482,8 @@ ORDER BY
       GROUP BY
           n.nspname, c.table_name, cl.reltuples, cl.relpages; -- @qd_introspection
     `,
-        [schemaName],
-      ),
+          [schemaName],
+        ),
     )();
     return results;
   }
@@ -512,13 +528,16 @@ ORDER BY
             language: "postgresql",
             keywordCase: "upper",
             linesBetweenQueries: 2,
-          })
+          }),
         };
       });
 
       return {
         kind: "ok",
-        queries: this.segmentedQueryCache.sync(this.db, resultsWithFormattedQueries),
+        queries: this.segmentedQueryCache.sync(
+          this.db,
+          resultsWithFormattedQueries,
+        ),
       };
     } catch (err) {
       if (
@@ -554,7 +573,9 @@ ORDER BY
     } catch (err) {
       if (
         err instanceof Error &&
-        err.message.includes('function pg_stat_statements_reset() does not exist')
+        err.message.includes(
+          "function pg_stat_statements_reset() does not exist",
+        )
       ) {
         return {
           kind: "error",

@@ -8,13 +8,18 @@ import {
   PostgresConnector,
   RecentQueriesResult,
   type ResetPgStatStatementsResult,
-  type TableMetadata,
 } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema.ts";
 import { withSpan } from "../otel.ts";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { Connectable } from "./connectable.ts";
-import type { Postgres, PostgresFactory } from "../sql/database.ts";
+import {
+  ExportedStats,
+  type Postgres,
+  type PostgresFactory,
+  PostgresVersion,
+  Statistics,
+} from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
@@ -47,7 +52,7 @@ export type SyncResult =
     sampledRecords: Record<string, number>;
     notices: SyncNotice[];
     queries: RecentQueriesResult;
-    metadata: TableMetadata[];
+    stats: ExportedStats[];
   }
   | PostgresConnectionError
   | PostgresError
@@ -56,6 +61,7 @@ export type SyncResult =
 export class PostgresSyncer {
   private readonly connections = new Map<string, Postgres>();
   private readonly segmentedQueryCache = new SegmentedQueryCache();
+
   constructor(private readonly factory: PostgresFactory) {}
 
   async syncWithUrl(
@@ -77,12 +83,22 @@ export class PostgresSyncer {
     // causes inconsistent results when querying regclasses. They get prefixed with
     // the current search_path which can cause race conditions when pg_dump sets it to ''
     const [
+      stats,
       databaseInfo,
       recentQueries,
       schema,
       { dependencies, serialized: serializedResult },
       privilege,
     ] = await Promise.all([
+      withSpan("stats", async () => {
+        const a = await Statistics.dumpStats(
+          sql,
+          PostgresVersion.parse("17"),
+          "full",
+        );
+        console.log(a);
+        return a;
+      })(),
       withSpan("getDatabaseInfo", () => {
         return connector.getDatabaseInfo();
       })(),
@@ -144,7 +160,7 @@ export class PostgresSyncer {
       notices,
       queries: recentQueries,
       setup: wrapped,
-      metadata: serializedResult.schema,
+      stats,
     };
   }
 

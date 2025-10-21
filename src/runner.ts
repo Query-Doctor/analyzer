@@ -5,14 +5,14 @@ import { Readable } from "node:stream";
 import { fingerprint } from "@libpg-query/parser";
 import { preprocessEncodedJson } from "./sql/json.ts";
 import {
-  IndexOptimizer,
-  Statistics,
-  IndexedTable,
-  StatisticsMode,
   Analyzer,
   ExportedStats,
+  IndexedTable,
+  IndexOptimizer,
   OptimizeResult,
   PostgresQueryBuilder,
+  Statistics,
+  StatisticsMode,
 } from "@query-doctor/core";
 import { ExplainedLog } from "./sql/pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
@@ -193,7 +193,7 @@ export class Runner {
       await analyzer.analyze(this.formatQuery(query));
 
     const selectsCatalog = referencedTables.find((table) =>
-      table.startsWith("pg_"),
+      table.startsWith("pg_")
     );
     if (selectsCatalog) {
       if (env.DEBUG) {
@@ -255,9 +255,11 @@ export class Runner {
                 (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")})`;
+                return `${existing.schema_name}.${existing.table_name}(${
+                  existing.index_columns
+                    .map((c) => `"${c.name}" ${c.order}`)
+                    .join(", ")
+                })`;
               }
             })
             .filter((i) => i !== undefined);
@@ -359,21 +361,21 @@ export class Runner {
 
 export type QueryProcessResult =
   | {
-      kind: "invalid";
-    }
+    kind: "invalid";
+  }
   | {
-      kind: "cost_past_threshold";
-      warning: ReportQueryCostWarning;
-    }
+    kind: "cost_past_threshold";
+    warning: ReportQueryCostWarning;
+  }
   | {
-      kind: "recommendation";
-      recommendation: ReportIndexRecommendation;
-    }
+    kind: "recommendation";
+    recommendation: ReportIndexRecommendation;
+  }
   | {
-      kind: "error";
-      error: Error;
-    }
+    kind: "error";
+    error: Error;
+  }
   | {
-      kind: "zero_cost_plan";
-      explainPlan: object;
-    };
+    kind: "zero_cost_plan";
+    explainPlan: object;
+  };

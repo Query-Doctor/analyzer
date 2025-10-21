@@ -4,7 +4,7 @@ export const tracer = trace.getTracer("sync", "0.0.1");
 
 export function withSpan<Args extends unknown[], T>(
   name: string,
-  cb: (span: Span, ...args: Args) => Promise<T> | T
+  cb: (span: Span, ...args: Args) => Promise<T> | T,
 ): (...args: Args) => Promise<T> {
   return (...args: Args) => {
     return tracer.startActiveSpan(name, async (span) => {

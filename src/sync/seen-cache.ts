@@ -1,6 +1,5 @@
 import type { RawRecentQuery, RecentQuery } from "./pg-connector.ts";
 import type { Postgres } from "@query-doctor/core";
-
 interface CacheEntry {
   firstSeen: number;
   lastSeen: number;

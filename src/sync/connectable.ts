@@ -13,7 +13,7 @@ export class Connectable {
    */
   static transform(
     urlString: string,
-    ctx: z.RefinementCtx<string>
+    ctx: z.RefinementCtx<string>,
   ): Connectable {
     if (
       !urlString.startsWith("postgres://") &&
@@ -43,8 +43,7 @@ export class Connectable {
     // we don't want to allow localhost access for hosted sync instances
     // to prevent users from connecting to our hosted db
     // (even though all our dbs should should be password protected)
-    const isLocalhost =
-      url.hostname === "localhost" ||
+    const isLocalhost = url.hostname === "localhost" ||
       // ipv4 localhost
       /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(url.hostname) ||
       // ipv6 localhost
@@ -66,7 +65,8 @@ export class Connectable {
         : "https://supabase.com/docs/guides/troubleshooting/supabase--your-network-ipv4-and-ipv6-compatibility-cHe3BP";
       ctx.addIssue({
         code: "custom",
-        message: `You are using a direct connection to a supabase instance. Supabase does not accept IPv4 connections, try using a transaction pooler connection instead ${link}`,
+        message:
+          `You are using a direct connection to a supabase instance. Supabase does not accept IPv4 connections, try using a transaction pooler connection instead ${link}`,
       });
     }
     if (ctx.issues.length > 0) {
