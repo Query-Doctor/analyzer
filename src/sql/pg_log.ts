@@ -39,8 +39,8 @@ export class ExplainedLog {
   }
 
   private extractParams(logLine: string) {
-    const paramsArray = [];
-    let match;
+    const paramsArray: string[] = [];
+    let match: RegExpExecArray | null;
 
     while ((match = ExplainedLog.paramPattern.exec(logLine)) !== null) {
       const paramValue = match[2] !== undefined ? match[2] : match[3];
