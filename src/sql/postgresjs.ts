@@ -1,10 +1,10 @@
 import postgres from "postgresjs";
 import {
-  Postgres,
-  PostgresConnectionInput,
-  PostgresTransaction,
+  type Postgres,
+  type PostgresConnectionInput,
+  type PostgresTransaction,
   PostgresVersion,
-} from "./database.ts";
+} from "@query-doctor/core";
 
 const DEFAULT_ITEMS_PER_PAGE = 20;
 
@@ -15,15 +15,15 @@ export function wrapGenericPostgresInterface(
   if ("url" in input) {
     pg = postgres(input.url, { max: 20 });
   } else {
-    console.error("Invalid input", input);
     throw new Error("Invalid input");
   }
   return {
-    exec: pg.unsafe,
+    exec: async (query, params) => {
+      return pg.unsafe(query, params as postgres.ParameterOrJSON<never>[]);
+    },
     serverNum: async () =>
       PostgresVersion.parse(
-        (await pg.unsafe(`show server_version_num`))[0]
-          .server_version_num,
+        (await pg.unsafe(`show server_version_num`))[0].server_version_num,
       ),
     transaction: async <T>(
       callback: (tx: PostgresTransaction) => Promise<T>,
@@ -42,10 +42,9 @@ export function wrapGenericPostgresInterface(
       params?: unknown[],
       options?: { size?: number },
     ) {
-      const result = pg.unsafe(
-        query,
-        params as postgres.ParameterOrJSON<never>[],
-      ).cursor(options?.size ?? DEFAULT_ITEMS_PER_PAGE);
+      const result = pg
+        .unsafe(query, params as postgres.ParameterOrJSON<never>[])
+        .cursor(options?.size ?? DEFAULT_ITEMS_PER_PAGE);
       for await (const row of result) {
         // TODO: is this safe?
         yield* row as T[];

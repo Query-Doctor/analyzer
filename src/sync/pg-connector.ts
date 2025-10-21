@@ -10,7 +10,7 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
-import { Postgres } from "../sql/database.ts";
+import { Postgres } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 
 const ctidSymbol = Symbol("ctid");
@@ -70,21 +70,21 @@ export type RecentQuery = {
 
 export type RecentQueriesError =
   | {
-    kind: "error";
-    type: "postgres_error";
-    error: string;
-  }
+      kind: "error";
+      type: "postgres_error";
+      error: string;
+    }
   | {
-    kind: "error";
-    type: "extension_not_installed";
-    extensionName: string;
-  };
+      kind: "error";
+      type: "extension_not_installed";
+      extensionName: string;
+    };
 
 export type RecentQueriesResult =
   | {
-    kind: "ok";
-    queries: RecentQuery[];
-  }
+      kind: "ok";
+      queries: RecentQuery[];
+    }
   | RecentQueriesError;
 
 
@@ -120,10 +120,9 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   ) {}
 
   async onStartAnalyze(_schema: string): Promise<void> {
-    const results = await this
-      .db.exec<{ table: string; count: number }>(
-        `SELECT relname AS table, n_live_tup AS count FROM pg_stat_user_tables`,
-      );
+    const results = await this.db.exec<{ table: string; count: number }>(
+      `SELECT relname AS table, n_live_tup AS count FROM pg_stat_user_tables`,
+    );
     for (const result of results) {
       this.tupleEstimates.set(result.table, result.count);
     }
@@ -135,11 +134,9 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    * The table and column names are quoted according to postgres rules
    */
   async dependencies(schema: string): Promise<Dependency[]> {
-    const out = await withSpan(
-      "connector.dependencies",
-      () =>
-        this.db.exec<Dependency>(
-          `
+    const out = await withSpan("connector.dependencies", () =>
+      this.db.exec<Dependency>(
+        `
 SELECT
     quote_ident(pg_tables.schemaname)  as "sourceSchema",
     quote_ident(pg_tables.tablename) AS "sourceTable",
@@ -197,8 +194,8 @@ WHERE
 ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
-          [schema],
-        ),
+        [schema],
+      ),
     )();
 
     return out;
@@ -209,13 +206,11 @@ ORDER BY
       .map((key, i) => `${doubleQuote(key)} = $${i + 1}`)
       .join(" AND ");
     // TODO: pass the schema along
-    const sqlString =
-      `select *, ctid from ${schema}.${table} where ${columnsText} limit 1 -- @qd_introspection`;
+    const sqlString = `select *, ctid from ${schema}.${table} where ${columnsText} limit 1 -- @qd_introspection`;
     const params = Object.values(values);
     log.debug(`${sqlString} : [${params.join(", ")}]`, "pg-connector:get");
-    const data = await withSpan(
-      "connector.get",
-      () => this.db.exec<Row & { ctid?: string }>(sqlString, params),
+    const data = await withSpan("connector.get", () =>
+      this.db.exec<Row & { ctid?: string }>(sqlString, params),
     )();
     if (data.length === 0) {
       return;
@@ -254,11 +249,7 @@ ORDER BY
         `No tuple estimate for ${table}. Falling back to slow query. Is the db vacuum analyzed?`,
       );
     }
-    let cursor: AsyncIterable<
-      Row & { ctid?: string },
-      void,
-      unknown
-    >;
+    let cursor: AsyncIterable<Row & { ctid?: string }, void, unknown>;
     if (
       tupleEstimate === undefined ||
       tupleEstimate < PostgresConnector.MIN_SIZE_FOR_TABLESAMPLE
@@ -271,12 +262,11 @@ ORDER BY
         );
     } else {
       // this really needs to be tweaked lol
-      cursor = this.db
-        .cursor(
-          `select *, ctid from ${schema}.${table} tablesample bernoulli(${
-            options.requiredRows / tupleEstimate + 10
-          }) repeatable(1) -- @qd_introspection`,
-        );
+      cursor = this.db.cursor(
+        `select *, ctid from ${schema}.${table} tablesample bernoulli(${
+          options.requiredRows / tupleEstimate + 10
+        }) repeatable(1) -- @qd_introspection`,
+      );
     }
     for await (const data of cursor) {
       if (shutdownController.signal.aborted) {
@@ -319,13 +309,9 @@ ORDER BY
     }
     const comments = [
       `-- START:Sampled data`,
-      `-- Sampled by @query-doctor/analyzer on ${
-        new Date().toISOString()
-      } | options = ${
-        JSON.stringify(
-          options,
-        )
-      }`,
+      `-- Sampled by @query-doctor/analyzer on ${new Date().toISOString()} | options = ${JSON.stringify(
+        options,
+      )}`,
       "--",
       "-- Note: Using session_replication_role to prevent foreign key constraints from being checked.",
       "-- If adding new rows manually, you might want to put new insert statements after the sampled data.",
@@ -357,32 +343,25 @@ ORDER BY
         continue;
       }
       const allCtids = rows.map((row) => row[ctidSymbol]);
-      const columns = tableSchema.columns.map((c) =>
-        `quote_literal(${c.columnName}) as ${c.columnName}`
+      const columns = tableSchema.columns.map(
+        (c) => `quote_literal(${c.columnName}) as ${c.columnName}`,
       );
-      const query = `select ${
-        columns.join(
-          ", ",
-        )
-      } from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
+      const query = `select ${columns.join(
+        ", ",
+      )} from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
       log.debug(
         `${query} : [${allCtids.join(", ")}]`,
         "pg-connector:serialize",
       );
-      const serialized = await withSpan(
-        "connector.get",
-        () => this.db.exec(query, [allCtids]),
+      const serialized = await withSpan("connector.get", () =>
+        this.db.exec(query, [allCtids]),
       )();
 
       const estimate = this.tupleEstimates.get(table) ?? "?";
-      const comment =
-        `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
-      const insertStatement =
-        `${comment}\nINSERT INTO ${schemaName}.${table} (${
-          tableSchema.columns
-            .map((c) => c.columnName)
-            .join(", ")
-        })\nOVERRIDING SYSTEM VALUE VALUES\n`;
+      const comment = `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
+      const insertStatement = `${comment}\nINSERT INTO ${schemaName}.${table} (${tableSchema.columns
+        .map((c) => c.columnName)
+        .join(", ")})\nOVERRIDING SYSTEM VALUE VALUES\n`;
       // overriding system value prevents breaking columns that are (generated always as)
       if (serialized.length === 0) {
         console.warn(`No rows found for ${table}. Skipping.`);
@@ -391,30 +370,29 @@ ORDER BY
       const serializedRows = [];
       for (const row of serialized) {
         serializedRows.push(
-          `(${
-            tableSchema.columns
-              .map((col) => {
-                // TODO: find a better way to do this
-                // We shouldn't just pass around a bare string representing identifiers
-                // and it would be better to turn them into something like
-                // ```ts
-                // type Identifier = { name: string; quoted: boolean; };
-                // ```
-                // but the problem is we often need to use these identifiers as map keys
-                // which doesn't work well with objects.
-                const quotedStrippedColName = col.columnName.replace(
-                  /(^"|"$)/g,
-                  "",
-                );
-                const value =
-                  (row as Record<string, unknown>)[quotedStrippedColName];
-                if (value === null) {
-                  return "NULL";
-                }
-                return value;
-              })
-              .join(", ")
-          })`,
+          `(${tableSchema.columns
+            .map((col) => {
+              // TODO: find a better way to do this
+              // We shouldn't just pass around a bare string representing identifiers
+              // and it would be better to turn them into something like
+              // ```ts
+              // type Identifier = { name: string; quoted: boolean; };
+              // ```
+              // but the problem is we often need to use these identifiers as map keys
+              // which doesn't work well with objects.
+              const quotedStrippedColName = col.columnName.replace(
+                /(^"|"$)/g,
+                "",
+              );
+              const value = (row as Record<string, unknown>)[
+                quotedStrippedColName
+              ];
+              if (value === null) {
+                return "NULL";
+              }
+              return value;
+            })
+            .join(", ")})`,
         );
       }
       out += `${insertStatement}  ${serializedRows.join(",\n  ")};\n\n`;
@@ -437,11 +415,9 @@ ORDER BY
   }
 
   public async getSchema(schemaName: string): Promise<TableMetadata[]> {
-    const results = await withSpan(
-      "connector.getSchema",
-      () =>
-        this.db.exec<TableMetadata>(
-          `SELECT
+    const results = await withSpan("connector.getSchema", () =>
+      this.db.exec<TableMetadata>(
+        `SELECT
           quote_ident(c.table_name) as "tableName",
           quote_ident(n.nspname) as "schemaName",
           cl.reltuples as "rowCountEstimate",
@@ -460,7 +436,7 @@ ORDER BY
                   'histogramBounds', s.histogram_bounds
                 )
                   from pg_stats s
-                where 
+                where
                   s.schemaname = n.nspname
                   and s.tablename = c.table_name
                   and s.attname = c.column_name
@@ -490,19 +466,17 @@ ORDER BY
       GROUP BY
           n.nspname, c.table_name, cl.reltuples, cl.relpages; -- @qd_introspection
     `,
-          [schemaName],
-        ),
+        [schemaName],
+      ),
     )();
     return results;
   }
 
   public async getDatabaseInfo() {
-    const results = await this.db.exec<
-      {
-        serverVersion: string;
-        serverVersionNum: string;
-      }
-    >(
+    const results = await this.db.exec<{
+      serverVersion: string;
+      serverVersionNum: string;
+    }>(
       'select version() as "serverVersion", current_setting(\'server_version_num\') as "serverVersionNum"; -- @qd_introspection',
     );
     return {
@@ -601,9 +575,10 @@ ORDER BY
     username: string;
     isSuperuser: boolean;
   }> {
-    const [results] = await this.db.exec<
-      { username: string; isSuperuser: boolean }
-    >(
+    const [results] = await this.db.exec<{
+      username: string;
+      isSuperuser: boolean;
+    }>(
       `SELECT usename as "username", usesuper as "isSuperuser" FROM pg_user WHERE usename = current_user; -- @qd_introspection`,
     );
     if (!results) {

@@ -1,4 +1,4 @@
-import type { StatisticsMode } from "../optimizer/statistics.ts";
+import type { StatisticsMode, IndexIdentifier } from "@query-doctor/core";
 
 export interface Reporter {
   provider(): string;
@@ -10,6 +10,7 @@ export function isQueryLong(query: string): boolean {
     return true;
   }
   const lines = query.split(/\n/g).length;
+
   return lines > 10;
 }
 
@@ -58,7 +59,6 @@ export type ReportMetadata = {
 };
 
 declare const s: unique symbol;
-export type IndexIdentifier = string & { [s]: never };
 
 export interface ReportStatistics {
   /** Total number of queries seen in the log */

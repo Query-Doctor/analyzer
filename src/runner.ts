@@ -3,10 +3,17 @@ import { format } from "sql-formatter";
 import csv from "fast-csv";
 import { Readable } from "node:stream";
 import { fingerprint } from "@libpg-query/parser";
-import { Analyzer } from "./sql/analyzer.ts";
 import { preprocessEncodedJson } from "./sql/json.ts";
-import { IndexOptimizer } from "./optimizer/genalgo.ts";
-import { IndexedTable, Statistics } from "./optimizer/statistics.ts";
+import {
+  IndexOptimizer,
+  Statistics,
+  IndexedTable,
+  StatisticsMode,
+  Analyzer,
+  ExportedStats,
+  OptimizeResult,
+  PostgresQueryBuilder,
+} from "@query-doctor/core";
 import { ExplainedLog } from "./sql/pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
@@ -19,6 +26,7 @@ import {
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 import { env } from "./env.ts";
 import { wrapGenericPostgresInterface } from "./sql/postgresjs.ts";
+import { parse } from "@libpg-query/parser";
 
 export class Runner {
   private readonly seenQueries = new Set<number>();
@@ -36,22 +44,15 @@ export class Runner {
     private readonly maxCost?: number,
   ) {}
 
-  static async build(
-    options: {
-      postgresUrl: string;
-      statisticsPath?: string;
-      maxCost?: number;
-      logPath: string;
-    },
-  ) {
+  static async build(options: {
+    postgresUrl: string;
+    statisticsPath?: string;
+    maxCost?: number;
+    logPath: string;
+  }) {
     const db = wrapGenericPostgresInterface({ url: options.postgresUrl });
-    // const pgVersion = await getPostgresVersion(db);
-    const pgVersion = await db.serverNum();
-    const stats = await Statistics.fromPostgres(
-      db,
-      pgVersion,
-      options.statisticsPath,
-    );
+    const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
+    const stats = await Statistics.fromPostgres(db, statisticsMode);
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(db, stats, existingIndexes);
     return new Runner(
@@ -187,12 +188,12 @@ export class Runner {
     }
     this.seenQueries.add(fingerprintNum);
 
-    const analyzer = new Analyzer();
+    const analyzer = new Analyzer(parse);
     const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
       await analyzer.analyze(this.formatQuery(query));
 
     const selectsCatalog = referencedTables.find((table) =>
-      table.startsWith("pg_")
+      table.startsWith("pg_"),
     );
     if (selectsCatalog) {
       if (env.DEBUG) {
@@ -213,9 +214,7 @@ export class Runner {
         console.log(ansiHighlightedQuery);
         console.log("No index candidates found", fingerprintNum);
       }
-      if (
-        typeof this.maxCost === "number" && log.plan.cost > this.maxCost
-      ) {
+      if (typeof this.maxCost === "number" && log.plan.cost > this.maxCost) {
         return {
           kind: "cost_past_threshold",
           warning: {
@@ -235,10 +234,11 @@ export class Runner {
         this.printLegend();
         console.log(ansiHighlightedQuery);
         // TODO: give concrete type
-        let out: Awaited<ReturnType<typeof this.optimizer.run>>;
+        let out: OptimizeResult;
         this.queryStats.matched++;
         try {
-          out = await this.optimizer.run(query, parameters, indexCandidates);
+          const builder = new PostgresQueryBuilder(query);
+          out = await this.optimizer.run(builder, indexCandidates);
         } catch (err) {
           console.error(err);
           console.error(
@@ -255,11 +255,9 @@ export class Runner {
                 (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${
-                  existing.index_columns
-                    .map((c) => `"${c.name}" ${c.order}`)
-                    .join(", ")
-                })`;
+                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
+                  .map((c) => `"${c.name}" ${c.order}`)
+                  .join(", ")})`;
               }
             })
             .filter((i) => i !== undefined);
@@ -285,7 +283,8 @@ export class Runner {
           } else {
             console.log("No new indexes found");
             if (
-              typeof this.maxCost === "number" && out.finalCost > this.maxCost
+              typeof this.maxCost === "number" &&
+              out.finalCost > this.maxCost
             ) {
               console.log(
                 "Query cost is too high",
@@ -342,20 +341,39 @@ export class Runner {
     console.log(`-----------------------------------`);
     console.log();
   }
+
+  private static decideStatisticsMode(path?: string): StatisticsMode {
+    if (path) {
+      const data = Runner.readStatisticsFile(path);
+      return Statistics.statsModeFromExport(data);
+    } else {
+      return Statistics.defaultStatsMode;
+    }
+  }
+  private static readStatisticsFile(path: string): ExportedStats[] {
+    const data = Deno.readFileSync(path);
+    const json = JSON.parse(new TextDecoder().decode(data));
+    return ExportedStats.array().parse(json);
+  }
 }
 
-export type QueryProcessResult = {
-  kind: "invalid";
-} | {
-  kind: "cost_past_threshold";
-  warning: ReportQueryCostWarning;
-} | {
-  kind: "recommendation";
-  recommendation: ReportIndexRecommendation;
-} | {
-  kind: "error";
-  error: Error;
-} | {
-  kind: "zero_cost_plan";
-  explainPlan: object;
-};
+export type QueryProcessResult =
+  | {
+      kind: "invalid";
+    }
+  | {
+      kind: "cost_past_threshold";
+      warning: ReportQueryCostWarning;
+    }
+  | {
+      kind: "recommendation";
+      recommendation: ReportIndexRecommendation;
+    }
+  | {
+      kind: "error";
+      error: Error;
+    }
+  | {
+      kind: "zero_cost_plan";
+      explainPlan: object;
+    };
