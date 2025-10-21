@@ -29,6 +29,6 @@
     "sql-formatter": "npm:sql-formatter@^15.6.6",
     "sql-highlight": "npm:sql-highlight@^6.1.0",
     "postgresjs": "https://deno.land/x/postgresjs@v3.4.7/mod.js",
-    "zod": "npm:zod@^4.0.17"
+    "zod": "npm:zod@^4.1.12"
   }
 }

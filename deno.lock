@@ -24,7 +24,7 @@
     "npm:pgsql-deparser@^17.11.1": "17.11.1",
     "npm:sql-formatter@^15.6.6": "15.6.6",
     "npm:sql-highlight@^6.1.0": "6.1.0",
-    "npm:zod@^4.0.17": "4.0.17"
+    "npm:zod@^4.1.12": "4.1.12"
   },
   "jsr": {
     "@opentelemetry/api@1.9.0": {
@@ -552,8 +552,8 @@
     "wrappy@1.0.2": {
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ=="
     },
-    "zod@4.0.17": {
-      "integrity": "sha512-1PHjlYRevNxxdy2JZ8JcNAw7rX8V9P1AKkP+x/xZfxB0K5FYfuV+Ug6P/6NVSR2jHQ+FzDDoDHS04nYUsOIyLQ=="
+    "zod@4.1.12": {
+      "integrity": "sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ=="
     }
   },
   "redirects": {
@@ -939,7 +939,7 @@
       "npm:pgsql-deparser@^17.11.1",
       "npm:sql-formatter@^15.6.6",
       "npm:sql-highlight@^6.1.0",
-      "npm:zod@^4.0.17"
+      "npm:zod@^4.1.12"
     ]
   }
 }

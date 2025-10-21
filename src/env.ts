@@ -1,11 +1,11 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { mapValues } from "@std/collections";
 
 const envSchema = z.object({
-  CI: z.coerce.boolean().default(false),
+  CI: z.stringbool().default(false),
   // sync
   PG_DUMP_BINARY: z.string().optional(),
-  HOSTED: z.coerce.boolean().default(false),
+  HOSTED: z.stringbool().default(false),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().min(1024).max(65535).default(2345),
   // analyzer
@@ -13,11 +13,11 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   LOG_PATH: z.string().optional(),
   POSTGRES_URL: z.string().optional(),
-  DEBUG: z.coerce.boolean().default(false),
+  DEBUG: z.stringbool().default(false),
   STATISTICS_PATH: z.string().optional(),
 });
 
 // we want to avoid asking for ALL env permissions if possible
 export const env = envSchema.parse(
-  mapValues(envSchema.def.shape, (_, key) => Deno.env.get(key)),
+  mapValues(envSchema.shape, (_, key) => Deno.env.get(key)),
 );
