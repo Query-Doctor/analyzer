@@ -89,7 +89,6 @@ export class SegmentedQueryCache {
   private getOrCreateCache(db: Postgres): QueryCache {
     let cache = this.dbs.get(db);
     if (!cache) {
-      console.log("Creating new query cache for db", db);
       cache = new QueryCache();
       this.dbs.set(db, cache);
     }
