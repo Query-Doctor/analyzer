@@ -1,4 +1,5 @@
 import { format } from "sql-formatter";
+import schemaDumpSql from "./schema_dump.sql" with { type: "text" };
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -12,6 +13,8 @@ import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
 import { Postgres } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
+import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
+import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -33,6 +36,7 @@ type PostgresTuple = { data: Row; table: TableName };
 
 export type SerializeResult = {
   serialized: string;
+  schema: FullSchema;
   sampledRecords: Record<TableName, number>;
 };
 
@@ -280,16 +284,18 @@ ORDER BY
     tables: TableRows<Row>,
     options: DependencyAnalyzerOptions,
   ): Promise<SerializeResult> {
-    const schema = await this.getSchema(schemaName);
+    const schema = await this.getSchema();
     const mkKey = (schema: string, table: string, column: string) =>
       `${schema.toLowerCase()}:${table.toLowerCase()}:${column}`;
-    const schemaMap = new Map<string, ColumnMetadata>();
-    for (const table of schema) {
-      for (const column of table.columns) {
-        schemaMap.set(
-          mkKey(table.schemaName, table.tableName, column.columnName),
-          column,
-        );
+    const schemaMap = new Map<string, FullSchemaColumn>();
+    if (schema.tables) {
+      for (const table of schema.tables) {
+        for (const column of table.columns) {
+          schemaMap.set(
+            mkKey(table.schemaName, table.tableName, column.name),
+            column,
+          );
+        }
       }
     }
     const comments = [
@@ -322,9 +328,9 @@ ORDER BY
 
     // TODO: batch this into a single query
     for (const [table, rows] of Object.entries(tables)) {
-      const tableSchema = schema.find(
-        (s) => s.tableName === table && s.schemaName === schemaName,
-      );
+      const tableSchema = schema.tables?.find((s) => {
+        return s.tableName === table && s.schemaName === schemaName;
+      });
       if (!tableSchema) {
         console.warn(
           `No schema found for ${table}. Skipping. Is there a quoting mismatch with the table name?`,
@@ -333,7 +339,7 @@ ORDER BY
       }
       const allCtids = rows.map((row) => row[ctidSymbol]);
       const columns = tableSchema.columns.map(
-        (c) => `quote_literal(${c.columnName}) as ${c.columnName}`,
+        (c) => `quote_literal(${c.name}) as ${c.name}`,
       );
       const query = `select ${
         columns.join(
@@ -355,7 +361,7 @@ ORDER BY
       const insertStatement =
         `${comment}\nINSERT INTO ${schemaName}.${table} (${
           tableSchema.columns
-            .map((c) => c.columnName)
+            .map((c) => c.name)
             .join(", ")
         })\nOVERRIDING SYSTEM VALUE VALUES\n`;
       // overriding system value prevents breaking columns that are (generated always as)
@@ -377,10 +383,7 @@ ORDER BY
                 // ```
                 // but the problem is we often need to use these identifiers as map keys
                 // which doesn't work well with objects.
-                const quotedStrippedColName = col.columnName.replace(
-                  /(^"|"$)/g,
-                  "",
-                );
+                const quotedStrippedColName = col.name.replace(/(^"|"$)/g, "");
                 const value = (row as Record<string, unknown>)[
                   quotedStrippedColName
                 ];
@@ -402,6 +405,7 @@ ORDER BY
     );
     out += `-- END:Sampled data\nSET session_replication_role = 'origin';\n\n`;
     return {
+      schema,
       serialized: out,
       sampledRecords,
     };
@@ -411,58 +415,43 @@ ORDER BY
     return `${value.table}:${value.data[ctidSymbol]}` as Hash;
   }
 
-  public async getSchema(schemaName: string): Promise<TableMetadata[]> {
-    const results = await withSpan(
+  public async getSchema() {
+    // dumped schema has identifiers (table names, column names, etc) with capital letters quoted
+    const [results] = await withSpan(
       "connector.getSchema",
-      () =>
-        this.db.exec<TableMetadata>(
-          `SELECT
-          quote_ident(c.table_name) as "tableName",
-          quote_ident(n.nspname) as "schemaName",
-          json_agg(
-            json_build_object(
-              'columnName', quote_ident(c.column_name)
-            )
-          ORDER BY c.ordinal_position) as columns
-      FROM
-          information_schema.columns c
-      JOIN
-          pg_namespace n
-          ON n.nspname = c.table_schema
-      JOIN
-          pg_class cl
-          ON cl.relname = c.table_name and cl.relnamespace = n.oid
-      JOIN
-          pg_attribute a
-          ON a.attrelid = (quote_ident(c.table_schema) || '.' || quote_ident(c.table_name))::regclass
-          AND a.attname = c.column_name
-      WHERE
-          n.nspname = $1
-          and c.table_name not like 'pg_%'
-          and c.table_name not in ('pg_stat_statements', 'pg_stat_statements_info')
-      GROUP BY
-          n.nspname, c.table_name, cl.reltuples, cl.relpages; -- @qd_introspection
-    `,
-          [schemaName],
-        ),
+      () => this.db.exec<{ result: FullSchema }>(schemaDumpSql, []),
     )();
-    return results;
+    return FullSchema.parse(results.result);
   }
 
   public async getDatabaseInfo() {
     const results = await this.db.exec<{
       serverVersion: string;
       serverVersionNum: string;
+      username: string;
+      isSuperuser: boolean;
     }>(
-      'select version() as "serverVersion", current_setting(\'server_version_num\') as "serverVersionNum"; -- @qd_introspection',
+      `select
+          version() as "serverVersion",
+          current_setting('server_version_num') as "serverVersionNum",
+          usename as "username",
+          usesuper as "isSuperuser"
+          FROM pg_user WHERE usename = current_user; -- @qd_introspection`,
     );
     return {
       serverVersion: results[0]!.serverVersion,
       serverVersionNum: results[0]!.serverVersionNum,
+      username: results[0]!.username,
+      isSuperuser: results[0]!.isSuperuser,
     };
   }
 
-  public async getRecentQueries(): Promise<RecentQueriesResult> {
+  /**
+   * Get the latest queries using pg_stat_statements
+   * @throws {ExtensionNotInstalledError} - pg_stat_statements is not installed
+   * @throws {PostgresError} - Not regular Error
+   */
+  public async getRecentQueries(): Promise<RecentQuery[]> {
     try {
       const results = await this.db.exec<RawRecentQuery>(`
       SELECT
@@ -493,44 +482,33 @@ ORDER BY
         };
       });
 
-      return {
-        kind: "ok",
-        queries: this.segmentedQueryCache.sync(
-          this.db,
-          resultsWithFormattedQueries,
-        ),
-      };
+      return this.segmentedQueryCache.sync(
+        this.db,
+        resultsWithFormattedQueries,
+      );
     } catch (err) {
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')
       ) {
-        return {
-          kind: "error",
-          type: "extension_not_installed",
-          extensionName: "pg_stat_statements",
-        };
+        throw new ExtensionNotInstalledError("pg_stat_statements");
       }
       console.error(err);
-      return {
-        kind: "error",
-        type: "postgres_error",
-        error: err instanceof Error ? err.message : String(err),
-      };
+      throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
   }
 
-  public async resetPgStatStatements(): Promise<ResetPgStatStatementsResult> {
+  /**
+   * @throws {ExtensionNotInstalledError}
+   * @throws {PostgresError}
+   */
+  public async resetPgStatStatements(): Promise<void> {
     try {
       await this.db.exec(`
           SELECT pg_stat_statements_reset(); -- @qd_introspection
       `);
 
       this.segmentedQueryCache.reset(this.db);
-
-      return {
-        kind: "ok",
-      };
     } catch (err) {
       if (
         err instanceof Error &&
@@ -538,18 +516,9 @@ ORDER BY
           "function pg_stat_statements_reset() does not exist",
         )
       ) {
-        return {
-          kind: "error",
-          type: "extension_not_installed",
-          extensionName: "pg_stat_statements",
-        };
+        throw new ExtensionNotInstalledError("pg_stat_statements");
       }
-      console.error(err);
-      return {
-        kind: "error",
-        type: "postgres_error",
-        error: err instanceof Error ? err.message : String(err),
-      };
+      throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
   }
 

@@ -2,16 +2,14 @@ import {
   DependencyAnalyzer,
   type DependencyAnalyzerOptions,
   DependencyResolutionNotice,
-  FindAllDependenciesError,
 } from "./dependency-tree.ts";
 import {
   PostgresConnector,
-  RecentQueriesResult,
+  RecentQuery,
   type ResetPgStatStatementsResult,
 } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema.ts";
 import { withSpan } from "../otel.ts";
-import { SpanStatusCode } from "@opentelemetry/api";
 import { Connectable } from "./connectable.ts";
 import {
   ExportedStats,
@@ -21,18 +19,13 @@ import {
   Statistics,
 } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
+import { SchemaDiffer } from "./schema_differ.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
 
 export type PostgresConnectionError = {
   kind: "error";
   type: "postgres_connection_error";
-  error: Error;
-};
-
-type PostgresError = {
-  kind: "error";
-  type: "postgres_error";
   error: Error;
 };
 
@@ -43,61 +36,45 @@ type PostgresSuperuserError = {
 
 export type SyncNotice = DependencyResolutionNotice | PostgresSuperuserError;
 
-export type SyncResult =
-  | {
-    kind: "ok";
-    versionNum: string;
-    version: string;
-    setup: string;
-    sampledRecords: Record<string, number>;
-    notices: SyncNotice[];
-    queries: RecentQueriesResult;
-    stats: ExportedStats[];
-  }
-  | PostgresConnectionError
-  | PostgresError
-  | FindAllDependenciesError;
+export type SyncResult = {
+  versionNum: string;
+  version: string;
+  setup: string;
+  sampledRecords: Record<string, number>;
+  notices: SyncNotice[];
+  queries: RecentQuery[];
+  stats: ExportedStats[];
+};
 
 export class PostgresSyncer {
   private readonly connections = new Map<string, Postgres>();
   private readonly segmentedQueryCache = new SegmentedQueryCache();
+  private readonly differ = new SchemaDiffer();
 
   constructor(private readonly factory: PostgresFactory) {}
 
+  /**
+   * @throws {ExtensionNotInstalledError}
+   * @throws {PostgresError}
+   */
   async syncWithUrl(
     connectable: Connectable,
     schemaName: string,
     options: SyncOptions,
   ): Promise<SyncResult> {
-    const urlString = connectable.toString();
-    let sql = this.connections.get(urlString);
-    if (!sql) {
-      sql = this.factory({ url: urlString });
-      this.connections.set(urlString, sql);
-    }
+    const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    const link = new PostgresSchemaLink(urlString, schemaName);
+    const link = new PostgresSchemaLink(connectable.toString(), schemaName);
     const analyzer = new DependencyAnalyzer(connector, options);
-    // Even though this looks like it can be parallelized, it's not possible to run it
-    // simultaneously with `link.syncSchema` because pg_dump changes `search_path` which
-    // causes inconsistent results when querying regclasses. They get prefixed with
-    // the current search_path which can cause race conditions when pg_dump sets it to ''
     const [
       stats,
       databaseInfo,
       recentQueries,
       schema,
       { dependencies, serialized: serializedResult },
-      privilege,
     ] = await Promise.all([
-      withSpan("stats", async () => {
-        const a = await Statistics.dumpStats(
-          sql,
-          PostgresVersion.parse("17"),
-          "full",
-        );
-        console.log(a);
-        return a;
+      withSpan("stats", () => {
+        return Statistics.dumpStats(sql, PostgresVersion.parse("17"), "full");
       })(),
       withSpan("getDatabaseInfo", () => {
         return connector.getDatabaseInfo();
@@ -112,48 +89,32 @@ export class PostgresSyncer {
         const dependencyList = await connector.dependencies(schemaName);
         const graph = await analyzer.buildGraph(dependencyList);
         span.setAttribute("schemaName", schemaName);
-        const deps = await analyzer.findAllDependencies(schemaName, graph);
-        if (deps.kind !== "ok") {
-          span.setStatus({
-            code: SpanStatusCode.ERROR,
-            message: deps.type === "unexpected_error"
-              ? deps.error.message
-              : deps.type,
-          });
-          return { dependencies: deps, serialized: undefined };
-        }
+        const dependencies = await analyzer.findAllDependencies(
+          schemaName,
+          graph,
+        );
         const serialized = await withSpan("serialize", (span) => {
           span.setAttribute("schemaName", schemaName);
-          return connector.serialize(schemaName, deps.items, options);
+          return connector.serialize(schemaName, dependencies.items, options);
         })();
-        return { dependencies: deps, serialized };
-      })(),
-      withSpan("checkPrivilege", () => {
-        return connector.checkPrivilege();
+        return { dependencies, serialized };
       })(),
     ]);
 
-    if (dependencies.kind !== "ok") {
-      return dependencies;
-    }
-
     const notices: SyncNotice[] = [...dependencies.notices];
 
-    if (privilege.isSuperuser) {
+    if (databaseInfo.isSuperuser) {
       notices.push({
         kind: "connected_as_superuser",
-        username: privilege.username,
+        username: databaseInfo.username,
       });
     }
 
-    if (serializedResult === undefined) {
-      throw new Error(`Serialization result not found`);
-    }
+    this.differ.put(sql, serializedResult.schema);
 
     const wrapped = schema + serializedResult.serialized;
 
     return {
-      kind: "ok",
       versionNum: databaseInfo.serverVersionNum,
       version: databaseInfo.serverVersion,
       sampledRecords: serializedResult.sampledRecords,
@@ -164,20 +125,31 @@ export class PostgresSyncer {
     };
   }
 
-  liveQuery(
-    connectable: Connectable,
-  ): Promise<RecentQueriesResult | PostgresConnectionError> {
+  /**
+   * @throws {ExtensionNotInstalledError}
+   * @throws {PostgresError}
+   */
+  async liveQuery(connectable: Connectable) {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    return connector.getRecentQueries();
+    const [queries, schema] = await Promise.all([
+      connector.getRecentQueries(),
+      connector.getSchema(),
+    ]);
+    const deltas = this.differ.put(sql, schema);
+    return { queries, deltas };
   }
 
-  reset(
+  /**
+   * @throws {ExtensionNotInstalledError}
+   * @throws {PostgresError}
+   */
+  async reset(
     connectable: Connectable,
-  ): Promise<ResetPgStatStatementsResult | PostgresConnectionError> {
+  ): Promise<void> {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    return connector.resetPgStatStatements();
+    await connector.resetPgStatStatements();
   }
 
   private getConnection(connectable: Connectable) {

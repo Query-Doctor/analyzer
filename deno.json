@@ -34,6 +34,7 @@
     "chokidar": "npm:chokidar@^4.0.3",
     "dedent": "npm:dedent@^1.6.0",
     "fast-csv": "npm:fast-csv@^5.0.5",
+    "jsondiffpatch": "npm:jsondiffpatch@^0.7.3",
     "nunjucks": "npm:nunjucks@^3.2.4",
     "pgsql-deparser": "npm:pgsql-deparser@^17.11.1",
     "sql-formatter": "npm:sql-formatter@^15.6.6",

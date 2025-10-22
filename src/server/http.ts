@@ -9,6 +9,7 @@ import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
 import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
 import type { RateLimitResult } from "@rabbit-company/rate-limiter";
+import * as errors from "../sync/errors.ts";
 
 const syncer = new PostgresSyncer(wrapGenericPostgresInterface);
 
@@ -67,47 +68,16 @@ async function onSync(req: Request) {
       seed,
     });
   } catch (error) {
-    // We don't throw errors randomly so this should only happen if there's a bug
-    if (error instanceof Error && !env.HOSTED) {
-      console.error(error);
-      return Response.json(
-        { kind: "error", type: "unexpected_error", error: error.message },
-        { status: 500 },
-      );
-    }
-    return Response.json(
-      {
-        kind: "error",
-        type: "unexpected_error",
-        error: "Internal Server Error",
-      },
-      { status: 500 },
-    );
-  }
-  if (result.kind !== "ok") {
-    span?.setStatus({ code: SpanStatusCode.ERROR, message: result.type });
-    if (result.type === "unexpected_error") {
-      log.error(result.error.message, "http:sync");
-      if (!env.HOSTED) {
-        // No problem leaking the error message to the user if they're selfhosting
-        return Response.json(
-          {
-            kind: "error",
-            type: "unexpected_error",
-            error: result.error.message,
-          },
-          { status: 500 },
-        );
-      }
+    if (error instanceof errors.ExtensionNotInstalledError) {
       return Response.json(
         {
           kind: "error",
-          type: "unexpected_error",
-          error: "Internal Server Error",
+          type: "extension_not_installed",
+          error: error.message,
         },
-        { status: 500 },
+        { status: 400 },
       );
-    } else if (result.type === "max_table_iterations_reached") {
+    } else if (error instanceof errors.MaxTableIterationsReached) {
       return Response.json(
         {
           kind: "error",
@@ -118,32 +88,18 @@ async function onSync(req: Request) {
           status: 500,
         },
       );
-    } else if (result.type === "postgres_connection_error") {
-      log.error(result.error.message, "http:sync");
-      return Response.json(
-        {
-          kind: "error",
-          type: "postgres_connection_error",
-          error: result.error.message,
-        },
-        { status: 500 },
-      );
-    } else if (result.type === "postgres_error") {
-      log.error(result.error.message, "http:sync");
-      return Response.json(
-        {
-          kind: "error",
-          type: "postgres_error",
-          error: result.error.message,
-        },
-        { status: 500 },
-      );
     }
-    return new Response("Internal Server Error", { status: 500 });
+    return makeUnexpectedErrorResponse(error);
   }
   span?.setStatus({ code: SpanStatusCode.OK });
   log.info(`Sent sync response in ${Date.now() - startTime}ms`, "http:sync");
-  return Response.json(result, { status: 200 });
+  return Response.json(
+    {
+      kind: "ok",
+      ...result,
+    },
+    { status: 200 },
+  );
 }
 
 async function onSyncLiveQuery(req: Request) {
@@ -163,11 +119,15 @@ async function onSyncLiveQuery(req: Request) {
     }
     throw e;
   }
-  const queries = await syncer.liveQuery(body.db);
-  if (queries.kind !== "ok") {
-    return Response.json(queries, { status: 500 });
+  try {
+    const { queries, deltas } = await syncer.liveQuery(body.db);
+    return Response.json({ kind: "ok", queries, deltas }, { status: 200 });
+  } catch (error) {
+    if (error instanceof errors.PostgresError) {
+      return Response.json({ kind: "error" }, { status: 500 });
+    }
+    return makeUnexpectedErrorResponse(error);
   }
-  return Response.json(queries, { status: 200 });
 }
 
 async function onReset(req: Request) {
@@ -187,11 +147,25 @@ async function onReset(req: Request) {
     }
     throw e;
   }
-  const result = await syncer.reset(body.db);
-  if (result.kind !== "ok") {
-    return Response.json(result, { status: 500 });
+  try {
+    await syncer.reset(body.db);
+    return Response.json({ kind: "ok" }, { status: 500 });
+  } catch (error) {
+    if (error instanceof errors.PostgresError) {
+      return Response.json({ kind: "error", error: error.message }, {
+        status: 500,
+      });
+    }
+    if (error instanceof errors.ExtensionNotInstalledError) {
+      return Response.json({
+        kind: "error",
+        type: "extension_not_installed",
+        error: error.message,
+      }, { status: 400 });
+    }
+
+    return makeUnexpectedErrorResponse(error);
   }
-  return Response.json(result, { status: 200 });
 }
 
 export function createServer(hostname: string, port: number) {
@@ -261,3 +235,21 @@ const corsHeaders = {
   "Access-Control-Expose-Headers":
     "Content-Type, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
 };
+
+export function makeUnexpectedErrorResponse(error: unknown): Response {
+  if (error instanceof Error && !env.HOSTED) {
+    return Response.json(
+      { kind: "error", type: "unexpected_error", error: error.message },
+      { status: 500 },
+    );
+  }
+  console.error(error);
+  return Response.json(
+    {
+      kind: "error",
+      type: "unexpected_error",
+      error: "Internal Server Error",
+    },
+    { status: 500 },
+  );
+}

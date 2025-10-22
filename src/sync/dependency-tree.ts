@@ -1,6 +1,7 @@
 import { trace } from "@opentelemetry/api";
 import { log } from "../log.ts";
 import { withSpan } from "../otel.ts";
+import { MaxTableIterationsReached } from "./errors.ts";
 
 export type Dependency =
   // a source table with dependencies
@@ -57,26 +58,12 @@ export type TableRows<
   T extends Record<string, unknown> = Record<string, unknown>,
 > = Record<TableName, T[]>;
 
-export type FindAllDependenciesError =
-  | {
-    kind: "error";
-    type: "unexpected_error";
-    error: Error;
-  }
-  | {
-    kind: "error";
-    type: "max_table_iterations_reached";
-  };
-
 export type FindAllDependenciesResult<
   T extends Record<string, unknown> = Record<string, unknown>,
-> =
-  | {
-    kind: "ok";
-    items: TableRows<T>;
-    notices: DependencyResolutionNotice[];
-  }
-  | FindAllDependenciesError;
+> = {
+  items: TableRows<T>;
+  notices: DependencyResolutionNotice[];
+};
 
 export type CursorOptions = { requiredRows: number; seed: number };
 
@@ -135,56 +122,131 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
     private readonly options: DependencyAnalyzerOptions,
   ) {}
 
+  /**
+   * @throws {MaxTableIterationsReached} - indicative of a bug in the code
+   * @throws {Error} - unexpected errors
+   */
   async findAllDependencies(
     schema: string,
     graph: DependencyGraph,
   ): Promise<FindAllDependenciesResult<T["data"]>> {
     log.debug("Starting dependency resolution", "dependency-resolution");
     this.seen.clear();
-    try {
-      await this.connector.onStartAnalyze?.(schema);
+    await this.connector.onStartAnalyze?.(schema);
 
-      const items: TableRows<T["data"]> = {};
+    const items: TableRows<T["data"]> = {};
 
-      // open cursor on all available tables to have a greater chance at an even distribution
-      const cursors: Record<TableName, Cursor<T>> = {};
-      const remainingTables = Array.from(graph.keys());
+    // open cursor on all available tables to have a greater chance at an even distribution
+    const cursors: Record<TableName, Cursor<T>> = {};
+    const remainingTables = Array.from(graph.keys());
 
-      for (const source of remainingTables) {
-        cursors[source] = this.connector.cursor(schema, source, this.options);
-        items[source] = [];
+    for (const source of remainingTables) {
+      cursors[source] = this.connector.cursor(schema, source, this.options);
+      items[source] = [];
+    }
+
+    let stack: string[] = [];
+    const removeTable = (i: number) => {
+      if (remainingTables[i] === undefined) {
+        log.error(
+          `Attempted to remove table ${
+            remainingTables[i]
+          } but it was not found`,
+          "dependency-resolution",
+        );
+        return;
       }
-
-      let stack: string[] = [];
-      const removeTable = (i: number) => {
-        if (remainingTables[i] === undefined) {
+      const cursor = cursors[remainingTables[i]];
+      // close the iterator to avoid leaking resources
+      cursor?.return();
+      delete cursors[remainingTables[i]];
+      remainingTables.splice(i, 1);
+    };
+    const notices: DependencyResolutionNotice[] = [];
+    // we want to loop over everything until we've satisfied all table requirements
+    for (let i = 0; remainingTables.length > 0; i++) {
+      // it's bad to have while(true) loops so this is a just in case
+      if (i > DependencyAnalyzer.MAX_TABLE_ITERATIONS) {
+        throw new MaxTableIterationsReached(i);
+      }
+      for (let i = remainingTables.length - 1; i >= 0; i--) {
+        const table = remainingTables[i]!;
+        const tableItems = items[table];
+        if (tableItems === undefined) {
           log.error(
-            `Attempted to remove table ${
-              remainingTables[i]
-            } but it was not found`,
+            `Attempted to access table ${table} but it was not found in the items map`,
             "dependency-resolution",
           );
-          return;
+          continue;
         }
-        const cursor = cursors[remainingTables[i]];
-        // close the iterator to avoid leaking resources
-        cursor?.return();
-        delete cursors[remainingTables[i]];
-        remainingTables.splice(i, 1);
-      };
-      const notices: DependencyResolutionNotice[] = [];
-      // we want to loop over everything until we've satisfied all table requirements
-      for (let i = 0; remainingTables.length > 0; i++) {
-        // it's bad to have while(true) loops so this is a just in case
-        if (i > DependencyAnalyzer.MAX_TABLE_ITERATIONS) {
-          console.error(new Error("Max table iterations reached"));
-          return {
-            kind: "error",
-            type: "max_table_iterations_reached",
-          };
+        const rowCountSatisfied =
+          tableItems.length >= this.options.requiredRows;
+
+        if (rowCountSatisfied) {
+          removeTable(i);
+          break;
         }
-        for (let i = remainingTables.length - 1; i >= 0; i--) {
-          const table = remainingTables[i]!;
+
+        const cursor = cursors[table];
+        if (!cursor) {
+          throw new Error(`Cursor for ${table} not found`);
+        }
+        const span = trace.getActiveSpan();
+        const iterator = await cursor.next();
+        span?.addEvent("cursor.next");
+
+        if (iterator.done) {
+          log.debug(
+            `Notice: Table \`${table}\` has fewer rows (${tableItems.length}) than the required (${this.options.requiredRows})`,
+            "dependency-resolution",
+          );
+          notices.push({
+            kind: "too_few_rows",
+            table,
+            requested: this.options.requiredRows,
+            found: tableItems.length,
+          });
+          removeTable(i);
+          continue;
+        }
+        const sourceValue = iterator.value;
+
+        stack = [];
+        const results = await this.traverseDependencyChain(
+          graph,
+          table,
+          sourceValue,
+        );
+        for (const result of results) {
+          const tableItems = items[result.table];
+          if (tableItems === undefined) {
+            log.error(
+              `Attempted to access table ${result.table} but it was not found in the items map`,
+              "dependency-resolution",
+            );
+            continue;
+          }
+          stack.push(result.table);
+          const chainExceedsMaxRows = tableItems.length >= this.options.maxRows;
+          // WARNING: BREAKING OUT OF THIS LOOP WILL RESULT IN AN INCONSISTENT DEPENDENCY STATE
+          // The only reason this isn't an error is because it's _technically_ possible to restore
+          // a database with internally inconsistent foreign key constraints.
+          if (chainExceedsMaxRows) {
+            log.warn(
+              `Notice: Table \`${table}\` has more rows than the maximum ${this.options.maxRows}`,
+              "dependency-resolution",
+            );
+            notices.push({
+              kind: "incomplete_dependency_chain",
+              chain: stack,
+              table,
+            });
+            break;
+          }
+          tableItems.push(result.data);
+        }
+        const hashed = this.connector.hash(sourceValue);
+        if (!this.seen.has(hashed)) {
           const tableItems = items[table];
           if (tableItems === undefined) {
             log.error(
@@ -193,108 +255,20 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
             );
             continue;
           }
-          const rowCountSatisfied =
-            tableItems.length >= this.options.requiredRows;
-
-          if (rowCountSatisfied) {
-            removeTable(i);
-            break;
-          }
-
-          const cursor = cursors[table];
-          if (!cursor) {
-            throw new Error(`Cursor for ${table} not found`);
-          }
-          const span = trace.getActiveSpan();
-          const iterator = await cursor.next();
-          span?.addEvent("cursor.next");
-
-          if (iterator.done) {
-            log.debug(
-              `Notice: Table \`${table}\` has fewer rows (${tableItems.length}) than the required (${this.options.requiredRows})`,
-              "dependency-resolution",
-            );
-            notices.push({
-              kind: "too_few_rows",
-              table,
-              requested: this.options.requiredRows,
-              found: tableItems.length,
-            });
-            removeTable(i);
-            continue;
-          }
-          const sourceValue = iterator.value;
-
-          stack = [];
-          const results = await this.traverseDependencyChain(
-            graph,
-            table,
-            sourceValue,
-          );
-          for (const result of results) {
-            const tableItems = items[result.table];
-            if (tableItems === undefined) {
-              log.error(
-                `Attempted to access table ${result.table} but it was not found in the items map`,
-                "dependency-resolution",
-              );
-              continue;
-            }
-            stack.push(result.table);
-            const chainExceedsMaxRows =
-              tableItems.length >= this.options.maxRows;
-            // WARNING: BREAKING OUT OF THIS LOOP WILL RESULT IN AN INCONSISTENT DEPENDENCY STATE
-            // The only reason this isn't an error is because it's _technically_ possible to restore
-            // a database with internally inconsistent foreign key constraints.
-            if (chainExceedsMaxRows) {
-              log.warn(
-                `Notice: Table \`${table}\` has more rows than the maximum ${this.options.maxRows}`,
-                "dependency-resolution",
-              );
-              notices.push({
-                kind: "incomplete_dependency_chain",
-                chain: stack,
-                table,
-              });
-              break;
-            }
-            tableItems.push(result.data);
-          }
-          const hashed = this.connector.hash(sourceValue);
-          if (!this.seen.has(hashed)) {
-            const tableItems = items[table];
-            if (tableItems === undefined) {
-              log.error(
-                `Attempted to access table ${table} but it was not found in the items map`,
-                "dependency-resolution",
-              );
-              continue;
-            }
-            tableItems.push(sourceValue.data);
-            this.seen.add(hashed);
-          }
+          tableItems.push(sourceValue.data);
+          this.seen.add(hashed);
         }
       }
-      log.info(
-        `Found ${Object.keys(items).length} tables with ${
-          Object.values(
-            items,
-          ).reduce((acc, table) => acc + table.length, 0)
-        } rows`,
-        "dependency-resolution",
-      );
-      return { kind: "ok", items, notices };
-    } catch (error) {
-      if (error instanceof Error) {
-        log.error(error.message, "dependency-resolution");
-        return { kind: "error", type: "unexpected_error", error };
-      }
-      return {
-        kind: "error",
-        type: "unexpected_error",
-        error: new Error(String(error)),
-      };
     }
+    log.info(
+      `Found ${Object.keys(items).length} tables with ${
+        Object.values(
+          items,
+        ).reduce((acc, table) => acc + table.length, 0)
+      } rows`,
+      "dependency-resolution",
+    );
+    return { items, notices };
   }
 
   /**
