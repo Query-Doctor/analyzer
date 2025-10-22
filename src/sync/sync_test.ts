@@ -67,16 +67,13 @@ Deno.test(async function addTest() {
     seed: 0,
   });
   const result = await da.findAllDependencies("public", new Map());
-  assertEquals(result.kind, "ok");
-  if (result.kind === "ok") {
-    assertEquals(result.items, {
-      posts: [
-        { id: 3, poster_id: 0 },
-        { id: 4, poster_id: 1 },
-      ],
-      users: [{ id: 0 }, { id: 1 }],
-    });
-  }
+  assertEquals(result.items, {
+    posts: [
+      { id: 3, poster_id: 0 },
+      { id: 4, poster_id: 1 },
+    ],
+    users: [{ id: 0 }, { id: 1 }],
+  });
   // const mockConnector = {
   // }
   // assertEquals(add(2, 3), 5);
