@@ -386,15 +386,14 @@
       "integrity": "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="
     },
     "@query-doctor/core@0.0.3": {
-      "integrity": "sha512-TWwajAuRROgfao2/4w5vNRo3d9i4N3Ma6RxAoc2+oL+t/An7HWXxDKOa6dOxqDB70B2EV0E3aFzlM7oX28pAZA==",
+      "integrity": "sha512-krDTeLQNnBD3ZtM5cMLoxZhqPwFQMZaOgtJ3po4Tpq7O//ZPwAz4f/qIScpInFl29W35DlE6E6UrvO3Ud/4JGA==",
       "dependencies": [
         "@pgsql/types",
         "colorette",
         "dedent@1.7.0",
         "pgsql-deparser",
         "zod"
-      ],
-      "tarball": "https://npm.pkg.github.com/download/@query-doctor/core/0.0.3/cf67415768933be9bd032641be63e11b0645c9b6"
+      ]
     },
     "@types/node@24.9.1": {
       "integrity": "sha512-QoiaXANRkSXK6p0Duvt56W208du4P9Uye9hWLWgGMDTEoKPhuenzNcC4vGUmrNkiOKTlIrBoyNQYNpSwfEZXSg==",
