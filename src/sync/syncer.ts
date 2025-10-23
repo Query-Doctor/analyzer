@@ -3,11 +3,7 @@ import {
   type DependencyAnalyzerOptions,
   DependencyResolutionNotice,
 } from "./dependency-tree.ts";
-import {
-  PostgresConnector,
-  RecentQuery,
-  type ResetPgStatStatementsResult,
-} from "./pg-connector.ts";
+import { PostgresConnector, RecentQueriesResult } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
@@ -20,6 +16,7 @@ import {
 } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { SchemaDiffer } from "./schema_differ.ts";
+import { ExtensionNotInstalledError } from "./errors.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
 
@@ -42,7 +39,7 @@ export type SyncResult = {
   setup: string;
   sampledRecords: Record<string, number>;
   notices: SyncNotice[];
-  queries: RecentQuery[];
+  queries: RecentQueriesResult;
   stats: ExportedStats[];
 };
 
@@ -69,7 +66,7 @@ export class PostgresSyncer {
     const [
       stats,
       databaseInfo,
-      recentQueries,
+      recentQueriesResult,
       schema,
       { dependencies, serialized: serializedResult },
     ] = await Promise.all([
@@ -79,8 +76,22 @@ export class PostgresSyncer {
       withSpan("getDatabaseInfo", () => {
         return connector.getDatabaseInfo();
       })(),
-      withSpan("getRecentQueries", () => {
-        return connector.getRecentQueries();
+      withSpan("getRecentQueries", async (): Promise<RecentQueriesResult> => {
+        try {
+          const recentQueries = await connector.getRecentQueries();
+          return { kind: "ok", queries: recentQueries };
+        } catch (error) {
+          console.log(error);
+          // don't stop the show if the extension is not installed
+          if (error instanceof ExtensionNotInstalledError) {
+            return {
+              kind: "error",
+              type: "extension_not_installed",
+              extensionName: error.extension,
+            };
+          }
+          throw error;
+        }
       })(),
       withSpan("pg_dump", () => {
         return link.syncSchema(schemaName);
@@ -119,7 +130,7 @@ export class PostgresSyncer {
       version: databaseInfo.serverVersion,
       sampledRecords: serializedResult.sampledRecords,
       notices,
-      queries: recentQueries,
+      queries: recentQueriesResult,
       setup: wrapped,
       stats,
     };

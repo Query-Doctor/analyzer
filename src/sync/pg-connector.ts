@@ -54,17 +54,11 @@ export type RecentQuery = {
   firstSeen: number;
 };
 
-export type RecentQueriesError =
-  | {
-    kind: "error";
-    type: "postgres_error";
-    error: string;
-  }
-  | {
-    kind: "error";
-    type: "extension_not_installed";
-    extensionName: string;
-  };
+export type RecentQueriesError = {
+  kind: "error";
+  type: "extension_not_installed";
+  extensionName: string;
+};
 
 export type RecentQueriesResult =
   | {

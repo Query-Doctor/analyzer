@@ -38,7 +38,7 @@ async function onSync(req: Request) {
     return Response.json(
       {
         kind: "error",
-        type: "unknown_error",
+        type: "unexpected_error",
         error: String(e),
       },
       { status: 400 },
@@ -69,25 +69,9 @@ async function onSync(req: Request) {
     });
   } catch (error) {
     if (error instanceof errors.ExtensionNotInstalledError) {
-      return Response.json(
-        {
-          kind: "error",
-          type: "extension_not_installed",
-          error: error.message,
-        },
-        { status: 400 },
-      );
+      return error.toResponse();
     } else if (error instanceof errors.MaxTableIterationsReached) {
-      return Response.json(
-        {
-          kind: "error",
-          type: "max_table_iterations_reached",
-          error: "Max table iterations reached. This is a bug with the syncer",
-        },
-        {
-          status: 500,
-        },
-      );
+      return error.toResponse();
     }
     return makeUnexpectedErrorResponse(error);
   }
@@ -123,8 +107,10 @@ async function onSyncLiveQuery(req: Request) {
     const { queries, deltas } = await syncer.liveQuery(body.db);
     return Response.json({ kind: "ok", queries, deltas }, { status: 200 });
   } catch (error) {
-    if (error instanceof errors.PostgresError) {
-      return Response.json({ kind: "error" }, { status: 500 });
+    if (error instanceof errors.ExtensionNotInstalledError) {
+      return error.toResponse();
+    } else if (error instanceof errors.PostgresError) {
+      return error.toResponse();
     }
     return makeUnexpectedErrorResponse(error);
   }
@@ -152,16 +138,10 @@ async function onReset(req: Request) {
     return Response.json({ kind: "ok" }, { status: 500 });
   } catch (error) {
     if (error instanceof errors.PostgresError) {
-      return Response.json({ kind: "error", error: error.message }, {
-        status: 500,
-      });
+      return error.toResponse();
     }
     if (error instanceof errors.ExtensionNotInstalledError) {
-      return Response.json({
-        kind: "error",
-        type: "extension_not_installed",
-        error: error.message,
-      }, { status: 400 });
+      return error.toResponse();
     }
 
     return makeUnexpectedErrorResponse(error);
