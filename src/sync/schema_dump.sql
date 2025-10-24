@@ -395,4 +395,4 @@ jsonb_strip_nulls(
     'types', (select jsonb_agg(all_types.type_metadata) from all_types),
     'triggers', (select jsonb_agg(all_triggers.trigger_metadata) from all_triggers)
   )
-) as result
+) as result; -- @qd_introspection
