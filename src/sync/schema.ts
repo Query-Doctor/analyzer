@@ -89,8 +89,10 @@ export class PostgresSchemaLink {
 
   private sanitizeSchema(schema: string): string {
     // strip CREATE SCHEMA statements and a little bit of extra whitespace.
+    // Important: we ONLY want to remove the public schema directive.
+    // If the user wants to dump a different schema it still needs to be created
     // we should also remove the comments describing the schema above but meh
-    return schema.replace(/^CREATE SCHEMA\s+.*\n\n?/m, "")
+    return schema.replace(/^CREATE SCHEMA public\s*\n\n?/m, "")
       // strip unrestrict and restrict statements. They're only valid for psql
       // and will break things if imported by pglite
       // added in pg_dump 17.6+
