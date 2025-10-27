@@ -6,14 +6,29 @@ import {
   PostgresVersion,
 } from "@query-doctor/core";
 
+type PgConnectionOptions = postgres.Options<
+  Record<string, postgres.PostgresType>
+>;
+
 const DEFAULT_ITEMS_PER_PAGE = 20;
+// we want to set a very low idle timeout to prevent
+// clogging up connections
+const DEFAULT_IDLE_TIMEOUT_SECONDS = 15;
+// it's ok to recycle connections frequently if needed
+const DEFAULT_MAX_LIFETIME_SECONDS = 60 * 5;
+
+const connectionOptions: PgConnectionOptions = {
+  max: 20,
+  max_lifetime: DEFAULT_MAX_LIFETIME_SECONDS,
+  idle_timeout: DEFAULT_IDLE_TIMEOUT_SECONDS,
+};
 
 export function wrapGenericPostgresInterface(
   input: PostgresConnectionInput,
 ): Postgres {
   let pg: postgres.Sql;
   if ("url" in input) {
-    pg = postgres(input.url, { max: 20 });
+    pg = postgres(input.url, connectionOptions);
   } else {
     throw new Error("Invalid input");
   }
