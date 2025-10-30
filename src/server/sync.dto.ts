@@ -11,7 +11,7 @@ export const SyncRequest = z.object({
   db: z.string().transform(Connectable.transform),
   seed: z.coerce.number().min(0).max(1).default(0),
   schema: z.coerce.string().default("public"),
-  requiredRows: z.coerce.number().positive().default(2),
+  requiredRows: z.coerce.number().nonnegative().default(2),
   maxRows: z.coerce.number().positive().default(8),
 });
 

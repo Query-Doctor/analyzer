@@ -130,6 +130,10 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
     schema: string,
     graph: DependencyGraph,
   ): Promise<FindAllDependenciesResult<T["data"]>> {
+    // no dependencies if the user doesn't want anything
+    if (this.options.requiredRows === 0) {
+      return { items: {}, notices: [] };
+    }
     log.debug("Starting dependency resolution", "dependency-resolution");
     this.seen.clear();
     await this.connector.onStartAnalyze?.(schema);
