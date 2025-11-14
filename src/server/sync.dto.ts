@@ -12,7 +12,7 @@ export const SyncRequest = z.object({
   seed: z.coerce.number().min(0).max(1).default(0),
   schema: z.coerce.string().default("public"),
   requiredRows: z.coerce.number().nonnegative().default(2),
-  maxRows: z.coerce.number().positive().default(8),
+  maxRows: z.coerce.number().nonnegative().default(8),
 });
 
 export type SyncRequest = z.infer<typeof SyncRequest>;
