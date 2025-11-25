@@ -25,10 +25,9 @@ export type Dependency =
 
 /** A pointer from a current table context to another */
 interface Pointer {
-  sourceSchema: string;
+  fullyQualifiedSourceTable: string;
+  fullyQualifiedReferencedTable: string;
   sourceColumn: string[];
-  referencedSchema: string;
-  referencedTable: string;
   referencedColumn: string[];
 }
 
@@ -56,7 +55,7 @@ export type DependencyResolutionNotice =
 
 export type TableRows<
   T extends Record<string, unknown> = Record<string, unknown>,
-> = Record<TableName, T[]>;
+> = Record<FullyQualifiedTableName, T[]>;
 
 export type FindAllDependenciesResult<
   T extends Record<string, unknown> = Record<string, unknown>,
@@ -67,20 +66,26 @@ export type FindAllDependenciesResult<
 
 export type CursorOptions = { requiredRows: number; seed: number };
 
+export type DependenciesOptions = {
+  excludedSchemas: string[];
+};
+
 export interface DatabaseConnector<
   T extends InsertableTuple = InsertableTuple,
 > {
-  cursor(schema: string, table: string, options: CursorOptions): Cursor<T>;
-  dependencies(schema: string): Promise<Dependency[]>;
+  cursor(
+    fullyQualifiedTable: FullyQualifiedTableName,
+    options: CursorOptions,
+  ): Cursor<T>;
+  dependencies(options: DependenciesOptions): Promise<Dependency[]>;
   get(
-    schema: string,
-    table: string,
+    fullyQualifiedSchema: FullyQualifiedTableName,
     values: Record<string, unknown>,
   ): Promise<T | undefined>;
   /** The unique value of the returned tuple */
   hash(value: T): Hash;
   /** Used to run stuff like `vacuum analyze` before the analysis begins */
-  onStartAnalyze?(schema: string): Promise<void>;
+  onStartAnalyze?(): Promise<void>;
 }
 
 export type DependencyAnalyzerOptions = {
@@ -127,7 +132,6 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
    * @throws {Error} - unexpected errors
    */
   async findAllDependencies(
-    schema: string,
     graph: DependencyGraph,
   ): Promise<FindAllDependenciesResult<T["data"]>> {
     // no dependencies if the user doesn't want anything
@@ -136,16 +140,16 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
     }
     log.debug("Starting dependency resolution", "dependency-resolution");
     this.seen.clear();
-    await this.connector.onStartAnalyze?.(schema);
+    await this.connector.onStartAnalyze?.();
 
     const items: TableRows<T["data"]> = {};
 
     // open cursor on all available tables to have a greater chance at an even distribution
-    const cursors: Record<TableName, Cursor<T>> = {};
+    const cursors: Record<FullyQualifiedTableName, Cursor<T>> = {};
     const remainingTables = Array.from(graph.keys());
 
     for (const source of remainingTables) {
-      cursors[source] = this.connector.cursor(schema, source, this.options);
+      cursors[source] = this.connector.cursor(source, this.options);
       items[source] = [];
     }
 
@@ -280,10 +284,10 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
    */
   async traverseDependencyChain(
     graph: DependencyGraph,
-    source: string,
+    sourceTable: FullyQualifiedTableName,
     value: T,
   ): Promise<T[]> {
-    const table = graph.get(source);
+    const table = graph.get(sourceTable);
     if (!table) {
       throw new Error(
         `Table not declared in dependency graph. The graph should include a key for all existing tables in a database, even if they have no dependencies`,
@@ -322,13 +326,12 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
         continue;
       }
       const referenced = await this.connector.get(
-        dep.referencedSchema,
-        dep.referencedTable,
+        dep.fullyQualifiedReferencedTable,
         values.params,
       );
       if (!referenced) {
         throw new Error(
-          `Found an existing FK requirement but there was no corresponding row in ${dep.referencedTable}. Is the database in a consistent state?`,
+          `Found an existing FK requirement but there was no corresponding row in ${dep.fullyQualifiedReferencedTable}. Is the database in a consistent state?`,
         );
       }
       const hashed = this.connector.hash(referenced);
@@ -339,7 +342,7 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
       results.push(referenced);
       const next = await this.traverseDependencyChain(
         graph,
-        dep.referencedTable,
+        dep.fullyQualifiedReferencedTable,
         referenced,
       );
       results.push(...next);
@@ -349,25 +352,33 @@ export class DependencyAnalyzer<T extends InsertableTuple = InsertableTuple> {
 
   buildGraph(dependencies: Dependency[]): Promise<DependencyGraph> {
     return withSpan("buildGraph", () => {
-      const graph = new Map<TableName, Pointer[]>();
+      const graph = new Map<FullyQualifiedTableName, Pointer[]>();
       for (const dependency of dependencies) {
         const existing = graph.get(dependency.sourceTable) ?? [];
+        // these fields are all quoted if necessary
+        const fullyQualifiedSourceTable: FullyQualifiedTableName =
+          `${dependency.sourceSchema}.${dependency.sourceTable}`;
+        const fullyQualifiedReferencedTable: FullyQualifiedTableName =
+          `${dependency.referencedSchema}.${dependency.referencedTable}`;
+
         if (dependency.sourceColumn) {
           existing.push({
-            sourceSchema: dependency.sourceSchema,
+            fullyQualifiedSourceTable,
             sourceColumn: dependency.sourceColumn,
-            referencedSchema: dependency.referencedSchema,
-            referencedTable: dependency.referencedTable,
+            fullyQualifiedReferencedTable,
             referencedColumn: dependency.referencedColumn,
           });
         }
-        graph.set(dependency.sourceTable, existing);
+        graph.set(
+          fullyQualifiedSourceTable,
+          existing,
+        );
       }
       return graph;
     })();
   }
 }
 
-type TableName = string;
+export type FullyQualifiedTableName = string;
 
-type DependencyGraph = Map<TableName, Pointer[]>;
+type DependencyGraph = Map<FullyQualifiedTableName, Pointer[]>;

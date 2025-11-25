@@ -66,7 +66,7 @@ Deno.test(async function addTest() {
     maxRows: 8,
     seed: 0,
   });
-  const result = await da.findAllDependencies("public", new Map());
+  const result = await da.findAllDependencies(new Map());
   assertEquals(result.items, {
     posts: [
       { id: 3, poster_id: 0 },

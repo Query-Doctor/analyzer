@@ -3,8 +3,10 @@ import schemaDumpSql from "./schema_dump.sql" with { type: "text" };
 import type {
   CursorOptions,
   DatabaseConnector,
+  DependenciesOptions,
   Dependency,
   DependencyAnalyzerOptions,
+  FullyQualifiedTableName,
   Hash,
   TableRows,
 } from "./dependency-tree.ts";
@@ -98,7 +100,7 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
     private readonly segmentedQueryCache: SegmentedQueryCache,
   ) {}
 
-  async onStartAnalyze(_schema: string): Promise<void> {
+  async onStartAnalyze(): Promise<void> {
     const results = await this.db.exec<{ table: string; count: number }>(
       `SELECT relname AS table, n_live_tup AS count FROM pg_stat_user_tables`,
     );
@@ -112,7 +114,9 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
    *
    * The table and column names are quoted according to postgres rules
    */
-  async dependencies(schema: string): Promise<Dependency[]> {
+  async dependencies(
+    options: DependenciesOptions,
+  ): Promise<Dependency[]> {
     const out = await withSpan(
       "connector.dependencies",
       () =>
@@ -163,7 +167,9 @@ LEFT JOIN LATERAL (
         pc.contype = 'f' -- 'f' stands for foreign key
         AND pa.attnum > 0 -- Skip system columns
         AND pa.attisdropped = false -- Skip dropped columns
-        AND pgn.nspname = $1
+        AND (cardinality($1::text[]) = 0 or pgn.nspname <> ANY($1))
+        AND pgn.nspname not like 'pg_%'
+        AND pgn.nspname <> 'information_schema'
         AND pgc.relname = pg_tables.tablename
     GROUP BY
         pgc.relname, pc.oid, ref_ns.nspname, ref_cl.relname
@@ -171,24 +177,31 @@ LEFT JOIN LATERAL (
         pgc.relname
 ) AS fk ON TRUE
 WHERE
-    pg_tables.schemaname = $1
+    (cardinality($1::text[]) = 0 or pg_tables.schemaname <> ANY($1))
+    AND pg_tables.schemaname not like 'pg_%'
+    AND pg_tables.schemaname <> 'information_schema'
 ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
-          [schema],
+          [
+            options.excludedSchemas,
+          ],
         ),
     )();
 
     return out;
   }
 
-  async get(schema: string, table: string, values: Record<string, unknown>) {
+  async get(
+    fullyQualifiedTable: FullyQualifiedTableName,
+    values: Record<string, unknown>,
+  ) {
     const columnsText = Object.keys(values)
       .map((key, i) => `${doubleQuote(key)} = $${i + 1}`)
       .join(" AND ");
     // TODO: pass the schema along
     const sqlString =
-      `select *, ctid from ${schema}.${table} where ${columnsText} limit 1 -- @qd_introspection`;
+      `select *, ctid from ${fullyQualifiedTable} where ${columnsText} limit 1 -- @qd_introspection`;
     const params = Object.values(values);
     log.debug(`${sqlString} : [${params.join(", ")}]`, "pg-connector:get");
     const data = await withSpan(
@@ -204,7 +217,7 @@ ORDER BY
     }
     delete newValue.ctid;
     return {
-      table,
+      table: fullyQualifiedTable,
       data: newValue,
     };
   }
@@ -219,17 +232,16 @@ ORDER BY
    * @returns
    */
   async *cursor(
-    schema: string,
-    table: string,
+    fullyQualifiedTable: string,
     options: CursorOptions,
   ): AsyncGenerator<PostgresTuple, void, unknown> {
     if (!this.db.cursor) {
       throw new Error("PostgresConnector.cursor is not supported");
     }
-    const tupleEstimate = this.tupleEstimates.get(table);
+    const tupleEstimate = this.tupleEstimates.get(fullyQualifiedTable);
     if (tupleEstimate === undefined) {
       console.warn(
-        `No tuple estimate for ${table}. Falling back to slow query. Is the db vacuum analyzed?`,
+        `No tuple estimate for ${fullyQualifiedTable}. Falling back to slow query. Is the db vacuum analyzed?`,
       );
     }
     let cursor: AsyncIterable<Row & { ctid?: string }, void, unknown>;
@@ -241,12 +253,12 @@ ORDER BY
       cursor = this.db
         // we want to make sure the rows we get are deterministic
         .cursor(
-          `select *, ctid from ${schema}.${table} order by random() -- @qd_introspection`,
+          `select *, ctid from ${fullyQualifiedTable} order by random() -- @qd_introspection`,
         );
     } else {
       // this really needs to be tweaked lol
       cursor = this.db.cursor(
-        `select *, ctid from ${schema}.${table} tablesample bernoulli(${
+        `select *, ctid from ${fullyQualifiedTable} tablesample bernoulli(${
           options.requiredRows / tupleEstimate + 10
         }) repeatable(1) -- @qd_introspection`,
       );
@@ -257,7 +269,7 @@ ORDER BY
       }
       if (data === undefined) {
         log.error(
-          `Cursor for table ${table} returned an undefined value`,
+          `Cursor for table ${fullyQualifiedTable} returned an undefined value`,
           "pg-connector:cursor",
         );
         continue;
@@ -266,7 +278,7 @@ ORDER BY
         data[ctidSymbol] = data.ctid;
       }
       delete data.ctid;
-      yield { data, table };
+      yield { data, table: fullyQualifiedTable };
     }
   }
   /**
@@ -274,7 +286,6 @@ ORDER BY
    * into batched INSERT statements that can be restored into IXR.
    */
   async serialize(
-    schemaName: string,
     tables: TableRows<Row>,
     options: DependencyAnalyzerOptions,
   ): Promise<SerializeResult> {
@@ -307,7 +318,7 @@ ORDER BY
     ];
     const directives = ["SET session_replication_role = 'replica';"];
     let out = `${comments.join("\n")}\n${directives.join("\n")}\n\n`;
-    const sampledRecords: Record<TableName, number> = {};
+    const sampledRecords: Record<FullyQualifiedTableName, number> = {};
     // In _theory_ the correct way to do this serialization is to first do
     // a topological sort on the dependency graph and then serialize the tables
     // in the order of the sort to prevent problems with foreign key constraints.
@@ -321,13 +332,13 @@ ORDER BY
     // to prevent the constraints from being checked.
 
     // TODO: batch this into a single query
-    for (const [table, rows] of Object.entries(tables)) {
+    for (const [fullyQualifiedTable, rows] of Object.entries(tables)) {
       const tableSchema = schema.tables?.find((s) => {
-        return s.tableName === table && s.schemaName === schemaName;
+        return `${s.schemaName}.${s.tableName}` === fullyQualifiedTable;
       });
       if (!tableSchema) {
         console.warn(
-          `No schema found for ${table}. Skipping. Is there a quoting mismatch with the table name?`,
+          `No schema found for ${fullyQualifiedTable}. Skipping. Is there a quoting mismatch with the table name?`,
         );
         continue;
       }
@@ -339,7 +350,7 @@ ORDER BY
         columns.join(
           ", ",
         )
-      } from (select * from ${schemaName}.${table} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
+      } from (select * from ${fullyQualifiedTable} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
       log.debug(
         `${query} : [${allCtids.join(", ")}]`,
         "pg-connector:serialize",
@@ -349,18 +360,18 @@ ORDER BY
         () => this.db.exec(query, [allCtids]),
       )();
 
-      const estimate = this.tupleEstimates.get(table) ?? "?";
+      const estimate = this.tupleEstimates.get(fullyQualifiedTable) ?? "?";
       const comment =
-        `-- ${table} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
+        `-- ${fullyQualifiedTable} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
       const insertStatement =
-        `${comment}\nINSERT INTO ${schemaName}.${table} (${
+        `${comment}\nINSERT INTO ${fullyQualifiedTable} (${
           tableSchema.columns
             .map((c) => c.name)
             .join(", ")
         })\nOVERRIDING SYSTEM VALUE VALUES\n`;
       // overriding system value prevents breaking columns that are (generated always as)
       if (serialized.length === 0) {
-        console.warn(`No rows found for ${table}. Skipping.`);
+        console.warn(`No rows found for ${fullyQualifiedTable}. Skipping.`);
         continue;
       }
       const serializedRows = [];
@@ -391,7 +402,7 @@ ORDER BY
         );
       }
       out += `${insertStatement}  ${serializedRows.join(",\n  ")};\n\n`;
-      sampledRecords[table] = serialized.length;
+      sampledRecords[fullyQualifiedTable] = serialized.length;
     }
     log.info(
       `Serialized ${Object.keys(tables).length} tables`,

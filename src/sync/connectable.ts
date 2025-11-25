@@ -8,6 +8,11 @@ import { env } from "../env.ts";
 export class Connectable {
   private constructor(public readonly url: URL) {}
 
+  isSupabase() {
+    // does supabase have other endpoints?
+    return this.url.hostname.endsWith("supabase.com");
+  }
+
   /**
    * Custom logic for parsing a string into a Connectable through zod.
    */
