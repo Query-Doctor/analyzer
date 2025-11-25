@@ -44,7 +44,7 @@ async function onSync(req: Request) {
       { status: 400 },
     );
   }
-  const { seed, schema, requiredRows, maxRows } = body;
+  const { seed, requiredRows, maxRows } = body;
   const span = trace.getActiveSpan();
   if (requiredRows > maxRows) {
     log.warn(
@@ -62,7 +62,7 @@ async function onSync(req: Request) {
   span?.setAttribute("db.host", url.hostname);
   let result: SyncResult;
   try {
-    result = await syncer.syncWithUrl(body.db, schema, {
+    result = await syncer.syncWithUrl(body.db, {
       requiredRows,
       maxRows,
       seed,

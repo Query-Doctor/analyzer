@@ -4,7 +4,7 @@ import {
   DependencyResolutionNotice,
 } from "./dependency-tree.ts";
 import { PostgresConnector, RecentQueriesResult } from "./pg-connector.ts";
-import { PostgresSchemaLink } from "./schema.ts";
+import { PostgresSchemaLink } from "./schema-link.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
 import {
@@ -56,12 +56,11 @@ export class PostgresSyncer {
    */
   async syncWithUrl(
     connectable: Connectable,
-    schemaName: string,
     options: SyncOptions,
   ): Promise<SyncResult> {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    const link = new PostgresSchemaLink(connectable.toString(), schemaName);
+    const link = new PostgresSchemaLink(connectable);
     const analyzer = new DependencyAnalyzer(connector, options);
     const [
       stats,
@@ -94,19 +93,18 @@ export class PostgresSyncer {
         }
       })(),
       withSpan("pg_dump", () => {
-        return link.syncSchema(schemaName);
+        return link.syncSchema();
       })(),
-      withSpan("resolveDependencies", async (span) => {
-        const dependencyList = await connector.dependencies(schemaName);
+      withSpan("resolveDependencies", async () => {
+        const dependencyList = await connector.dependencies({
+          excludedSchemas: link.excludedSchemas(),
+        });
         const graph = await analyzer.buildGraph(dependencyList);
-        span.setAttribute("schemaName", schemaName);
         const dependencies = await analyzer.findAllDependencies(
-          schemaName,
           graph,
         );
-        const serialized = await withSpan("serialize", (span) => {
-          span.setAttribute("schemaName", schemaName);
-          return connector.serialize(schemaName, dependencies.items, options);
+        const serialized = await withSpan("serialize", () => {
+          return connector.serialize(dependencies.items, options);
         })();
         return { dependencies, serialized };
       })(),

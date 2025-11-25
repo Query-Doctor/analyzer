@@ -3,6 +3,7 @@ import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { withSpan } from "../otel.ts";
+import { Connectable } from "./connectable.ts";
 
 export type TableStats = {
   name: string;
@@ -12,7 +13,38 @@ export class PostgresSchemaLink {
   private static readonly PG_DUMP_VERSION = "17.2";
   public static readonly pgDumpBinaryPath = PostgresSchemaLink
     .findPgDumpBinary();
-  constructor(public readonly url: string, public readonly schema: string) {}
+
+  constructor(public readonly connectable: Connectable) {}
+
+  // we're intentionally NOT excluding the "extensions" schema
+  // because supabase has triggers on that schema that cannot be
+  // omitted without manual schema finagling which we want to keep
+  // to a minimum to reduce complexity.
+  // Everything else is safe to exclude
+  // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
+  public static readonly supabaseExcludedSchemas = [
+    "graphql",
+    "auth",
+    "graphql_public",
+    "pgsodium",
+    "pgbouncer",
+    "storage",
+    "realtime",
+    "vault",
+  ];
+
+  public static readonly supabaseExcludedExtensions = [
+    "pgsodium",
+    "pg_graphql",
+    "supabase_vault",
+    "extensions",
+    // we want to create our own pg_stat_statements
+    // supabase creates PSS in the "extensions" schema
+    // which we can't do anything with
+    "pg_stat_statements",
+    "pgcrypto",
+    "uuid-ossp",
+  ];
 
   static findPgDumpBinary(): string {
     const forcePath = env.PG_DUMP_BINARY;
@@ -34,32 +66,25 @@ export class PostgresSchemaLink {
     return shippedPath;
   }
 
-  async syncSchema(schemaName: string): Promise<string> {
-    log.debug(`Syncing schema (${schemaName})`, "schema:sync");
-    // const [dumping, omits] = await this.omitBigBois();
-    const args = [
-      // the owner doesn't exist
-      "--no-owner",
-      // not needed most likely
-      "--no-comments",
-      // the user doesn't exist where we're restoring this dump
-      "--no-privileges",
-      // providers like supabase have a ton of stuff we don't need in other schemas
-      "--schema",
-      schemaName,
-      "--schema-only",
-      this.url,
-    ];
-    log.debug(`Dumping schema: pg_dump ${args.join(" ")}`, "schema:sync");
-    const command = new Deno.Command(PostgresSchemaLink.pgDumpBinaryPath, {
-      args,
-      stdout: "piped",
-      stderr: "piped",
-      signal: shutdownController.signal,
-    });
+  async syncSchema(): Promise<string> {
+    const command = this.pgDumpCommand();
     const child = command.spawn();
     const output = await child.output();
     return this.handleSchemaOutput(output);
+  }
+
+  excludedSchemas() {
+    if (this.connectable.isSupabase()) {
+      return PostgresSchemaLink.supabaseExcludedSchemas;
+    }
+    return [];
+  }
+
+  excludedExtensions() {
+    if (this.connectable.isSupabase()) {
+      return PostgresSchemaLink.supabaseExcludedExtensions;
+    }
+    return [];
   }
 
   private handleSchemaOutput(output: Deno.CommandOutput) {
@@ -85,6 +110,46 @@ export class PostgresSchemaLink {
       const stdout = decoder.decode(output.stdout);
       return this.sanitizeSchema(stdout);
     })();
+  }
+
+  private pgDumpCommand(): Deno.Command {
+    const args = [
+      // the owner doesn't exist
+      "--no-owner",
+      // not needed most likely
+      "--no-comments",
+      // the user doesn't exist where we're restoring this dump
+      "--no-privileges",
+      // normally found in supabase dumps but not wanted in general
+      "--no-publications",
+      // not sure if this is 100% necessary but we don't want triggers anyway
+      "--disable-triggers",
+      "--schema-only",
+      ...this.extraFlags(),
+      this.connectable.toString(),
+    ];
+    return new Deno.Command(PostgresSchemaLink.pgDumpBinaryPath, {
+      args,
+      stdout: "piped",
+      stderr: "piped",
+      signal: shutdownController.signal,
+    });
+  }
+
+  private extraFlags(): string[] {
+    // creating an array twice just for flags is super inefficient
+    return [
+      ...this.excludedSchemas().flatMap((schema) => [
+        "--exclude-schema",
+        schema,
+      ]),
+      ...this.excludedExtensions().flatMap(
+        (extension) => [
+          "--exclude-extension",
+          extension,
+        ],
+      ),
+    ];
   }
 
   private sanitizeSchema(schema: string): string {
