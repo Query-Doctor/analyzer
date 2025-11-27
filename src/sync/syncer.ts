@@ -54,13 +54,13 @@ export class PostgresSyncer {
    * @throws {ExtensionNotInstalledError}
    * @throws {PostgresError}
    */
-  async syncWithUrl(
+  async syncDDL(
     connectable: Connectable,
     options: SyncOptions,
   ): Promise<SyncResult> {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    const link = new PostgresSchemaLink(connectable);
+    const link = new PostgresSchemaLink(connectable, "as-text");
     const analyzer = new DependencyAnalyzer(connector, options);
     const [
       stats,
@@ -93,7 +93,7 @@ export class PostgresSyncer {
         }
       })(),
       withSpan("pg_dump", () => {
-        return link.syncSchema();
+        return link.dumpAsText();
       })(),
       withSpan("resolveDependencies", async () => {
         const dependencyList = await connector.dependencies({

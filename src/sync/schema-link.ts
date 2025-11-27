@@ -9,12 +9,17 @@ export type TableStats = {
   name: string;
 };
 
+export type DumpFormat = "as-text" | "as-binary";
+
 export class PostgresSchemaLink {
   private static readonly PG_DUMP_VERSION = "17.2";
   public static readonly pgDumpBinaryPath = PostgresSchemaLink
     .findPgDumpBinary();
 
-  constructor(public readonly connectable: Connectable) {}
+  constructor(
+    public readonly connectable: Connectable,
+    public readonly format: DumpFormat,
+  ) {}
 
   // we're intentionally NOT excluding the "extensions" schema
   // because supabase has triggers on that schema that cannot be
@@ -66,11 +71,15 @@ export class PostgresSchemaLink {
     return shippedPath;
   }
 
-  async syncSchema(): Promise<string> {
+  spawnDumpCommand(): DumpCommand {
     const command = this.pgDumpCommand();
-    const child = command.spawn();
-    const output = await child.output();
-    return this.handleSchemaOutput(output);
+    return new DumpCommand(command.spawn());
+  }
+
+  async dumpAsText(): Promise<string> {
+    const command = this.spawnDumpCommand();
+    const { stdout } = await command.collectOutput();
+    return this.sanitizeSchemaForPglite(stdout);
   }
 
   excludedSchemas() {
@@ -87,31 +96,6 @@ export class PostgresSchemaLink {
     return [];
   }
 
-  private handleSchemaOutput(output: Deno.CommandOutput) {
-    const span = trace.getActiveSpan();
-    const decoder = new TextDecoder();
-    span?.setAttribute("outputBytes", output.stdout.byteLength);
-    return withSpan("decodeResponse", () => {
-      const stderr = output.stderr.byteLength > 0
-        ? decoder.decode(output.stderr)
-        : undefined;
-      if (stderr) {
-        console.warn(stderr);
-      }
-      if (output.code !== 0) {
-        span?.setStatus({ code: SpanStatusCode.ERROR, message: stderr });
-        log.error(`Error: ${stderr}`, "schema:sync");
-        throw new Error(stderr);
-      }
-      log.info(
-        `Dumped schema. bytes=${output.stdout.byteLength}`,
-        "schema:sync",
-      );
-      const stdout = decoder.decode(output.stdout);
-      return this.sanitizeSchema(stdout);
-    })();
-  }
-
   private pgDumpCommand(): Deno.Command {
     const args = [
       // the owner doesn't exist
@@ -125,6 +109,7 @@ export class PostgresSchemaLink {
       // not sure if this is 100% necessary but we don't want triggers anyway
       "--disable-triggers",
       "--schema-only",
+      ...this.formatFlags(),
       ...this.extraFlags(),
       this.connectable.toString(),
     ];
@@ -134,6 +119,18 @@ export class PostgresSchemaLink {
       stderr: "piped",
       signal: shutdownController.signal,
     });
+  }
+
+  /**
+   * Text format is used when the dump is restored by pglite
+   * we use the binary format when piping the command to pg_restore
+   * or any other locally running postgres instance
+   */
+  private formatFlags(): string[] {
+    if (this.format === "as-binary") {
+      return ["--format", "custom"];
+    }
+    return ["--format", "plain"];
   }
 
   private extraFlags(): string[] {
@@ -152,7 +149,11 @@ export class PostgresSchemaLink {
     ];
   }
 
-  private sanitizeSchema(schema: string): string {
+  /**
+   * Used to prepare data being returned to pglite.
+   * Not necessary for when the target is another pg database
+   */
+  private sanitizeSchemaForPglite(schema: string): string {
     // strip CREATE SCHEMA statements and a little bit of extra whitespace.
     // Important: we ONLY want to remove the public schema directive.
     // If the user wants to dump a different schema it still needs to be created
@@ -164,3 +165,41 @@ export class PostgresSchemaLink {
       .replace(/^\\(un)?restrict\s+.*\n?/gm, "");
   }
 }
+
+class DumpCommand {
+  constructor(private readonly process: Deno.ChildProcess) {}
+
+  async collectOutput(): Promise<DumpCommandOutput> {
+    const span = trace.getActiveSpan();
+    const decoder = new TextDecoder();
+    const output = await this.process.output();
+    span?.setAttribute("outputBytes", output.stdout.byteLength);
+    return withSpan("decodeResponse", () => {
+      const stderr = output.stderr.byteLength > 0
+        ? decoder.decode(output.stderr)
+        : undefined;
+      if (stderr) {
+        console.warn(stderr);
+      }
+      if (output.code !== 0) {
+        span?.setStatus({ code: SpanStatusCode.ERROR, message: stderr });
+        log.error(`Error: ${stderr}`, "schema:sync");
+        throw new Error(stderr);
+      }
+      log.info(
+        `Dumped schema. bytes=${output.stdout.byteLength}`,
+        "schema:sync",
+      );
+      const stdout = decoder.decode(output.stdout);
+      return { stdout, stderr };
+    })();
+  }
+}
+
+export type DumpCommandOutput = {
+  stdout: string;
+  stderr?: string;
+};
+
+// Don't allow class construction outside the file
+export type { DumpCommand };

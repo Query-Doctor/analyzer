@@ -62,7 +62,7 @@ async function onSync(req: Request) {
   span?.setAttribute("db.host", url.hostname);
   let result: SyncResult;
   try {
-    result = await syncer.syncWithUrl(body.db, {
+    result = await syncer.syncDDL(body.db, {
       requiredRows,
       maxRows,
       seed,
