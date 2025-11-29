@@ -2,7 +2,6 @@ import * as core from "@actions/core";
 import { Runner } from "./runner.ts";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
-import { PostgresSchemaLink } from "./sync/schema-link.ts";
 import { createServer } from "./server/http.ts";
 import { shutdown } from "./shutdown.ts";
 
@@ -27,10 +26,6 @@ function runOutsideCI() {
   const arch = Deno.build.arch;
   log.info(
     `Starting server (${os}-${arch}) on ${env.HOST}:${env.PORT}`,
-    "main",
-  );
-  log.info(
-    `Using pg_dump binary: ${PostgresSchemaLink.pgDumpBinaryPath}`,
     "main",
   );
   createServer(env.HOST, env.PORT);
