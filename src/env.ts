@@ -5,6 +5,7 @@ const envSchema = z.object({
   CI: z.stringbool().default(false),
   // sync
   PG_DUMP_BINARY: z.string().optional(),
+  PG_RESTORE_BINARY: z.string().optional(),
   HOSTED: z.stringbool().default(false),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().min(1024).max(65535).default(2345),
