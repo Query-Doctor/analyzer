@@ -13,6 +13,12 @@ export class Connectable {
     return this.url.hostname.endsWith("supabase.com");
   }
 
+  withDatabaseName(databaseName: string) {
+    const newUrl = new URL(this.url);
+    newUrl.pathname = `/${databaseName}`;
+    return new Connectable(newUrl);
+  }
+
   /**
    * Custom logic for parsing a string into a Connectable through zod.
    */
@@ -80,6 +86,10 @@ export class Connectable {
     return new Connectable(url);
   }
 
+  static fromString(url: string): Connectable {
+    return ConnectableParser.parse(url);
+  }
+
   private static extractSupabaseAccount(url: URL): string | undefined {
     const match = url.toString().match(/db\.(\w+)\.supabase\.co/);
     if (!match) {
@@ -99,3 +109,5 @@ export class Connectable {
     return this.url.toString();
   }
 }
+
+const ConnectableParser = z.string().transform(Connectable.transform);
