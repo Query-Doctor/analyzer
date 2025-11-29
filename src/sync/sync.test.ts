@@ -10,8 +10,8 @@ function testDb(): DatabaseConnector<{
   table: string;
 }> {
   const db = {
-    users: [{ id: 0 }, { id: 1 }, { id: 2 }],
-    posts: [
+    "public.users": [{ id: 0 }, { id: 1 }, { id: 2 }],
+    "public.posts": [
       { id: 3, poster_id: 0 },
       { id: 4, poster_id: 1 },
     ],
@@ -45,11 +45,11 @@ function testDb(): DatabaseConnector<{
     get(table, values) {
       const found = db[table as keyof typeof db].find((row) => {
         for (const [key, value] of Object.entries(values)) {
-          if (String(row[key as keyof typeof row]) !== value) {
-            return false;
+          if (String(row[key as keyof typeof row]) === String(value)) {
+            return true;
           }
         }
-        return Promise.resolve(true);
+        return false;
       });
       return Promise.resolve(found ? { data: found, table } : undefined);
     },
@@ -66,15 +66,15 @@ Deno.test(async function addTest() {
     maxRows: 8,
     seed: 0,
   });
-  const result = await da.findAllDependencies(new Map());
+  const graph = await da.buildGraph(
+    await dbSimple.dependencies({ excludedSchemas: [] }),
+  );
+  const result = await da.findAllDependencies(graph);
   assertEquals(result.items, {
-    posts: [
+    "public.posts": [
       { id: 3, poster_id: 0 },
       { id: 4, poster_id: 1 },
     ],
-    users: [{ id: 0 }, { id: 1 }],
+    "public.users": [{ id: 0 }, { id: 1 }],
   });
-  // const mockConnector = {
-  // }
-  // assertEquals(add(2, 3), 5);
 });

@@ -60,7 +60,7 @@ export class PostgresSyncer {
   ): Promise<SyncResult> {
     const sql = this.getConnection(connectable);
     const connector = new PostgresConnector(sql, this.segmentedQueryCache);
-    const link = new PostgresSchemaLink(connectable, "as-text");
+    const link = new PostgresSchemaLink(connectable, "pglite");
     const analyzer = new DependencyAnalyzer(connector, options);
     const [
       stats,

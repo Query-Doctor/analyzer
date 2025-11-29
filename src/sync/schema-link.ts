@@ -1,152 +1,33 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
-import { env } from "../env.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
+import { findPgDumpBinary, findPgRestoreBinary } from "./executable.ts";
 
 export type TableStats = {
   name: string;
 };
 
-export type DumpFormat = "as-text" | "as-binary";
+export type DumpTargetType = "pglite" | "native-postgres";
 
 export class PostgresSchemaLink {
-  private static readonly PG_DUMP_VERSION = "17.2";
-  public static readonly pgDumpBinaryPath = PostgresSchemaLink
-    .findPgDumpBinary();
-
   constructor(
     public readonly connectable: Connectable,
-    public readonly format: DumpFormat,
+    public readonly targetType: DumpTargetType,
   ) {}
 
-  // we're intentionally NOT excluding the "extensions" schema
-  // because supabase has triggers on that schema that cannot be
-  // omitted without manual schema finagling which we want to keep
-  // to a minimum to reduce complexity.
-  // Everything else is safe to exclude
-  // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
-  public static readonly supabaseExcludedSchemas = [
-    "graphql",
-    "auth",
-    "graphql_public",
-    "pgsodium",
-    "pgbouncer",
-    "storage",
-    "realtime",
-    "vault",
-  ];
-
-  public static readonly supabaseExcludedExtensions = [
-    "pgsodium",
-    "pg_graphql",
-    "supabase_vault",
-    "extensions",
-    // we want to create our own pg_stat_statements
-    // supabase creates PSS in the "extensions" schema
-    // which we can't do anything with
-    "pg_stat_statements",
-    "pgcrypto",
-    "uuid-ossp",
-  ];
-
-  static findPgDumpBinary(): string {
-    const forcePath = env.PG_DUMP_BINARY;
-    if (forcePath) {
-      log.info(
-        `Using pg_dump binary from env(PG_DUMP_BINARY): ${forcePath}`,
-        "schema:setup",
-      );
-      return forcePath;
-    }
-    const os = Deno.build.os;
-    const arch = Deno.build.arch;
-    const shippedPath =
-      `./bin/pg_dump-${this.PG_DUMP_VERSION}/pg_dump.${os}-${arch}`;
-    if (!Deno.statSync(shippedPath).isFile) {
-      throw new Error(`pg_dump binary not found at ${shippedPath}`);
-    }
-    log.info(`Using built-in "pg_dump" binary: ${shippedPath}`, "schema:setup");
-    return shippedPath;
-  }
-
-  spawnDumpCommand(): DumpCommand {
-    const command = this.pgDumpCommand();
-    return new DumpCommand(command.spawn());
-  }
-
-  async dumpAsText(): Promise<string> {
-    const command = this.spawnDumpCommand();
-    const { stdout } = await command.collectOutput();
-    return this.sanitizeSchemaForPglite(stdout);
-  }
-
-  excludedSchemas() {
-    if (this.connectable.isSupabase()) {
-      return PostgresSchemaLink.supabaseExcludedSchemas;
-    }
-    return [];
-  }
-
-  excludedExtensions() {
-    if (this.connectable.isSupabase()) {
-      return PostgresSchemaLink.supabaseExcludedExtensions;
-    }
-    return [];
-  }
-
-  private pgDumpCommand(): Deno.Command {
-    const args = [
-      // the owner doesn't exist
-      "--no-owner",
-      // not needed most likely
-      "--no-comments",
-      // the user doesn't exist where we're restoring this dump
-      "--no-privileges",
-      // normally found in supabase dumps but not wanted in general
-      "--no-publications",
-      // not sure if this is 100% necessary but we don't want triggers anyway
-      "--disable-triggers",
-      "--schema-only",
-      ...this.formatFlags(),
-      ...this.extraFlags(),
-      this.connectable.toString(),
-    ];
-    return new Deno.Command(PostgresSchemaLink.pgDumpBinaryPath, {
-      args,
-      stdout: "piped",
-      stderr: "piped",
-      signal: shutdownController.signal,
-    });
+  excludedSchemas(): string[] {
+    return DumpCommand.excludedSchemas(this.connectable);
   }
 
   /**
-   * Text format is used when the dump is restored by pglite
-   * we use the binary format when piping the command to pg_restore
-   * or any other locally running postgres instance
+   * Dump schema to be consumed exclusively by pglite.
    */
-  private formatFlags(): string[] {
-    if (this.format === "as-binary") {
-      return ["--format", "custom"];
-    }
-    return ["--format", "plain"];
-  }
-
-  private extraFlags(): string[] {
-    // creating an array twice just for flags is super inefficient
-    return [
-      ...this.excludedSchemas().flatMap((schema) => [
-        "--exclude-schema",
-        schema,
-      ]),
-      ...this.excludedExtensions().flatMap(
-        (extension) => [
-          "--exclude-extension",
-          extension,
-        ],
-      ),
-    ];
+  async dumpAsText(): Promise<string> {
+    const command = DumpCommand.spawn(this.connectable, this.targetType);
+    const { stdout } = await command.collectOutput();
+    return this.sanitizeSchemaForPglite(stdout);
   }
 
   /**
@@ -166,8 +47,82 @@ export class PostgresSchemaLink {
   }
 }
 
-class DumpCommand {
-  constructor(private readonly process: Deno.ChildProcess) {}
+export class DumpCommand {
+  public static readonly binaryPath = findPgDumpBinary("17.2");
+  // we're intentionally NOT excluding the "extensions" schema
+  // because supabase has triggers on that schema that cannot be
+  // omitted without manual schema finagling which we want to keep
+  // to a minimum to reduce complexity.
+  // Everything else is safe to exclude
+  // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
+  private static readonly supabaseExcludedSchemas = [
+    "extensions",
+    "graphql",
+    "auth",
+    "graphql_public",
+    "pgsodium",
+    "pgbouncer",
+    "storage",
+    "realtime",
+    "vault",
+  ];
+
+  private static readonly supabaseExcludedExtensions = [
+    "pgsodium",
+    "pg_graphql",
+    "supabase_vault",
+    "extensions",
+    // we want to create our own pg_stat_statements
+    // supabase creates PSS in the "extensions" schema
+    // which we can't do anything with
+    "pg_stat_statements",
+    "pgcrypto",
+    "uuid-ossp",
+  ];
+
+  // we don't want to allow callers to construct an instance
+  // with any arbitrary child process. Use the static method instead
+  private constructor(private readonly process: Deno.ChildProcess) {}
+
+  static excludedSchemas(connectable: Connectable): string[] {
+    if (connectable.isSupabase()) {
+      return this.supabaseExcludedSchemas;
+    }
+    return [];
+  }
+
+  static spawn(
+    connectable: Connectable,
+    targetType: DumpTargetType,
+  ): DumpCommand {
+    const args = [
+      // the owner doesn't exist
+      "--no-owner",
+      // not needed most likely
+      "--no-comments",
+      // the user doesn't exist where we're restoring this dump
+      "--no-privileges",
+      // normally found in supabase dumps but not wanted in general
+      "--no-publications",
+      // not sure if this is 100% necessary but we don't want triggers anyway
+      "--disable-triggers",
+      "--schema-only",
+      ...DumpCommand.formatFlags(targetType),
+      ...DumpCommand.extraFlags(connectable, targetType),
+      connectable.toString(),
+    ];
+    const command = new Deno.Command(DumpCommand.binaryPath, {
+      args,
+      stdin: "null",
+      stdout: "piped",
+      stderr: "piped",
+      signal: shutdownController.signal,
+    });
+
+    const process = command.spawn();
+
+    return new DumpCommand(process);
+  }
 
   async collectOutput(): Promise<DumpCommandOutput> {
     const span = trace.getActiveSpan();
@@ -194,6 +149,80 @@ class DumpCommand {
       return { stdout, stderr };
     })();
   }
+
+  async pipeTo(restore: RestoreCommand) {
+    // Start consuming stderr in the background to prevent resource leaks
+    const stderrPromise = this.process.stderr.text();
+
+    try {
+      await this.process.stdout.pipeTo(restore.stdin);
+    } catch (error) {
+      const stderr = await stderrPromise;
+      if (stderr) {
+        throw new Error(`pg_dump failed: ${stderr}`, { cause: error });
+      }
+      throw error;
+    }
+
+    const dumpStatus = await this.process.status;
+    if (dumpStatus.code !== 0) {
+      const stderr = await stderrPromise;
+      if (stderr) {
+        throw new Error(`pg_dump failed: ${stderr}`);
+      } else {
+        throw new Error(`pg_dump failed with code ${dumpStatus.code}`);
+      }
+    }
+    await stderrPromise;
+    await restore.status;
+    await restore.cleanup();
+  }
+
+  /**
+   * Text format is used when the dump is restored by pglite
+   * we use the binary format when piping the command to pg_restore
+   * or any other locally running postgres instance
+   */
+  private static formatFlags(format: DumpTargetType): string[] {
+    if (format === "native-postgres") {
+      return ["--format", "custom"];
+    }
+    return ["--format", "plain"];
+  }
+
+  private static excludedExtensions(connectable: Connectable): string[] {
+    if (connectable.isSupabase()) {
+      return this.supabaseExcludedExtensions;
+    }
+    return [];
+  }
+
+  private static extraFlags(
+    connectable: Connectable,
+    format: DumpTargetType,
+  ): string[] {
+    // creating an array twice just for flags is super inefficient
+    const flags = [
+      ...this.excludedSchemas(connectable).flatMap((schema) => [
+        "--exclude-schema",
+        schema,
+      ]),
+      ...this.excludedExtensions(connectable).flatMap(
+        (extension) => [
+          "--exclude-extension",
+          extension,
+        ],
+      ),
+    ];
+    // we want to drop existing objects when syncing
+    // to regular postgres. Not needed for pglite
+    // since we always create a new db anyway
+    if (format === "native-postgres") {
+      flags.push("--clean", "--if-exists");
+    }
+
+    return flags;
+  }
 }
 
 export type DumpCommandOutput = {
@@ -201,5 +230,60 @@ export type DumpCommandOutput = {
   stderr?: string;
 };
 
-// Don't allow class construction outside the file
-export type { DumpCommand };
+/**
+ * Represents a `pg_restore` command.
+ * This class does NOT perform cleanup for the target database like is needed when syncing from supabase.
+ *
+ * Commands like `drop schema if exists extensions cascade;` need to be run independently after the restore.
+ */
+export class RestoreCommand {
+  public static readonly binaryPath = findPgRestoreBinary("17.2");
+  private constructor(private process: Deno.ChildProcess) {}
+
+  static spawn(connectable: Connectable): RestoreCommand {
+    const args = [
+      "--no-owner",
+      "--no-acl",
+      ...RestoreCommand.formatFlags(),
+      "--dbname",
+      connectable.toString(),
+    ];
+
+    const command = new Deno.Command(RestoreCommand.binaryPath, {
+      args,
+      stdin: "piped",
+      stdout: "piped",
+      stderr: "piped",
+      signal: shutdownController.signal,
+    });
+
+    const process = command.spawn();
+
+    return new RestoreCommand(process);
+  }
+
+  get stdin() {
+    return this.process.stdin;
+  }
+
+  get stderr() {
+    return this.process.stderr;
+  }
+
+  get status() {
+    return this.process.status;
+  }
+
+  async cleanup() {
+    if (!this.process.stdout.locked) {
+      await this.process.stdout.cancel();
+    }
+    if (!this.process.stderr.locked) {
+      await this.process.stderr.cancel();
+    }
+  }
+
+  private static formatFlags(): string[] {
+    return ["--format", "custom"];
+  }
+}
