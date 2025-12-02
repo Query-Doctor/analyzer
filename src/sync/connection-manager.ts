@@ -7,7 +7,7 @@ import { PostgresConnector } from "./pg-connector.ts";
  * Manages connections and query caches for each connection
  */
 export class ConnectionManager {
-  public readonly segmentedQueryCache = new SegmentedQueryCache();
+  readonly segmentedQueryCache = new SegmentedQueryCache();
 
   // This prevents connections being garbage collected.
   // ConnectionMap should be responsible for closing connections
