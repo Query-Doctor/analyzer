@@ -1,4 +1,3 @@
-import { format } from "sql-formatter";
 import schemaDumpSql from "./schema_dump.sql" with { type: "text" };
 import type {
   CursorOptions,
@@ -17,6 +16,9 @@ import { Postgres } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
+import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
+// deno-lint-ignore no-unused-vars
+import { ConnectionManager } from "./connection-manager.ts";
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -40,20 +42,6 @@ export type SerializeResult = {
   serialized: string;
   schema: FullSchema;
   sampledRecords: Record<TableName, number>;
-};
-
-export type RawRecentQuery = {
-  username: string;
-  query: string;
-  formattedQuery: string;
-  meanTime: number;
-  calls: string;
-  rows: string;
-  topLevel: boolean;
-};
-
-export type RecentQuery = {
-  firstSeen: number;
 };
 
 export type RecentQueriesError = {
@@ -87,6 +75,9 @@ export type ResetPgStatStatementsResult =
   }
   | ResetPgStatStatementsError;
 
+/**
+ * Use {@link ConnectionManager.getConnectorFor} to grab an instance of this class
+ */
 export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
@@ -474,22 +465,9 @@ ORDER BY
         and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
 
-      // this is a horrible place for this code to live, it doesn't belong here
-      // the alternatives are equally as bad: repeat the logic 3 times in the various endpoints
-      const resultsWithFormattedQueries = results.map((r) => {
-        return {
-          ...r,
-          formattedQuery: format(r.query, {
-            language: "postgresql",
-            keywordCase: "upper",
-            linesBetweenQueries: 2,
-          }),
-        };
-      });
-
       return this.segmentedQueryCache.sync(
         this.db,
-        resultsWithFormattedQueries,
+        results,
       );
     } catch (err) {
       if (

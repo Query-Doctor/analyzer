@@ -150,32 +150,37 @@ export class DumpCommand {
     })();
   }
 
-  async pipeTo(restore: RestoreCommand) {
+  async pipeTo(restore: RestoreCommand): Promise<RestoreCommandResult> {
     // Start consuming stderr in the background to prevent resource leaks
     const stderrPromise = this.process.stderr.text();
 
     try {
       await this.process.stdout.pipeTo(restore.stdin);
     } catch (error) {
-      const stderr = await stderrPromise;
-      if (stderr) {
-        throw new Error(`pg_dump failed: ${stderr}`, { cause: error });
-      }
-      throw error;
+      return {
+        dump: {
+          error: error instanceof Error ? error.message : await stderrPromise,
+          status: await this.process.status,
+        },
+      };
     }
 
     const dumpStatus = await this.process.status;
-    if (dumpStatus.code !== 0) {
-      const stderr = await stderrPromise;
-      if (stderr) {
-        throw new Error(`pg_dump failed: ${stderr}`);
-      } else {
-        throw new Error(`pg_dump failed with code ${dumpStatus.code}`);
-      }
-    }
-    await stderrPromise;
-    await restore.status;
+    // this only fails if the command is non-zero
+    const error = (await stderrPromise).trim();
+    const restoreStatus = await restore.status;
+    const out = {
+      dump: {
+        error,
+        status: dumpStatus,
+      },
+      restore: {
+        error: (await restore.stderr.text()).trim(),
+        status: restoreStatus,
+      },
+    };
     await restore.cleanup();
+    return out;
   }
 
   /**
@@ -244,6 +249,8 @@ export class RestoreCommand {
     const args = [
       "--no-owner",
       "--no-acl",
+      "--clean",
+      "--if-exists",
       ...RestoreCommand.formatFlags(),
       "--dbname",
       connectable.toString(),
@@ -287,3 +294,14 @@ export class RestoreCommand {
     return ["--format", "custom"];
   }
 }
+
+export type RestoreCommandResult = {
+  dump: {
+    error: string;
+    status: Deno.CommandStatus;
+  };
+  restore?: {
+    error: string;
+    status: Deno.CommandStatus;
+  };
+};

@@ -33,7 +33,7 @@ export function wrapGenericPostgresInterface(
     throw new Error("Invalid input");
   }
   return {
-    exec: async (query, params) => {
+    exec: (query, params) => {
       return pg.unsafe(query, params as postgres.ParameterOrJSON<never>[]);
     },
     serverNum: async () =>
