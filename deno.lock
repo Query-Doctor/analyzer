@@ -13,19 +13,19 @@
     "npm:@actions/github@^6.0.1": "6.0.1_@octokit+core@5.2.2",
     "npm:@libpg-query/parser@^17.7.0": "17.7.0",
     "npm:@pgsql/types@^17.6.1": "17.6.1",
-    "npm:@query-doctor/core@^0.0.3": "0.0.3",
+    "npm:@query-doctor/core@^0.0.4": "0.0.4",
     "npm:@testcontainers/postgresql@^11.9.0": "11.9.0",
-    "npm:@types/node@^24.9.1": "24.9.1",
+    "npm:@types/node@^24.9.1": "24.10.1",
     "npm:@types/nunjucks@^3.2.6": "3.2.6",
     "npm:chokidar@^4.0.3": "4.0.3",
     "npm:dedent@^1.6.0": "1.6.0",
     "npm:fast-csv@^5.0.5": "5.0.5",
     "npm:jsondiffpatch@~0.7.3": "0.7.3",
     "npm:nunjucks@^3.2.4": "3.2.4_chokidar@4.0.3",
-    "npm:pgsql-deparser@^17.11.1": "17.11.1",
+    "npm:pgsql-deparser@^17.11.1": "17.12.1",
     "npm:sql-formatter@^15.6.6": "15.6.6",
     "npm:sql-highlight@^6.1.0": "6.1.0",
-    "npm:zod@^4.1.12": "4.1.12"
+    "npm:zod@^4.1.12": "4.1.13"
   },
   "jsr": {
     "@opentelemetry/api@1.9.0": {
@@ -300,7 +300,7 @@
         "@protobufjs/path",
         "@protobufjs/pool",
         "@protobufjs/utf8",
-        "@types/node@24.9.1",
+        "@types/node@24.10.1",
         "long"
       ],
       "scripts": true
@@ -431,8 +431,8 @@
     "@protobufjs/utf8@1.1.0": {
       "integrity": "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="
     },
-    "@query-doctor/core@0.0.3": {
-      "integrity": "sha512-krDTeLQNnBD3ZtM5cMLoxZhqPwFQMZaOgtJ3po4Tpq7O//ZPwAz4f/qIScpInFl29W35DlE6E6UrvO3Ud/4JGA==",
+    "@query-doctor/core@0.0.4": {
+      "integrity": "sha512-kv7tERboZeOr3ebIxaaHkxFbYS+IPEIKAsZRbEz8UCYFpm8ZkT4C2+4gOQ86SksSRaLNSFkwF7DeELtcpMbKpw==",
       "dependencies": [
         "@pgsql/types",
         "colorette",
@@ -468,16 +468,16 @@
         "undici-types@5.26.5"
       ]
     },
+    "@types/node@24.10.1": {
+      "integrity": "sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ==",
+      "dependencies": [
+        "undici-types@7.16.0"
+      ]
+    },
     "@types/node@24.2.0": {
       "integrity": "sha512-3xyG3pMCq3oYCNg7/ZP+E1ooTaGB4cG8JWRsqqOYQdbWNY4zbaV0Ennrd7stjiJEFZCaybcIgpTjJWHRfBSIDw==",
       "dependencies": [
         "undici-types@7.10.0"
-      ]
-    },
-    "@types/node@24.9.1": {
-      "integrity": "sha512-QoiaXANRkSXK6p0Duvt56W208du4P9Uye9hWLWgGMDTEoKPhuenzNcC4vGUmrNkiOKTlIrBoyNQYNpSwfEZXSg==",
-      "dependencies": [
-        "undici-types@7.16.0"
       ]
     },
     "@types/nunjucks@3.2.6": {
@@ -1015,8 +1015,8 @@
         "minipass"
       ]
     },
-    "pgsql-deparser@17.11.1": {
-      "integrity": "sha512-BGKgwC4qs+FPcG8Ai989LO6i4E8KF5HEvlTnI8uhS4qUyu6P1xCyP9pJDky95ZL8DolaGUDFAJtxteDBw33OCg==",
+    "pgsql-deparser@17.12.1": {
+      "integrity": "sha512-G27wb4rhXNwaV8+/ni3RlGV+CMk753ErX341c4rY98hI8xPbPI07dYGxT3asur0HW4SyyNZ4cS1vhfwLfxPLaA==",
       "dependencies": [
         "@pgsql/types"
       ]
@@ -1054,7 +1054,7 @@
         "@protobufjs/path",
         "@protobufjs/pool",
         "@protobufjs/utf8",
-        "@types/node@24.9.1",
+        "@types/node@24.10.1",
         "long"
       ],
       "scripts": true
@@ -1359,8 +1359,8 @@
     "y18n@5.0.8": {
       "integrity": "sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA=="
     },
-    "yaml@2.8.1": {
-      "integrity": "sha512-lcYcMxX2PO9XMGvAJkJ3OsNMw+/7FKes7/hgerGUYWIoWu5j/+YQqcZr5JnPZWzOsEBgMbSbiSTn/dv/69Mkpw==",
+    "yaml@2.8.2": {
+      "integrity": "sha512-mplynKqc1C2hTVYxd0PU2xQAc22TI1vShAYGksCCfxbn/dFwnHTNi1bvYsBTkhdUNtGIf5xNOg938rrSSYvS9A==",
       "bin": true
     },
     "yargs-parser@21.1.1": {
@@ -1386,8 +1386,8 @@
         "readable-stream@4.7.0"
       ]
     },
-    "zod@4.1.12": {
-      "integrity": "sha512-JInaHOamG8pt5+Ey8kGmdcAcg3OL9reK8ltczgHTAwNhMys/6ThXHityHxVV2p3fkw/c+MAvBHFVYHFZDmjMCQ=="
+    "zod@4.1.13": {
+      "integrity": "sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig=="
     }
   },
   "redirects": {
@@ -1765,7 +1765,7 @@
       "npm:@actions/github@^6.0.1",
       "npm:@libpg-query/parser@^17.7.0",
       "npm:@pgsql/types@^17.6.1",
-      "npm:@query-doctor/core@^0.0.3",
+      "npm:@query-doctor/core@^0.0.4",
       "npm:@testcontainers/postgresql@^11.9.0",
       "npm:@types/node@^24.9.1",
       "npm:@types/nunjucks@^3.2.6",

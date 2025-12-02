@@ -10,8 +10,13 @@ import { SyncResult } from "../sync/syncer.ts";
 import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
 import type { RateLimitResult } from "@rabbit-company/rate-limiter";
 import * as errors from "../sync/errors.ts";
+import { RemoteController } from "../remote/remote-controller.ts";
+import { Connectable } from "../sync/connectable.ts";
+import { ConnectionManager } from "../sync/connection-manager.ts";
+import { Remote } from "../remote/remote.ts";
 
-const syncer = new PostgresSyncer(wrapGenericPostgresInterface);
+const manager = new ConnectionManager(wrapGenericPostgresInterface);
+const syncer = new PostgresSyncer(manager);
 
 async function onSync(req: Request) {
   const startTime = Date.now();
@@ -148,7 +153,15 @@ async function onReset(req: Request) {
   }
 }
 
-export function createServer(hostname: string, port: number) {
+export function createServer(
+  hostname: string,
+  port: number,
+  targetDb?: Connectable,
+) {
+  const manager = new ConnectionManager(wrapGenericPostgresInterface);
+  const remoteController = targetDb
+    ? new RemoteController(new Remote(targetDb, manager))
+    : undefined;
   return Deno.serve(
     { hostname, port, signal: shutdownController.signal },
     async (req, info) => {
@@ -192,6 +205,10 @@ export function createServer(hostname: string, port: number) {
         }
         const res = await onReset(req);
         return transformResponse(res, limit);
+      }
+      const remoteResponse = await remoteController?.execute(req);
+      if (remoteResponse) {
+        return transformResponse(remoteResponse, limit);
       }
       return new Response("Not found", { status: 404 });
     },

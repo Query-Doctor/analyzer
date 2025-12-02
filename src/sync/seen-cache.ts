@@ -1,5 +1,5 @@
-import type { RawRecentQuery, RecentQuery } from "./pg-connector.ts";
 import type { Postgres } from "@query-doctor/core";
+import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 interface CacheEntry {
   firstSeen: number;
   lastSeen: number;
@@ -31,9 +31,9 @@ export class QueryCache {
     return entry.firstSeen >= this.createdAt;
   }
 
-  store(query: string) {
+  store(recentQuery: RawRecentQuery): string {
     // TODO: use fingerprint from @libpg-query/parser instead of the full query string
-    const key = query;
+    const key = recentQuery.query;
     const now = Date.now();
     if (this.list[key]) {
       this.list[key].lastSeen = now;
@@ -47,17 +47,14 @@ export class QueryCache {
     return this.list[key]?.firstSeen || Date.now();
   }
 
-  sync(queries: RawRecentQuery[]): RecentQuery[] {
-    return queries.map((query) => {
-      const key = this.store(query.query);
-      return {
-        ...query,
-        firstSeen: this.getFirstSeen(key),
-      };
+  sync(rawQueries: RawRecentQuery[]): RecentQuery[] {
+    return rawQueries.map((rawQuery) => {
+      const key = this.store(rawQuery);
+      return new RecentQuery(rawQuery, this.getFirstSeen(key));
     });
   }
 
-  reset() {
+  reset(): void {
     this.list = {};
   }
 }
@@ -76,7 +73,7 @@ export class SegmentedQueryCache {
     return cache.sync(queries);
   }
 
-  store(db: Postgres, query: string) {
+  store(db: Postgres, query: RawRecentQuery) {
     const cache = this.getOrCreateCache(db);
     return cache.store(query);
   }
