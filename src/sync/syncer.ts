@@ -3,20 +3,14 @@ import {
   type DependencyAnalyzerOptions,
   DependencyResolutionNotice,
 } from "./dependency-tree.ts";
-import { PostgresConnector, RecentQueriesResult } from "./pg-connector.ts";
+import { RecentQueriesResult } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema-link.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
-import {
-  ExportedStats,
-  type Postgres,
-  type PostgresFactory,
-  PostgresVersion,
-  Statistics,
-} from "@query-doctor/core";
-import { SegmentedQueryCache } from "./seen-cache.ts";
+import { ExportedStats, PostgresVersion, Statistics } from "@query-doctor/core";
 import { SchemaDiffer } from "./schema_differ.ts";
 import { ExtensionNotInstalledError } from "./errors.ts";
+import { ConnectionManager } from "./connection-manager.ts";
 
 type SyncOptions = DependencyAnalyzerOptions;
 
@@ -44,11 +38,11 @@ export type SyncResult = {
 };
 
 export class PostgresSyncer {
-  private readonly connections = new Map<string, Postgres>();
-  private readonly segmentedQueryCache = new SegmentedQueryCache();
   private readonly differ = new SchemaDiffer();
 
-  constructor(private readonly factory: PostgresFactory) {}
+  constructor(
+    private readonly manager: ConnectionManager,
+  ) {}
 
   /**
    * @throws {ExtensionNotInstalledError}
@@ -58,8 +52,8 @@ export class PostgresSyncer {
     connectable: Connectable,
     options: SyncOptions,
   ): Promise<SyncResult> {
-    const sql = this.getConnection(connectable);
-    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
+    const sql = this.manager.getOrCreateConnection(connectable);
+    const connector = this.manager.getConnectorFor(sql);
     const link = new PostgresSchemaLink(connectable, "pglite");
     const analyzer = new DependencyAnalyzer(connector, options);
     const [
@@ -139,8 +133,8 @@ export class PostgresSyncer {
    * @throws {PostgresError}
    */
   async liveQuery(connectable: Connectable) {
-    const sql = this.getConnection(connectable);
-    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
+    const sql = this.manager.getOrCreateConnection(connectable);
+    const connector = this.manager.getConnectorFor(sql);
     const [queries, schema] = await Promise.all([
       connector.getRecentQueries(),
       connector.getSchema(),
@@ -156,18 +150,7 @@ export class PostgresSyncer {
   async reset(
     connectable: Connectable,
   ): Promise<void> {
-    const sql = this.getConnection(connectable);
-    const connector = new PostgresConnector(sql, this.segmentedQueryCache);
+    const connector = this.manager.getConnectorFor(connectable);
     await connector.resetPgStatStatements();
-  }
-
-  private getConnection(connectable: Connectable) {
-    const urlString = connectable.toString();
-    let sql = this.connections.get(urlString);
-    if (!sql) {
-      sql = this.factory({ url: urlString });
-      this.connections.set(urlString, sql);
-    }
-    return sql;
   }
 }

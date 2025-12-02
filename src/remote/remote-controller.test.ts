@@ -5,11 +5,12 @@ import { Remote } from "./remote.ts";
 import postgres from "postgresjs";
 import { assertEquals } from "@std/assert/equals";
 import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
+import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 
 const connectable = z.string().transform(Connectable.transform);
 Deno.test({
-  name: "syncs correctly",
+  name: "controller syncs correctly",
   sanitizeOps: false,
   // deno is weird... the sync seems like it might be leaking resources?
   sanitizeResources: false,
@@ -18,18 +19,19 @@ Deno.test({
       new PostgreSqlContainer("postgres:17")
         .withCopyContentToContainer([
           {
-            content:
-              "create table testing(a int, b text); insert into testing values (1); create index on testing(b)",
+            content: `
+              create table testing(a int, b text);
+              insert into testing values (1);
+              create index on testing(b);
+              create extension pg_stat_statements;
+              select * from testing where a = 1;
+            `,
             target: "/docker-entrypoint-initdb.d/init.sql",
           },
-        ]).start(),
-      new PostgreSqlContainer("postgres:17")
-        .withCopyContentToContainer([
-          {
-            content: "create table testing(a int); create index on testing(a)",
-            target: "/docker-entrypoint-initdb.d/init.sql",
-          },
-        ]).start(),
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      new PostgreSqlContainer("postgres:17").start(),
     ]);
 
     try {
@@ -40,21 +42,35 @@ Deno.test({
         sourceDb.getConnectionUri(),
       );
 
-      const remote = new Remote(
-        target,
-        new ConnectionManager(wrapGenericPostgresInterface),
+      const man = new ConnectionManager(wrapGenericPostgresInterface);
+      const remote = new RemoteController(
+        new Remote(target, man),
       );
-      await remote.syncFrom(source);
+
+      const response = await remote.execute(
+        new Request(
+          "http://testing.local/postgres",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              db: source.toString(),
+            }),
+          },
+        ),
+      );
+
+      console.log(await response?.json());
+      assertEquals(response?.status, 200);
 
       const sql = postgres(
         target.withDatabaseName(Remote.optimizingDbName).toString(),
       );
       const tablesAfter =
         await sql`select tablename from pg_tables where schemaname = 'public'`;
+      assertEquals(tablesAfter.count, 1);
       const indexesAfter =
         await sql`select * from pg_indexes where schemaname = 'public'`;
       assertEquals(indexesAfter.count, 1);
-      assertEquals(tablesAfter.count, 1);
       assertEquals(tablesAfter[0], { tablename: "testing" });
       const rows = await sql`select * from testing`;
       // expect no rows to have been synced

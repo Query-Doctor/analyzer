@@ -4,8 +4,8 @@ import { format, type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { z } from "zod";
 
 export class SchemaDiffer {
-  private differ = create({
-    arrays: { detectMove: true, },
+  private readonly differ = create({
+    arrays: { detectMove: true },
     objectHash(obj, index) {
       // shouldn't happen but we don't want to throw an error for this
       if (!("type" in obj)) {
@@ -28,7 +28,7 @@ export class SchemaDiffer {
     },
   });
 
-  private stats: Map<Postgres, FullSchema> = new Map();
+  private readonly stats = new WeakMap<Postgres, FullSchema>();
 
   put(postgres: Postgres, schema: FullSchema): Op[] | undefined {
     const old = this.stats.get(postgres);
