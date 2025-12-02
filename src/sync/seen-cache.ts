@@ -1,21 +1,25 @@
 import type { Postgres } from "@query-doctor/core";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
+import { fingerprint } from "@libpg-query/parser";
+import z from "zod";
+
 interface CacheEntry {
   firstSeen: number;
   lastSeen: number;
 }
 
-type Query = string;
+const QueryHash = z.string().brand<"QueryHash">();
+type QueryHash = z.infer<typeof QueryHash>;
 
 export class QueryCache {
-  list: Record<Query, CacheEntry> = {};
+  private list: Record<QueryHash, CacheEntry> = {};
   private readonly createdAt: number;
 
   constructor() {
     this.createdAt = Date.now();
   }
 
-  isCached(key: string): boolean {
+  isCached(key: QueryHash): boolean {
     const entry = this.list[key];
     if (!entry) {
       return false;
@@ -23,7 +27,7 @@ export class QueryCache {
     return true;
   }
 
-  isNew(key: string): boolean {
+  isNew(key: QueryHash): boolean {
     const entry = this.list[key];
     if (!entry) {
       return true;
@@ -31,9 +35,8 @@ export class QueryCache {
     return entry.firstSeen >= this.createdAt;
   }
 
-  store(recentQuery: RawRecentQuery): string {
-    // TODO: use fingerprint from @libpg-query/parser instead of the full query string
-    const key = recentQuery.query;
+  async store(recentQuery: RawRecentQuery): Promise<QueryHash> {
+    const key = await this.hash(recentQuery.query);
     const now = Date.now();
     if (this.list[key]) {
       this.list[key].lastSeen = now;
@@ -43,19 +46,24 @@ export class QueryCache {
     return key;
   }
 
-  getFirstSeen(key: string): number {
+  getFirstSeen(key: QueryHash): number {
     return this.list[key]?.firstSeen || Date.now();
   }
 
-  sync(rawQueries: RawRecentQuery[]): RecentQuery[] {
-    return rawQueries.map((rawQuery) => {
-      const key = this.store(rawQuery);
+  async sync(rawQueries: RawRecentQuery[]): Promise<RecentQuery[]> {
+    // TODO: bound the concurrency
+    return await Promise.all(rawQueries.map(async (rawQuery) => {
+      const key = await this.store(rawQuery);
       return new RecentQuery(rawQuery, this.getFirstSeen(key));
-    });
+    }));
   }
 
   reset(): void {
     this.list = {};
+  }
+
+  private async hash(query: string): Promise<QueryHash> {
+    return QueryHash.parse(await fingerprint(query));
   }
 }
 
@@ -66,9 +74,9 @@ export class SegmentedQueryCache {
   // weak reference to the db instance to allow cache to be garbage collected
   // when the connection to the database is closed.
   // Can be relevant for
-  dbs: WeakMap<Postgres, QueryCache> = new WeakMap();
+  private readonly dbs: WeakMap<Postgres, QueryCache> = new WeakMap();
 
-  sync(db: Postgres, queries: RawRecentQuery[]): RecentQuery[] {
+  sync(db: Postgres, queries: RawRecentQuery[]): Promise<RecentQuery[]> {
     const cache = this.getOrCreateCache(db);
     return cache.sync(queries);
   }
