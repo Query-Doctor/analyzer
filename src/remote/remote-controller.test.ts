@@ -59,7 +59,6 @@ Deno.test({
         ),
       );
 
-      console.log(await response?.json());
       assertEquals(response?.status, 200);
 
       const sql = postgres(

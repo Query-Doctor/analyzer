@@ -12,8 +12,16 @@ export const RemoteSyncFullSchemaResponse = z.discriminatedUnion("type", [
   z.object({ type: z.literal("error"), error: z.string() }),
 ]);
 
+export const RemoteSyncQueriesResponse = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("ok"),
+    value: z.array(z.instanceof(RecentQuery)),
+  }),
+  z.object({ type: z.literal("error"), error: z.string() }),
+]);
+
 export const RemoteSyncResponse = z.object({
-  queries: z.array(z.instanceof(RecentQuery)),
+  queries: RemoteSyncQueriesResponse,
   schema: RemoteSyncFullSchemaResponse,
 });
 

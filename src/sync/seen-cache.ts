@@ -54,7 +54,7 @@ export class QueryCache {
     // TODO: bound the concurrency
     return await Promise.all(rawQueries.map(async (rawQuery) => {
       const key = await this.store(rawQuery);
-      return new RecentQuery(rawQuery, this.getFirstSeen(key));
+      return RecentQuery.analyze(rawQuery, this.getFirstSeen(key));
     }));
   }
 
