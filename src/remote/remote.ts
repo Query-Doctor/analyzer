@@ -1,10 +1,10 @@
-import { PgIdentifier, Postgres } from "@query-doctor/core";
-import { Connectable } from "../sync/connectable.ts";
+import { PgIdentifier, type Postgres } from "@query-doctor/core";
+import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
-import { RecentQuery } from "../sql/recent-query.ts";
-import { SchemaDiffer } from "../sync/schema_differ.ts";
-import { RemoteSyncResponse } from "./remote.dto.ts";
+import { type RecentQuery } from "../sql/recent-query.ts";
+import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
+import { type RemoteSyncResponse } from "./remote.dto.ts";
 
 /**
  * Represents a db for doing optimization work.
@@ -13,8 +13,8 @@ import { RemoteSyncResponse } from "./remote.dto.ts";
  * But potentially more logical databases in the future.
  */
 export class Remote {
-  public static readonly baseDbName = PgIdentifier.fromString("postgres");
-  public static readonly optimizingDbName = PgIdentifier.fromString(
+  static readonly baseDbName = PgIdentifier.fromString("postgres");
+  static readonly optimizingDbName = PgIdentifier.fromString(
     "optimizing_db",
   );
 
@@ -45,14 +45,12 @@ export class Remote {
     const target = this.targetURL.withDatabaseName(Remote.optimizingDbName);
     const sql = this.manager.getOrCreateConnection(source);
     const [_restoreResult, recentQueries, fullSchema] = await Promise
-      .allSettled(
-        [
-          // This potentially creates a lot of connections to the source
-          this.pipeSchema(target, source),
-          this.getRecentQueries(source),
-          this.getFullSchema(source),
-        ],
-      );
+      .allSettled([
+        // This potentially creates a lot of connections to the source
+        this.pipeSchema(target, source),
+        this.getRecentQueries(source),
+        this.getFullSchema(source),
+      ]);
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(sql, fullSchema.value);
@@ -60,8 +58,19 @@ export class Remote {
 
     const pg = this.manager.getOrCreateConnection(this.targetURL);
     await this.onSuccessfulSync(pg);
+
     return {
-      queries: recentQueries.status === "fulfilled" ? recentQueries.value : [],
+      queries: recentQueries.status === "fulfilled"
+        ? {
+          type: "ok",
+          value: recentQueries.value,
+        }
+        : {
+          type: "error",
+          error: recentQueries.reason instanceof Error
+            ? recentQueries.reason.message
+            : "Unknown error",
+        },
       schema: fullSchema.status === "fulfilled"
         ? { type: "ok", value: fullSchema.value }
         : {
@@ -78,7 +87,7 @@ export class Remote {
    *
    * TODO: allow juggling multiple databases in the future
    */
-  private async resetDatabase() {
+  private async resetDatabase(): Promise<void> {
     const databaseName = Remote.optimizingDbName;
     // these cannot be run in the same `exec` block as that implicitly creates transactions
     await this.baseDb.exec(
@@ -88,7 +97,10 @@ export class Remote {
     await this.baseDb.exec(`create database ${databaseName};`);
   }
 
-  private async pipeSchema(target: Connectable, source: Connectable) {
+  private async pipeSchema(
+    target: Connectable,
+    source: Connectable,
+  ): Promise<void> {
     const dump = DumpCommand.spawn(source, "native-postgres");
     const restore = RestoreCommand.spawn(target);
     const { dump: dumpResult, restore: restoreResult } = await dump.pipeTo(
@@ -120,7 +132,7 @@ export class Remote {
     return connector.getRecentQueries();
   }
 
-  private getFullSchema(source: Connectable) {
+  private getFullSchema(source: Connectable): Promise<FullSchema> {
     const connector = this.manager.getConnectorFor(source);
     return connector.getSchema();
   }

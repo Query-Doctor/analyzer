@@ -1,23 +1,36 @@
 import { format } from "sql-formatter";
 // deno-lint-ignore no-unused-vars
 import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
+import {
+  Analyzer,
+  DiscoveredColumnReference,
+  SQLCommenterTag,
+} from "@query-doctor/core";
+import { parse } from "@libpg-query/parser";
 
 /**
- * Constructed by {@link SegmentedQueryCache} by supplying the
- * date the query was last seen
+ * Constructed by syncing with {@link SegmentedQueryCache.sync}
+ * and supplying the date the query was last seen
  */
 export class RecentQuery {
-  public readonly formattedQuery: string;
-  public readonly username: string;
-  public readonly query: string;
-  public readonly meanTime: number;
-  public readonly calls: string;
-  public readonly rows: string;
-  public readonly topLevel: boolean;
+  readonly formattedQuery: string;
+  readonly username: string;
+  readonly query: string;
+  readonly meanTime: number;
+  readonly calls: string;
+  readonly rows: string;
+  readonly topLevel: boolean;
 
+  readonly isSystemQuery: boolean;
+  readonly isSelectQuery: boolean;
+
+  /** Use {@link RecentQuery.analyze} instead */
   constructor(
     data: RawRecentQuery,
-    public readonly seenAt: number,
+    readonly tableReferences: string[],
+    readonly columnReferences: DiscoveredColumnReference[],
+    readonly tags: SQLCommenterTag[],
+    readonly seenAt: number,
   ) {
     this.username = data.username;
     this.query = data.query;
@@ -30,6 +43,32 @@ export class RecentQuery {
     this.calls = data.calls;
     this.rows = data.rows;
     this.topLevel = data.topLevel;
+
+    this.isSystemQuery = RecentQuery.isSystemQuery(tableReferences);
+    this.isSelectQuery = RecentQuery.isSelectQuery(data);
+  }
+
+  static async analyze(
+    data: RawRecentQuery,
+    seenAt: number,
+  ) {
+    const analyzer = new Analyzer(parse);
+    const analysis = await analyzer.analyze(data.query);
+    return new RecentQuery(
+      { ...data, query: analysis.queryWithoutTags },
+      analysis.referencedTables,
+      analysis.indexesToCheck,
+      analysis.tags,
+      seenAt,
+    );
+  }
+
+  static isSelectQuery(data: RawRecentQuery): boolean {
+    return /^select/i.test(data.query);
+  }
+
+  static isSystemQuery(referencedTables: string[]): boolean {
+    return referencedTables.some((table) => table.startsWith("pg_"));
   }
 }
 
