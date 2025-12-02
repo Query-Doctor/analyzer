@@ -465,7 +465,7 @@ ORDER BY
         and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
 
-      return this.segmentedQueryCache.sync(
+      return await this.segmentedQueryCache.sync(
         this.db,
         results,
       );
