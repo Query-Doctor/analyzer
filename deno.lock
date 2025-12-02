@@ -11,7 +11,7 @@
     "jsr:@std/internal@^1.0.10": "1.0.10",
     "npm:@actions/core@^1.11.1": "1.11.1",
     "npm:@actions/github@^6.0.1": "6.0.1_@octokit+core@5.2.2",
-    "npm:@libpg-query/parser@^17.7.0": "17.7.0",
+    "npm:@libpg-query/parser@^17.6.3": "17.6.3",
     "npm:@pgsql/types@^17.6.1": "17.6.1",
     "npm:@query-doctor/core@^0.0.4": "0.0.4",
     "npm:@testcontainers/postgresql@^11.9.0": "11.9.0",
@@ -305,8 +305,8 @@
       ],
       "scripts": true
     },
-    "@libpg-query/parser@17.7.0": {
-      "integrity": "sha512-G+DA8enxveO3ESbLDhU7sAz02CPI16dKqXxPAvXbssHZnuBsaTpdHjm9CHC14ownvdujJ4CGwbs7kDUi3Lin9Q==",
+    "@libpg-query/parser@17.6.3": {
+      "integrity": "sha512-AvbS7b9GJZfCzqt4tLMqTaYK7Css9pJRTA2dKWLoTlob/XO2VNc30Q3g9DmxNBmokVTrmibkn/dy9bw8hfosQQ==",
       "dependencies": [
         "@launchql/protobufjs",
         "@pgsql/types"
@@ -1763,7 +1763,7 @@
       "jsr:@std/fmt@^1.0.8",
       "npm:@actions/core@^1.11.1",
       "npm:@actions/github@^6.0.1",
-      "npm:@libpg-query/parser@^17.7.0",
+      "npm:@libpg-query/parser@^17.6.3",
       "npm:@pgsql/types@^17.6.1",
       "npm:@query-doctor/core@^0.0.4",
       "npm:@testcontainers/postgresql@^11.9.0",

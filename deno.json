@@ -20,7 +20,7 @@
   "imports": {
     "@actions/core": "npm:@actions/core@^1.11.1",
     "@actions/github": "npm:@actions/github@^6.0.1",
-    "@libpg-query/parser": "npm:@libpg-query/parser@^17.7.0",
+    "@libpg-query/parser": "npm:@libpg-query/parser@^17.6.3",
     "@opentelemetry/api": "jsr:@opentelemetry/api@^1.9.0",
     "@pgsql/types": "npm:@pgsql/types@^17.6.1",
     "@query-doctor/core": "npm:@query-doctor/core@^0.0.4",

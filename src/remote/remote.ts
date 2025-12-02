@@ -44,13 +44,15 @@ export class Remote {
     await this.resetDatabase();
     const target = this.targetURL.withDatabaseName(Remote.optimizingDbName);
     const sql = this.manager.getOrCreateConnection(source);
-    const [restoreResult, recentQueries, fullSchema] = await Promise.allSettled(
-      [
-        this.pipeSchema(target, source),
-        this.getRecentConnections(source),
-        this.getFullSchema(source),
-      ],
-    );
+    const [_restoreResult, recentQueries, fullSchema] = await Promise
+      .allSettled(
+        [
+          // This potentially creates a lot of connections to the source
+          this.pipeSchema(target, source),
+          this.getRecentQueries(source),
+          this.getFullSchema(source),
+        ],
+      );
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(sql, fullSchema.value);
@@ -60,6 +62,14 @@ export class Remote {
     await this.onSuccessfulSync(pg);
     return {
       queries: recentQueries.status === "fulfilled" ? recentQueries.value : [],
+      schema: fullSchema.status === "fulfilled"
+        ? { type: "ok", value: fullSchema.value }
+        : {
+          type: "error",
+          error: fullSchema.reason instanceof Error
+            ? fullSchema.reason.message
+            : "Unknown error",
+        },
     };
   }
 
@@ -103,7 +113,7 @@ export class Remote {
     }
   }
 
-  private getRecentConnections(
+  private getRecentQueries(
     source: Connectable,
   ): Promise<RecentQuery[]> {
     const connector = this.manager.getConnectorFor(source);
