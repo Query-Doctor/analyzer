@@ -7,7 +7,7 @@ import { ZodError } from "zod";
 import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
-import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
+import { connectToOptimizer, connectToSource } from "../sql/postgresjs.ts";
 import type { RateLimitResult } from "@rabbit-company/rate-limiter";
 import * as errors from "../sync/errors.ts";
 import { RemoteController } from "../remote/remote-controller.ts";
@@ -15,8 +15,9 @@ import { Connectable } from "../sync/connectable.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Remote } from "../remote/remote.ts";
 
-const manager = new ConnectionManager(wrapGenericPostgresInterface);
-const syncer = new PostgresSyncer(manager);
+const sourceConnectionManager = new ConnectionManager(connectToSource);
+
+const syncer = new PostgresSyncer(sourceConnectionManager);
 
 async function onSync(req: Request) {
   const startTime = Date.now();
@@ -158,9 +159,14 @@ export function createServer(
   port: number,
   targetDb?: Connectable,
 ) {
-  const manager = new ConnectionManager(wrapGenericPostgresInterface);
+  const optimizingDbConnectionManager = new ConnectionManager(
+    connectToOptimizer,
+  );
+
   const remoteController = targetDb
-    ? new RemoteController(new Remote(targetDb, manager))
+    ? new RemoteController(
+      new Remote(targetDb, optimizingDbConnectionManager),
+    )
     : undefined;
   return Deno.serve(
     { hostname, port, signal: shutdownController.signal },

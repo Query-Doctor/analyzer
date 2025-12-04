@@ -1,14 +1,12 @@
-import z from "zod";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Connectable } from "../sync/connectable.ts";
 import { Remote } from "./remote.ts";
 import postgres from "postgresjs";
 import { assertEquals } from "@std/assert/equals";
-import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
 import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
+import { RemoteSyncRequest } from "./remote.dto.ts";
 
-const connectable = z.string().transform(Connectable.transform);
 Deno.test({
   name: "controller syncs correctly",
   sanitizeOps: false,
@@ -35,25 +33,26 @@ Deno.test({
     ]);
 
     try {
-      const target = connectable.parse(
+      const target = Connectable.fromString(
         targetDb.getConnectionUri(),
       );
-      const source = connectable.parse(
+      const source = Connectable.fromString(
         sourceDb.getConnectionUri(),
       );
 
-      const man = new ConnectionManager(wrapGenericPostgresInterface);
+      const sourceOptimizer = ConnectionManager.forLocalDatabase();
+
       const remote = new RemoteController(
-        new Remote(target, man),
+        new Remote(target, sourceOptimizer),
       );
 
       const response = await remote.execute(
         new Request(
-          "http://testing.local/postgres",
+          "https://anything.whatever/postgres",
           {
             method: "POST",
-            body: JSON.stringify({
-              db: source.toString(),
+            body: RemoteSyncRequest.encode({
+              db: source,
             }),
           },
         ),

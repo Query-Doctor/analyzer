@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { env } from "../env.ts";
 import { PgIdentifier } from "@query-doctor/core";
 
@@ -111,4 +111,4 @@ export class Connectable {
   }
 }
 
-const ConnectableParser = z.string().transform(Connectable.transform);
+export const ConnectableParser = z.string().transform(Connectable.transform);

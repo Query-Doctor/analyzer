@@ -1,10 +1,8 @@
-import z from "zod";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Connectable } from "../sync/connectable.ts";
 import { Remote } from "./remote.ts";
 import postgres from "postgresjs";
 import { assertEquals } from "@std/assert/equals";
-import { wrapGenericPostgresInterface } from "../sql/postgresjs.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { assertArrayIncludes } from "@std/assert";
 
@@ -14,7 +12,6 @@ function assertOk<T>(
   assertEquals(result.type, "ok");
 }
 
-const connectable = z.string().transform(Connectable.transform);
 Deno.test({
   name: "syncs correctly",
   sanitizeOps: false,
@@ -29,7 +26,7 @@ Deno.test({
               create extension pg_stat_statements;
               create table testing(a int, b text);
               insert into testing values (1);
-              create index on testing(b);
+              create index "testing_1234" on testing(b);
               select * from testing where a = 1;
             `,
             target: "/docker-entrypoint-initdb.d/init.sql",
@@ -47,17 +44,14 @@ Deno.test({
     ]);
 
     try {
-      const target = connectable.parse(
-        targetDb.getConnectionUri(),
-      );
-      const source = connectable.parse(
-        sourceDb.getConnectionUri(),
-      );
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
 
       const remote = new Remote(
         target,
-        new ConnectionManager(wrapGenericPostgresInterface),
+        ConnectionManager.forLocalDatabase(),
       );
+
       const result = await remote.syncFrom(source);
       assertOk(result.queries);
 
@@ -67,17 +61,32 @@ Deno.test({
         "select * from testing where a = $1",
       ]);
 
+      assertOk(result.schema);
+
+      const tableNames = result.schema.value.tables.map((table) =>
+        table.tableName
+      );
+
+      assertArrayIncludes(tableNames, ["testing"]);
+
+      const indexNames = result.schema.value.indexes.map((index) =>
+        index.indexName
+      );
+      assertArrayIncludes(indexNames, ["testing_1234"]);
+
       const sql = postgres(
         target.withDatabaseName(Remote.optimizingDbName).toString(),
       );
 
       const indexesAfter =
-        await sql`select * from pg_indexes where schemaname = 'public'`;
+        await sql`select indexname from pg_indexes where schemaname = 'public'`;
       assertEquals(
         indexesAfter.count,
         1,
         "Indexes were not copied over correctly from the source db",
       );
+
+      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
 
       const tablesAfter =
         await sql`select tablename from pg_tables where schemaname = 'public'`;
