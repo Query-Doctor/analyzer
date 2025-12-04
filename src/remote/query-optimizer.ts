@@ -18,7 +18,6 @@ const MINIMUM_COST_CHANGE_PERCENTAGE = 5;
 const QUERY_TIMEOUT_MS = 10000;
 
 type EventMap = {
-  optimize: [RecentQuery];
   error: [RecentQuery, string];
   timeout: [RecentQuery];
   zeroCostPlan: [RecentQuery];
@@ -202,7 +201,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             indexesUsed,
           };
         } else {
-          this.emit("improvementsAvailable", recent);
+          this.onImprovementsAvailable(recent, result);
           return {
             state: "improvements_available",
             cost: result.baseCost,

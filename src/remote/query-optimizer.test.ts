@@ -3,6 +3,9 @@ import { QueryOptimizer } from "./query-optimizer.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Connectable } from "../sync/connectable.ts";
 import { setTimeout } from "node:timers/promises";
+import { assertStrictEquals } from "@std/assert";
+import { assertEquals } from "@std/assert/equals";
+import { assertArrayIncludes } from "@std/assert/array-includes";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -17,7 +20,10 @@ Deno.test({
             insert into testing values (1);
             create index on testing(b);
             create extension pg_stat_statements;
-            select * from testing where a = 1;
+            select * from testing where a = 10;
+            select * from testing where b = 'c';
+            select * from testing where b > 'a';
+            select * from testing where b < 'b';
           `,
           target: "/docker-entrypoint-initdb.d/init.sql",
         },
@@ -32,21 +38,32 @@ Deno.test({
 
     const manager = ConnectionManager.forLocalDatabase();
     const optimizer = new QueryOptimizer(manager);
+
+    const expectedImprovements = ["select * from testing where a = $1"];
+    const expectedNoImprovements = [
+      "select * from testing where b = $1",
+      "select * from testing where b > $1",
+      "select * from testing where b < $1",
+    ];
+
+    const improvements: string[] = [];
+    const noImprovements: string[] = [];
+
     optimizer.addListener("improvementsAvailable", (query) => {
-      console.log("optimized!", query.query);
+      improvements.push(query.query);
     });
-    optimizer.addListener("error", (query, error) => {
-      console.error("error!", query, error);
+    optimizer.addListener("noImprovements", (query) => {
+      noImprovements.push(query.query);
     });
-    optimizer.addListener("zeroCostPlan", (query) => {
-      console.log("zero cost plan!", query.query);
-    });
+
     const conn = Connectable.fromString(pg.getConnectionUri());
     const connector = manager.getConnectorFor(conn);
     try {
       const recentQueries = await connector.getRecentQueries();
       await optimizer.start(conn, recentQueries);
-      await setTimeout(10_000);
+      await setTimeout(1_000);
+      assertArrayIncludes(expectedImprovements, improvements);
+      assertArrayIncludes(expectedNoImprovements, noImprovements);
     } finally {
       await pg.stop();
     }
