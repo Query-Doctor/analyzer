@@ -4,9 +4,10 @@ import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
 import { shutdown } from "./shutdown.ts";
+import { Connectable } from "./sync/connectable.ts";
 
 async function runInCI(
-  postgresUrl: string,
+  postgresUrl: Connectable,
   logPath: string,
   statisticsPath?: string,
   maxCost?: number,
@@ -44,7 +45,7 @@ async function main() {
       Deno.exit(1);
     }
     await runInCI(
-      env.POSTGRES_URL,
+      Connectable.fromString(env.POSTGRES_URL),
       env.LOG_PATH,
       env.STATISTICS_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,

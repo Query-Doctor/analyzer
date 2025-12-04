@@ -1,16 +1,24 @@
-import { PgIdentifier, type Postgres } from "@query-doctor/core";
+import {
+  PgIdentifier,
+  type Postgres,
+  StatisticsMode,
+} from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { type RecentQuery } from "../sql/recent-query.ts";
 import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
 import { type RemoteSyncResponse } from "./remote.dto.ts";
+import { QueryOptimizer } from "./query-optimizer.ts";
 
 /**
  * Represents a db for doing optimization work.
  * We only maintain one instance of this class as we only do
  * optimization against one physical postgres database.
  * But potentially more logical databases in the future.
+ *
+ * `Remote` only concerns itself with the remote it's doing optimization
+ * against. It does not deal with the source in any way aside from running sync
  */
 export class Remote {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
@@ -29,21 +37,25 @@ export class Remote {
    * 2 -> connections to {@link Remote.databaseName}. This connection pool is
    *      destroyed and re-created on each successful sync along with the db itself
    */
-  private readonly baseDb: Postgres;
+  private baseDbURL: Connectable;
+  private readonly queryOptimizer: QueryOptimizer;
 
   constructor(
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
     private readonly targetURL: Connectable,
     private readonly manager: ConnectionManager,
   ) {
-    const baseUrl = targetURL.withDatabaseName(Remote.baseDbName);
-    this.baseDb = this.manager.getOrCreateConnection(baseUrl);
+    this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
+    // this.baseDb = this.targetManager.getOrCreateConnection(baseUrl);
+    this.queryOptimizer = new QueryOptimizer(this.manager);
   }
 
-  async syncFrom(source: Connectable): Promise<RemoteSyncResponse> {
+  async syncFrom(
+    source: Connectable,
+    stats?: StatisticsMode,
+  ): Promise<RemoteSyncResponse> {
     await this.resetDatabase();
     const target = this.targetURL.withDatabaseName(Remote.optimizingDbName);
-    const sql = this.manager.getOrCreateConnection(source);
     const [_restoreResult, recentQueries, fullSchema] = await Promise
       .allSettled([
         // This potentially creates a lot of connections to the source
@@ -53,11 +65,23 @@ export class Remote {
       ]);
 
     if (fullSchema.status === "fulfilled") {
-      this.differ.put(sql, fullSchema.value);
+      this.differ.put(source, fullSchema.value);
     }
 
-    const pg = this.manager.getOrCreateConnection(this.targetURL);
-    await this.onSuccessfulSync(pg);
+    const pg = this.manager.getOrCreateConnection(
+      this.targetURL,
+    );
+
+    let queries: RecentQuery[] = [];
+    if (recentQueries.status === "fulfilled") {
+      queries = recentQueries.value;
+    }
+
+    await this.onSuccessfulSync(
+      pg,
+      queries,
+      stats,
+    );
 
     return {
       queries: recentQueries.status === "fulfilled"
@@ -89,12 +113,13 @@ export class Remote {
    */
   private async resetDatabase(): Promise<void> {
     const databaseName = Remote.optimizingDbName;
+    const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
     // these cannot be run in the same `exec` block as that implicitly creates transactions
-    await this.baseDb.exec(
+    await baseDb.exec(
       // drop database does not allow parameterization
       `drop database if exists ${databaseName} with (force);`,
     );
-    await this.baseDb.exec(`create database ${databaseName};`);
+    await baseDb.exec(`create database ${databaseName};`);
   }
 
   private async pipeSchema(
@@ -140,10 +165,15 @@ export class Remote {
   /**
    * Process a successful sync and run any potential cleanup functions
    */
-  private async onSuccessfulSync(postgres: Postgres): Promise<void> {
+  private async onSuccessfulSync(
+    postgres: Postgres,
+    recentQueries?: RecentQuery[],
+    stats?: StatisticsMode,
+  ): Promise<void> {
     if (this.targetURL.isSupabase()) {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
+    await this.queryOptimizer.start(this.targetURL, recentQueries, stats);
   }
 }

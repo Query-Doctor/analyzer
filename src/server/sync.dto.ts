@@ -1,14 +1,14 @@
-import { z } from "zod/v4";
-import { Connectable } from "../sync/connectable.ts";
+import { z } from "zod";
+import { ConnectableParser } from "../sync/connectable.ts";
 
 export const LiveQueryRequest = z.object({
-  db: z.string().transform(Connectable.transform),
+  db: ConnectableParser,
 });
 
 export type LiveQueryRequest = z.infer<typeof LiveQueryRequest>;
 
 export const SyncRequest = z.object({
-  db: z.string().transform(Connectable.transform),
+  db: ConnectableParser,
   seed: z.coerce.number().min(0).max(1).default(0),
   schema: z.coerce.string().default("public").meta({
     deprecated: true,

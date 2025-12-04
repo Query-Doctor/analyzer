@@ -1,7 +1,7 @@
-import type { Postgres } from "@query-doctor/core";
 import { create } from "jsondiffpatch";
 import { format, type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { z } from "zod";
+import { Connectable } from "./connectable.ts";
 
 export class SchemaDiffer {
   private readonly differ = create({
@@ -28,9 +28,9 @@ export class SchemaDiffer {
     },
   });
 
-  private readonly stats = new WeakMap<Postgres, FullSchema>();
+  private readonly stats = new WeakMap<Connectable, FullSchema>();
 
-  put(postgres: Postgres, schema: FullSchema): Op[] | undefined {
+  put(postgres: Connectable, schema: FullSchema): Op[] | undefined {
     const old = this.stats.get(postgres);
     if (!old) {
       this.stats.set(postgres, schema);

@@ -17,7 +17,7 @@ export class RemoteController {
   }
 
   async onFullSync(request: Request): Promise<Response> {
-    const body = RemoteSyncRequest.safeParse(await request.json());
+    const body = RemoteSyncRequest.safeDecode(await request.text());
     if (!body.success) {
       return new Response(JSON.stringify(body.error), { status: 400 });
     }

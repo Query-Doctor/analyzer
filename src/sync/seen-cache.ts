@@ -1,15 +1,11 @@
 import type { Postgres } from "@query-doctor/core";
-import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
+import { QueryHash, RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 import { fingerprint } from "@libpg-query/parser";
-import z from "zod";
 
 interface CacheEntry {
   firstSeen: number;
   lastSeen: number;
 }
-
-const QueryHash = z.string().brand<"QueryHash">();
-type QueryHash = z.infer<typeof QueryHash>;
 
 export class QueryCache {
   private list: Record<QueryHash, CacheEntry> = {};
@@ -54,7 +50,7 @@ export class QueryCache {
     // TODO: bound the concurrency
     return await Promise.all(rawQueries.map(async (rawQuery) => {
       const key = await this.store(rawQuery);
-      return RecentQuery.analyze(rawQuery, this.getFirstSeen(key));
+      return RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
     }));
   }
 
