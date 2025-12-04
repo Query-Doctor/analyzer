@@ -7,6 +7,7 @@ import {
   SQLCommenterTag,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
+import z from "zod";
 
 /**
  * Constructed by syncing with {@link SegmentedQueryCache.sync}
@@ -30,6 +31,7 @@ export class RecentQuery {
     readonly tableReferences: string[],
     readonly columnReferences: DiscoveredColumnReference[],
     readonly tags: SQLCommenterTag[],
+    readonly hash: QueryHash,
     readonly seenAt: number,
   ) {
     this.username = data.username;
@@ -50,6 +52,7 @@ export class RecentQuery {
 
   static async analyze(
     data: RawRecentQuery,
+    hash: QueryHash,
     seenAt: number,
   ) {
     const analyzer = new Analyzer(parse);
@@ -59,6 +62,7 @@ export class RecentQuery {
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
+      hash,
       seenAt,
     );
   }
@@ -81,3 +85,6 @@ export type RawRecentQuery = {
   rows: string;
   topLevel: boolean;
 };
+
+export const QueryHash = z.string().brand<"QueryHash">();
+export type QueryHash = z.infer<typeof QueryHash>;

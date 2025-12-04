@@ -3,9 +3,19 @@ import { Connectable } from "../sync/connectable.ts";
 import { RecentQuery } from "../sql/recent-query.ts";
 import { FullSchema } from "../sync/schema_differ.ts";
 
-export const RemoteSyncRequest = z.object({
-  db: z.string().transform(Connectable.transform),
-});
+export const RemoteSyncRequest = z.codec(
+  z.string(),
+  z.object({
+    db: z.custom<Connectable>(),
+  }),
+  {
+    encode: (value) => JSON.stringify({ db: value.db.toString() }),
+    decode: (value) => {
+      const parsed = JSON.parse(value);
+      return { db: Connectable.fromString(parsed.db) };
+    },
+  },
+);
 
 export const RemoteSyncFullSchemaResponse = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ok"), value: FullSchema }),
