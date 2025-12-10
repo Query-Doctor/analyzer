@@ -27,6 +27,7 @@ export class Remote {
   );
 
   private readonly differ = new SchemaDiffer();
+  readonly optimizer: QueryOptimizer;
 
   /**
    * We have to juggle 2 different connections to the Remote
@@ -38,16 +39,17 @@ export class Remote {
    *      destroyed and re-created on each successful sync along with the db itself
    */
   private baseDbURL: Connectable;
-  private readonly queryOptimizer: QueryOptimizer;
+  /** The URL of the optimizing db */
+  private readonly optimizingDbUDRL: Connectable;
 
   constructor(
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
-    private readonly targetURL: Connectable,
+    targetURL: Connectable,
     private readonly manager: ConnectionManager,
   ) {
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
-    // this.baseDb = this.targetManager.getOrCreateConnection(baseUrl);
-    this.queryOptimizer = new QueryOptimizer(this.manager);
+    this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
+    this.optimizer = new QueryOptimizer(manager);
   }
 
   async syncFrom(
@@ -55,11 +57,10 @@ export class Remote {
     stats?: StatisticsMode,
   ): Promise<RemoteSyncResponse> {
     await this.resetDatabase();
-    const target = this.targetURL.withDatabaseName(Remote.optimizingDbName);
     const [_restoreResult, recentQueries, fullSchema] = await Promise
       .allSettled([
         // This potentially creates a lot of connections to the source
-        this.pipeSchema(target, source),
+        this.pipeSchema(this.optimizingDbUDRL, source),
         this.getRecentQueries(source),
         this.getFullSchema(source),
       ]);
@@ -69,7 +70,7 @@ export class Remote {
     }
 
     const pg = this.manager.getOrCreateConnection(
-      this.targetURL,
+      this.optimizingDbUDRL,
     );
 
     let queries: RecentQuery[] = [];
@@ -79,6 +80,7 @@ export class Remote {
 
     await this.onSuccessfulSync(
       pg,
+      source,
       queries,
       stats,
     );
@@ -127,25 +129,25 @@ export class Remote {
     source: Connectable,
   ): Promise<void> {
     const dump = DumpCommand.spawn(source, "native-postgres");
+    // TODO: handle event emitter events
+    // dump.on("dump", (data) => {
+    //   console.log("got dump data", data);
+    // });
+    // dump.on("restore", (data) => {
+    //   console.log("got restore data", data);
+    // });
     const restore = RestoreCommand.spawn(target);
     const { dump: dumpResult, restore: restoreResult } = await dump.pipeTo(
       restore,
     );
-    if (dumpResult.error) {
-      console.error(dumpResult.error);
-    }
     if (!dumpResult.status.success) {
       throw new Error(
-        `Dump failed with status ${dumpResult.status.code}\n${dumpResult.error}`,
+        `Dump failed with status ${dumpResult.status.code}`,
       );
     }
-    if (restoreResult?.error) {
-      console.error(restoreResult.error);
-    }
     if (restoreResult && !restoreResult.status.success) {
-      console.log(restoreResult.error);
       throw new Error(
-        `Restore failed with status ${restoreResult.status.code}\n${restoreResult.error}`,
+        `Restore failed with status ${restoreResult.status.code}`,
       );
     }
   }
@@ -167,13 +169,20 @@ export class Remote {
    */
   private async onSuccessfulSync(
     postgres: Postgres,
-    recentQueries?: RecentQuery[],
+    source: Connectable,
+    recentQueries: RecentQuery[],
     stats?: StatisticsMode,
   ): Promise<void> {
-    if (this.targetURL.isSupabase()) {
+    if (source.isSupabase()) {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
-    await this.queryOptimizer.start(this.targetURL, recentQueries, stats);
+    // await postgres.exec(
+    //   `insert into uploaded_photos (original_filename, format, bytes, is_olo_menu, aim_available, created_at, updated_at) values ('', '', 2, true, true, now(), now())`,
+    // );
+    // await postgres.exec(
+    //   "vacuum analyze",
+    // );
+    await this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
   }
 }
