@@ -4,8 +4,6 @@ name: Release Action
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
 
 jobs:
   release:
@@ -32,6 +30,7 @@ jobs:
 
       - name: Upload files to release
         uses: softprops/action-gh-release@v2
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           tag_name: v${{ env.DENO_VERSION }}
         env:
