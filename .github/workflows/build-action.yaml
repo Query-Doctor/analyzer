@@ -27,6 +27,9 @@ jobs:
       - name: Typecheck
         run: deno check
 
+      - name: Run tests
+        run: deno run test
+
       - name: Upload files to release
         uses: softprops/action-gh-release@v2
         with:
