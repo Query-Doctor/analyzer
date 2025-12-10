@@ -113,7 +113,7 @@ export class PostgresSyncer {
       });
     }
 
-    this.differ.put(sql, serializedResult.schema);
+    this.differ.put(connectable, serializedResult.schema);
 
     const wrapped = schema + serializedResult.serialized;
 
@@ -133,13 +133,12 @@ export class PostgresSyncer {
    * @throws {PostgresError}
    */
   async liveQuery(connectable: Connectable) {
-    const sql = this.manager.getOrCreateConnection(connectable);
-    const connector = this.manager.getConnectorFor(sql);
+    const connector = this.manager.getConnectorFor(connectable);
     const [queries, schema] = await Promise.all([
       connector.getRecentQueries(),
       connector.getSchema(),
     ]);
-    const deltas = this.differ.put(sql, schema);
+    const deltas = this.differ.put(connectable, schema);
     return { queries, deltas };
   }
 
