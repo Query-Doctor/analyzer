@@ -4,6 +4,7 @@ import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
 import { findPgDumpBinary, findPgRestoreBinary } from "./executable.ts";
+import { EventEmitter } from "node:events";
 
 export type TableStats = {
   name: string;
@@ -47,7 +48,8 @@ export class PostgresSchemaLink {
   }
 }
 
-export class DumpCommand {
+export class DumpCommand
+  extends EventEmitter<{ restore: [string]; dump: [string] }> {
   public static readonly binaryPath = findPgDumpBinary("17.2");
   // we're intentionally NOT excluding the "extensions" schema
   // because supabase has triggers on that schema that cannot be
@@ -82,7 +84,9 @@ export class DumpCommand {
 
   // we don't want to allow callers to construct an instance
   // with any arbitrary child process. Use the static method instead
-  private constructor(private readonly process: Deno.ChildProcess) {}
+  private constructor(private readonly process: Deno.ChildProcess) {
+    super();
+  }
 
   static excludedSchemas(connectable: Connectable): string[] {
     if (connectable.isSupabase()) {
@@ -152,14 +156,37 @@ export class DumpCommand {
 
   async pipeTo(restore: RestoreCommand): Promise<RestoreCommandResult> {
     // Start consuming stderr in the background to prevent resource leaks
-    const stderrPromise = this.process.stderr.text();
+    // const stderrPromise = this.process.stderr.text();
+
+    const decoder = new TextDecoder();
+    this.process.stderr.pipeTo(
+      new WritableStream({
+        write: (chunk) => {
+          this.emit("dump", decoder.decode(chunk));
+        },
+      }),
+    );
+
+    restore.stderr.pipeTo(
+      new WritableStream({
+        write: (chunk) => {
+          this.emit("dump", decoder.decode(chunk));
+        },
+      }),
+    );
+    restore.stdout.pipeTo(
+      new WritableStream({
+        write: (chunk) => {
+          this.emit("dump", decoder.decode(chunk));
+        },
+      }),
+    );
 
     try {
       await this.process.stdout.pipeTo(restore.stdin);
     } catch (error) {
       return {
         dump: {
-          error: error instanceof Error ? error.message : await stderrPromise,
           status: await this.process.status,
         },
       };
@@ -167,15 +194,12 @@ export class DumpCommand {
 
     const dumpStatus = await this.process.status;
     // this only fails if the command is non-zero
-    const error = (await stderrPromise).trim();
     const restoreStatus = await restore.status;
     const out = {
       dump: {
-        error,
         status: dumpStatus,
       },
       restore: {
-        error: (await restore.stderr.text()).trim(),
         status: restoreStatus,
       },
     };
@@ -251,6 +275,7 @@ export class RestoreCommand {
       "--no-acl",
       "--clean",
       "--if-exists",
+      "--verbose",
       ...RestoreCommand.formatFlags(),
       "--dbname",
       connectable.toString(),
@@ -271,6 +296,10 @@ export class RestoreCommand {
 
   get stdin() {
     return this.process.stdin;
+  }
+
+  get stdout() {
+    return this.process.stdout;
   }
 
   get stderr() {
@@ -297,11 +326,9 @@ export class RestoreCommand {
 
 export type RestoreCommandResult = {
   dump: {
-    error: string;
     status: Deno.CommandStatus;
   };
   restore?: {
-    error: string;
     status: Deno.CommandStatus;
   };
 };

@@ -6,6 +6,7 @@ import { assertEquals } from "@std/assert/equals";
 import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
+import { assertSpyCalls, spy } from "@std/testing/mock";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -31,24 +32,43 @@ Deno.test({
         .start(),
       new PostgreSqlContainer("postgres:17").start(),
     ]);
+    const controller = new AbortController();
 
+    const target = Connectable.fromString(
+      targetDb.getConnectionUri(),
+    );
+    const source = Connectable.fromString(
+      sourceDb.getConnectionUri(),
+    );
+
+    const sourceOptimizer = ConnectionManager.forLocalDatabase();
+
+    const remote = new RemoteController(
+      new Remote(target, sourceOptimizer),
+    );
+
+    const server = Deno.serve(
+      { port: 0, signal: controller.signal },
+      async (req: Request): Promise<Response> => {
+        const result = await remote.execute(req);
+        if (!result) {
+          throw new Error();
+        }
+        return result;
+      },
+    );
     try {
-      const target = Connectable.fromString(
-        targetDb.getConnectionUri(),
-      );
-      const source = Connectable.fromString(
-        sourceDb.getConnectionUri(),
-      );
+      const ws = new WebSocket(`ws://localhost:${server.addr.port}/postgres`);
+      const messageFunction = spy();
+      ws.addEventListener("open", (event) => {
+        console.log("OPENED", event);
+      });
+      ws.addEventListener("error", console.log);
+      ws.addEventListener("message", messageFunction);
 
-      const sourceOptimizer = ConnectionManager.forLocalDatabase();
-
-      const remote = new RemoteController(
-        new Remote(target, sourceOptimizer),
-      );
-
-      const response = await remote.execute(
+      const response = await fetch(
         new Request(
-          "https://anything.whatever/postgres",
+          `http://localhost:${server.addr.port}/postgres`,
           {
             method: "POST",
             body: RemoteSyncRequest.encode({
@@ -73,8 +93,11 @@ Deno.test({
       const rows = await sql`select * from testing`;
       // expect no rows to have been synced
       assertEquals(rows.length, 0);
+
+      // exactly one query must have been processed
+      assertSpyCalls(messageFunction, 1);
     } finally {
-      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+      await Promise.all([sourceDb.stop(), targetDb.stop(), server.shutdown()]);
     }
   },
 });

@@ -24,6 +24,8 @@ export class RecentQuery {
 
   readonly isSystemQuery: boolean;
   readonly isSelectQuery: boolean;
+  readonly isIntrospection: boolean;
+  readonly isTargetlessSelectQuery: boolean;
 
   /** Use {@link RecentQuery.analyze} instead */
   constructor(
@@ -48,6 +50,10 @@ export class RecentQuery {
 
     this.isSystemQuery = RecentQuery.isSystemQuery(tableReferences);
     this.isSelectQuery = RecentQuery.isSelectQuery(data);
+    this.isIntrospection = RecentQuery.isIntrospection(data);
+    this.isTargetlessSelectQuery = this.isSelectQuery
+      ? RecentQuery.isTargetlessSelectQuery(tableReferences)
+      : false;
   }
 
   static async analyze(
@@ -73,6 +79,16 @@ export class RecentQuery {
 
   static isSystemQuery(referencedTables: string[]): boolean {
     return referencedTables.some((table) => table.startsWith("pg_"));
+  }
+
+  static isIntrospection(data: RawRecentQuery): boolean {
+    return data.query.match("@qd_introspection") !== null;
+  }
+
+  static isTargetlessSelectQuery(
+    referencedTables: string[],
+  ): boolean {
+    return referencedTables.length === 0;
   }
 }
 
