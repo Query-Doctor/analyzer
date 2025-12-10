@@ -51,7 +51,6 @@ runs:
     # Run the compiled application
     - name: Run Analyzer
       shell: bash
-      working-directory: ${{ github.action_path }}
       run: deno run start
       env:
         PG_DUMP_BINARY: /usr/bin/pg_dump

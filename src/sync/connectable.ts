@@ -1,5 +1,6 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { env } from "../env.ts";
+import { PgIdentifier } from "@query-doctor/core";
 
 /**
  * Represents a valid connection to a database.
@@ -13,8 +14,14 @@ export class Connectable {
     return this.url.hostname.endsWith("supabase.com");
   }
 
+  withDatabaseName(databaseName: PgIdentifier) {
+    const newUrl = new URL(this.url);
+    newUrl.pathname = `/${databaseName}`;
+    return new Connectable(newUrl);
+  }
+
   /**
-   * Custom logic for parsing a string into a Connectable through zod.
+   * Custom logic for parsing a string into a {@link Connectable} through zod.
    */
   static transform(
     urlString: string,
@@ -80,6 +87,10 @@ export class Connectable {
     return new Connectable(url);
   }
 
+  static fromString(url: string): Connectable {
+    return ConnectableParser.parse(url);
+  }
+
   private static extractSupabaseAccount(url: URL): string | undefined {
     const match = url.toString().match(/db\.(\w+)\.supabase\.co/);
     if (!match) {
@@ -99,3 +110,5 @@ export class Connectable {
     return this.url.toString();
   }
 }
+
+export const ConnectableParser = z.string().transform(Connectable.transform);
