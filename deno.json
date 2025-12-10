@@ -41,7 +41,6 @@
     "fast-csv": "npm:fast-csv@^5.0.5",
     "jsondiffpatch": "npm:jsondiffpatch@^0.7.3",
     "nunjucks": "npm:nunjucks@^3.2.4",
-    "patch-package": "npm:patch-package@^8.0.1",
     "pgsql-deparser": "npm:pgsql-deparser@^17.11.1",
     "sql-formatter": "npm:sql-formatter@^15.6.6",
     "sql-highlight": "npm:sql-highlight@^6.1.0",
