@@ -72,8 +72,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   /**
-   * Start optimizing a new set of queries.
-   * @returns the array of queries that will be considered
+   * Start optimizing a new set of queries
+   * @returns Promise of array of queries that were considered for optimization.
+   * Resolves when all queries are optimized
    */
   async start(
     conn: Connectable,
@@ -116,7 +117,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       this.queries.set(query.hash, { query, optimization });
     }
     this._allQueries = this.queries.size;
-    while (await this.work());
+    await this.work();
     return validQueries;
   }
 
@@ -134,24 +135,29 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     if (!this.target) {
       return;
     }
-    let recentQuery: RecentQuery | undefined;
-    const token = await this.semaphore.acquire();
-    try {
-      for (const [hash, entry] of this.queries.entries()) {
-        if (entry.optimization.state !== "waiting") {
-          continue;
+
+    while (true) {
+      let recentQuery: RecentQuery | undefined;
+      const token = await this.semaphore.acquire();
+      try {
+        for (const [hash, entry] of this.queries.entries()) {
+          if (entry.optimization.state !== "waiting") {
+            continue;
+          }
+          this.queries.set(hash, {
+            query: entry.query,
+            optimization: { state: "optimizing" },
+          });
+          recentQuery = entry.query;
+          break;
         }
-        this.queries.set(hash, {
-          query: entry.query,
-          optimization: { state: "optimizing" },
-        });
-        recentQuery = entry.query;
+      } finally {
+        this.semaphore.release(token);
+      }
+      if (!recentQuery) {
+        this._finish.resolve(0);
         break;
       }
-    } finally {
-      this.semaphore.release(token);
-    }
-    if (recentQuery) {
       this._validQueriesProcessed++;
       const optimization = await this.optimizeQuery(
         recentQuery,
@@ -162,10 +168,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         query: recentQuery,
         optimization,
       });
-      return true;
-    } else {
-      this._finish.resolve(0);
-      return false;
     }
   }
 
