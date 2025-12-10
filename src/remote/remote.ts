@@ -177,12 +177,6 @@ export class Remote {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
-    // await postgres.exec(
-    //   `insert into uploaded_photos (original_filename, format, bytes, is_olo_menu, aim_available, created_at, updated_at) values ('', '', 2, true, true, now(), now())`,
-    // );
-    // await postgres.exec(
-    //   "vacuum analyze",
-    // );
     await this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
   }
 }
