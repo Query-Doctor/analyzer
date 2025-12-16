@@ -29,7 +29,11 @@ function runOutsideCI() {
     `Starting server (${os}-${arch}) on ${env.HOST}:${env.PORT}`,
     "main",
   );
-  createServer(env.HOST, env.PORT);
+  if (!env.POSTGRES_URL) {
+    core.setFailed("POSTGRES_URL environment variable is not set");
+    Deno.exit(1);
+  }
+  createServer(env.HOST, env.PORT, Connectable.fromString(env.POSTGRES_URL));
 }
 
 async function main() {
