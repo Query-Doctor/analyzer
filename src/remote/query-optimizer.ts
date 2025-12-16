@@ -240,7 +240,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     let cost: number;
     try {
       const explain = await withTimeout(
-        target.optimizer.runWithoutIndexes(builder),
+        target.optimizer.testQueryWithStats(builder),
         timeoutMs,
       );
       cost = explain.Plan["Total Cost"];
