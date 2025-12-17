@@ -1,6 +1,8 @@
 import {
   PgIdentifier,
   type Postgres,
+  PostgresVersion,
+  Statistics,
   StatisticsMode,
 } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
@@ -54,16 +56,19 @@ export class Remote {
 
   async syncFrom(
     source: Connectable,
-    stats?: StatisticsMode,
+    statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
   ): Promise<RemoteSyncResponse> {
     await this.resetDatabase();
-    const [_restoreResult, recentQueries, fullSchema] = await Promise
-      .allSettled([
-        // This potentially creates a lot of connections to the source
-        this.pipeSchema(this.optimizingDbUDRL, source),
-        this.getRecentQueries(source),
-        this.getFullSchema(source),
-      ]);
+    const [_restoreResult, recentQueries, fullSchema, pulledStats] =
+      await Promise
+        .allSettled([
+          // This potentially creates a lot of connections to the source
+          this.pipeSchema(this.optimizingDbUDRL, source),
+          this.getRecentQueries(source),
+          this.getFullSchema(source),
+          this.dumpSourceStats(source),
+          this.resolveStatisticsStrategy(source, statsStrategy),
+        ]);
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(source, fullSchema.value);
@@ -76,6 +81,11 @@ export class Remote {
     let queries: RecentQuery[] = [];
     if (recentQueries.status === "fulfilled") {
       queries = recentQueries.value;
+    }
+
+    let stats: StatisticsMode | undefined;
+    if (pulledStats.status === "fulfilled") {
+      stats = pulledStats.value;
     }
 
     await this.onSuccessfulSync(
@@ -152,6 +162,28 @@ export class Remote {
     }
   }
 
+  private resolveStatisticsStrategy(
+    source: Connectable,
+    strategy: StatisticsStrategy,
+  ): Promise<StatisticsMode> {
+    switch (strategy.type) {
+      case "static":
+        return Promise.resolve(strategy.stats);
+      case "pullFromSource":
+        return this.dumpSourceStats(source);
+    }
+  }
+
+  private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
+    const pg = this.manager.getOrCreateConnection(source);
+    const stats = await Statistics.dumpStats(
+      pg,
+      PostgresVersion.parse("17"),
+      "full",
+    );
+    return { kind: "fromStatisticsExport", source: { kind: "inline" }, stats };
+  }
+
   private getRecentQueries(
     source: Connectable,
   ): Promise<RecentQuery[]> {
@@ -180,3 +212,10 @@ export class Remote {
     await this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
   }
 }
+
+export type StatisticsStrategy = {
+  type: "pullFromSource";
+} | {
+  type: "static";
+  stats: StatisticsMode;
+};
