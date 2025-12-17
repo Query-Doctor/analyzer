@@ -5,6 +5,30 @@ import postgres from "postgresjs";
 import { assertEquals } from "@std/assert/equals";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { assertArrayIncludes } from "@std/assert";
+import { PgIdentifier } from "@query-doctor/core";
+
+const TEST_TARGET_CONTAINER_NAME = "postgres:17";
+const TEST_TARGET_CONTAINER_TIMESCALEDB_NAME =
+  "timescale/timescaledb:latest-pg17";
+
+export function testSpawnTarget(
+  options: { content?: string; containerName?: string } = {
+    containerName: TEST_TARGET_CONTAINER_NAME,
+  },
+) {
+  let pg = new PostgreSqlContainer(
+    options.containerName ?? TEST_TARGET_CONTAINER_NAME,
+  );
+  if (options.content) {
+    pg = pg.withCopyContentToContainer([
+      {
+        content: options.content,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ]);
+  }
+  return pg.start();
+}
 
 function assertOk<T>(
   result: { type: string; value?: T },
@@ -34,13 +58,9 @@ Deno.test({
         ])
         .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
         .start(),
-      new PostgreSqlContainer("postgres:17")
-        .withCopyContentToContainer([
-          {
-            content: "create table testing(a int); create index on testing(a)",
-            target: "/docker-entrypoint-initdb.d/init.sql",
-          },
-        ]).start(),
+      testSpawnTarget(
+        { content: "create table testing(a int); create index on testing(a)" },
+      ),
     ]);
 
     try {
@@ -105,6 +125,130 @@ Deno.test({
       assertEquals(rows.length, 0, "Table in target db not empty");
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+  },
+});
+
+Deno.test({
+  name: "raw timescaledb syncs correctly",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [source, target] = await Promise.all([
+      new PostgreSqlContainer(
+        "timescale/timescaledb:latest-pg17",
+      )
+        .withEnvironment({
+          POSTGRES_HOST_AUTH_METHOD: "trust",
+        })
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table testing(a int, b text);
+              insert into testing values (1);
+              create index "testing_1234" on testing(b);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .start(),
+      testSpawnTarget({
+        containerName: TEST_TARGET_CONTAINER_TIMESCALEDB_NAME,
+      }),
+    ]);
+
+    const sourceConn = Connectable.fromString(source.getConnectionUri());
+    const targetConn = Connectable.fromString(target.getConnectionUri());
+    const manager = ConnectionManager.forLocalDatabase();
+    const remote = new Remote(targetConn, manager);
+
+    try {
+      const t = manager.getOrCreateConnection(
+        targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
+      );
+      await remote.syncFrom(sourceConn);
+      const indexesAfter = await t.exec(
+        "select indexname from pg_indexes where schemaname = 'public'",
+      );
+      assertEquals(
+        indexesAfter.length,
+        1,
+        "Indexes were not copied over correctly from the source db",
+      );
+
+      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
+    } finally {
+      await Promise.all([source.stop(), target.stop()]);
+    }
+  },
+});
+
+Deno.test({
+  name: "timescaledb with continuous aggregates sync correctly",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [source, target] = await Promise.all([
+      new PostgreSqlContainer(
+        "timescale/timescaledb:latest-pg17",
+      )
+        .withEnvironment({
+          POSTGRES_HOST_AUTH_METHOD: "trust",
+        })
+        .withLogConsumer((a) => a.pipe(process.stdout))
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table conditions(
+                "time"      timestamptz not null,
+                device_id   integer,
+                temperature float
+              )
+              with(
+                timescaledb.hypertable,
+                timescaledb.partition_column = 'time'
+              );
+              create materialized view conditions_summary_daily
+              with (timescaledb.continuous) as
+              select device_id,
+                time_bucket(interval '1 day', time) as bucket,
+                avg(temperature),
+                max(temperature),
+                min(temperature)
+              from conditions
+              group by device_id, bucket;
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .start(),
+      testSpawnTarget({
+        containerName: TEST_TARGET_CONTAINER_TIMESCALEDB_NAME,
+      }),
+    ]);
+
+    const sourceConn = Connectable.fromString(source.getConnectionUri());
+    const targetConn = Connectable.fromString(target.getConnectionUri());
+    const manager = ConnectionManager.forLocalDatabase();
+    const remote = new Remote(targetConn, manager);
+
+    try {
+      const t = manager.getOrCreateConnection(
+        targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
+      );
+      await remote.syncFrom(sourceConn);
+      const indexesAfter = await t.exec(
+        "select indexname from pg_indexes where schemaname = 'public'",
+      );
+      assertEquals(
+        indexesAfter.length,
+        1,
+        "Indexes were not copied over correctly from the source db",
+      );
+
+      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
+    } finally {
+      await Promise.all([source.stop(), target.stop()]);
     }
   },
 });
