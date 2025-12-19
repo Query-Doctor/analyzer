@@ -23,8 +23,8 @@ type EventMap = {
   timeout: [RecentQuery, number];
   zeroCostPlan: [RecentQuery];
   queryUnsupported: [RecentQuery];
-  noImprovements: [RecentQuery];
-  improvementsAvailable: [RecentQuery];
+  noImprovements: [RecentQuery, Extract<OptimizeResult, { kind: "ok" }>];
+  improvementsAvailable: [RecentQuery, Extract<OptimizeResult, { kind: "ok" }>];
 };
 
 type Target = {
@@ -295,7 +295,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           Math.abs(percentageReduction),
         );
         if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(recent);
+          this.onNoImprovements(recent, result);
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
@@ -319,8 +319,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
   }
 
-  private onNoImprovements(recent: RecentQuery) {
-    this.emit("noImprovements", recent);
+  private onNoImprovements(recent: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+    this.emit("noImprovements", recent, result);
   }
 
   private getPotentialIndexCandidates(
@@ -347,7 +347,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: RecentQuery,
     result: Extract<OptimizeResult, { kind: "ok" }>,
   ) {
-    this.emit("improvementsAvailable", recent);
+    this.emit("improvementsAvailable", recent, result);
     this.queries.set(recent.hash, {
       query: recent,
       optimization: {
