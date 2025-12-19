@@ -1,4 +1,4 @@
-import { format } from "sql-formatter";
+// import { format } from "sql-formatter";
 // deno-lint-ignore no-unused-vars
 import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
@@ -38,11 +38,12 @@ export class RecentQuery {
   ) {
     this.username = data.username;
     this.query = data.query;
-    this.formattedQuery = format(data.query, {
-      language: "postgresql",
-      keywordCase: "lower",
-      linesBetweenQueries: 2,
-    });
+    // this.formattedQuery = format(data.query, {
+    //   language: "postgresql",
+    //   keywordCase: "lower",
+    //   linesBetweenQueries: 2,
+    // });
+    this.formattedQuery = data.query;
     this.meanTime = data.meanTime;
     this.calls = data.calls;
     this.rows = data.rows;
