@@ -214,6 +214,10 @@ export function createServer(
       }
       const remoteResponse = await remoteController?.execute(req);
       if (remoteResponse) {
+        // WebSocket upgrade responses have immutable headers, skip transform
+        if (req.headers.get("upgrade") === "websocket") {
+          return remoteResponse;
+        }
         return transformResponse(remoteResponse, limit);
       }
       return new Response("Not found", { status: 404 });
