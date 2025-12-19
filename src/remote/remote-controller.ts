@@ -3,6 +3,7 @@ import { RecentQuery } from "../sql/recent-query.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
+import { OptimizeResult } from "@query-doctor/core";
 
 export class RemoteController {
   /**
@@ -79,15 +80,27 @@ export class RemoteController {
     return response;
   }
 
-  private eventNoImprovementsAvailable(query: RecentQuery) {
+  private eventNoImprovementsAvailable(query: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+    const indexesUsed = Array.from(result.existingIndexes);
     this.socket?.send(
-      JSON.stringify({ type: "noImprovements", query }),
+      JSON.stringify({ type: "noImprovements", query, cost: result.baseCost, indexesUsed }),
     );
   }
 
-  private eventImprovementsAvailable(query: RecentQuery) {
+  private eventImprovementsAvailable(query: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+    const indexesUsed = Array.from(result.existingIndexes);
+    const recommendedIndexes = Array.from(result.newIndexes)
+      .map((n) => result.triedIndexes.get(n)?.definition)
+      .filter((n) => n !== undefined);
     this.socket?.send(
-      JSON.stringify({ type: "improvementsAvailable", query }),
+      JSON.stringify({
+        type: "improvementsAvailable",
+        query,
+        cost: result.baseCost,
+        optimizedCost: result.finalCost,
+        indexesUsed,
+        recommendedIndexes,
+      }),
     );
   }
 
