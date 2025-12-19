@@ -11,6 +11,7 @@ export class RemoteController {
    * Multi-tab support not currently available
    */
   private socket?: WebSocket;
+  private syncResponse?: ReturnType<Remote["syncFrom"]>;
 
   constructor(
     private readonly remote: Remote,
@@ -55,8 +56,11 @@ export class RemoteController {
 
     const { db } = body.data;
     try {
-      const sync = await this.remote.syncFrom(db);
-      return Response.json(sync);
+      if (!this.syncResponse) {
+        this.syncResponse = this.remote.syncFrom(db);
+      }
+
+      return Response.json(await this.syncResponse);
     } catch (error) {
       console.error(error);
       return Response.json({
