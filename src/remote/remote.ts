@@ -209,7 +209,7 @@ export class Remote {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
-    await this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
+    this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
   }
 }
 
