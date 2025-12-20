@@ -73,6 +73,10 @@ export class RemoteController {
     console.log({ socket });
     this.socket = socket;
 
+    socket.addEventListener("open", () => {
+      this.syncResponse = undefined;
+    });
+
     socket.addEventListener("close", () => {
       this.socket = undefined;
     });
