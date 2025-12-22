@@ -50,4 +50,13 @@ export class ConnectionManager {
       : input;
     return new PostgresConnector(sql, this.segmentedQueryCache);
   }
+
+  async closeAll(): Promise<void> {
+    const closePromises = Array.from(this.connections.values()).map((conn) =>
+      // @ts-expect-error | this will exist later
+      conn.close()
+    );
+    this.connections.clear();
+    await Promise.all(closePromises);
+  }
 }

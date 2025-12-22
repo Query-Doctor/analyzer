@@ -10,7 +10,7 @@ import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { type RecentQuery } from "../sql/recent-query.ts";
 import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
-import { type RemoteSyncResponse } from "./remote.dto.ts";
+import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 
 /**
@@ -57,7 +57,7 @@ export class Remote {
   async syncFrom(
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
-  ): Promise<RemoteSyncResponse> {
+  ): Promise<{ schema: RemoteSyncFullSchemaResponse }> {
     await this.resetDatabase();
     const [_restoreResult, recentQueries, fullSchema, pulledStats] =
       await Promise
@@ -96,17 +96,6 @@ export class Remote {
     );
 
     return {
-      queries: recentQueries.status === "fulfilled"
-        ? {
-          type: "ok",
-          value: recentQueries.value,
-        }
-        : {
-          type: "error",
-          error: recentQueries.reason instanceof Error
-            ? recentQueries.reason.message
-            : "Unknown error",
-        },
       schema: fullSchema.status === "fulfilled"
         ? { type: "ok", value: fullSchema.value }
         : {
@@ -184,11 +173,11 @@ export class Remote {
     return { kind: "fromStatisticsExport", source: { kind: "inline" }, stats };
   }
 
-  private getRecentQueries(
+  private async getRecentQueries(
     source: Connectable,
   ): Promise<RecentQuery[]> {
     const connector = this.manager.getConnectorFor(source);
-    return connector.getRecentQueries();
+    return await connector.getRecentQueries();
   }
 
   private getFullSchema(source: Connectable): Promise<FullSchema> {
