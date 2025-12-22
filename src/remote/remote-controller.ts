@@ -1,9 +1,8 @@
 import { env } from "../env.ts";
-import { RecentQuery } from "../sql/recent-query.ts";
+import { OptimizedQuery } from "../sql/recent-query.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
-import { OptimizeResult } from "@query-doctor/core";
 
 export class RemoteController {
   /**
@@ -34,18 +33,14 @@ export class RemoteController {
   }
 
   private hookUpWebsockets(optimizer: QueryOptimizer) {
-    optimizer.on(
-      "noImprovements",
-      this.eventNoImprovementsAvailable.bind(this),
-    );
-    optimizer.on(
-      "improvementsAvailable",
-      this.eventImprovementsAvailable.bind(this),
-    );
-    optimizer.on("error", this.eventError.bind(this));
-    optimizer.on("timeout", this.eventTimeout.bind(this));
-    optimizer.on("zeroCostPlan", this.eventZeroCostPlan.bind(this));
-    optimizer.on("queryUnsupported", this.eventQueryUnsupported.bind(this));
+    const onQueryProcessed = this.eventOnQueryProcessed.bind(this);
+    const onError = this.eventError.bind(this);
+    optimizer.on("noImprovements", onQueryProcessed);
+    optimizer.on("improvementsAvailable", onQueryProcessed);
+    optimizer.on("error", onError);
+    optimizer.on("timeout", onQueryProcessed);
+    optimizer.on("zeroCostPlan", onQueryProcessed);
+    optimizer.on("queryUnsupported", onQueryProcessed);
   }
 
   private async onFullSync(request: Request): Promise<Response> {
@@ -86,70 +81,20 @@ export class RemoteController {
     return response;
   }
 
-  private eventNoImprovementsAvailable(
-    query: RecentQuery,
-    result: Extract<OptimizeResult, { kind: "ok" }>,
-  ) {
-    const indexesUsed = Array.from(result.existingIndexes);
-    this.socket?.send(
-      JSON.stringify({
-        type: "noImprovements",
-        query,
-        cost: result.baseCost,
-        indexesUsed,
-      }),
-    );
+  private eventOnQueryProcessed(query: OptimizedQuery) {
+    this.socket?.send(JSON.stringify({
+      type: "queryProcessed",
+      query,
+    }));
   }
 
-  private eventImprovementsAvailable(
-    query: RecentQuery,
-    result: Extract<OptimizeResult, { kind: "ok" }>,
-  ) {
-    const indexesUsed = Array.from(result.existingIndexes);
-    const recommendedIndexes = Array.from(result.newIndexes)
-      .map((n) => result.triedIndexes.get(n)?.definition)
-      .filter((n) => n !== undefined);
-    this.socket?.send(
-      JSON.stringify({
-        type: "improvementsAvailable",
-        query,
-        cost: result.baseCost,
-        optimizedCost: result.finalCost,
-        indexesUsed,
-        recommendedIndexes,
-      }),
-    );
-  }
-
-  private eventError(error: Error, recentQuery: RecentQuery) {
+  private eventError(error: Error, query: OptimizedQuery) {
     this.socket?.send(
       JSON.stringify({
         type: "error",
-        query: recentQuery,
+        query,
         error: error.message,
       }),
-    );
-  }
-
-  private eventTimeout(recentQuery: RecentQuery, waitedMs: number) {
-    this.socket?.send(
-      JSON.stringify({
-        type: "timeout",
-        query: recentQuery,
-        waitTimeMs: waitedMs,
-      }),
-    );
-  }
-
-  private eventZeroCostPlan(recentQuery: RecentQuery) {
-    this.socket?.send(
-      JSON.stringify({ type: "zeroCostPlan", query: recentQuery }),
-    );
-  }
-
-  private eventQueryUnsupported(query: RecentQuery) {
-    this.socket?.send(
-      JSON.stringify({ type: "queryUnsupported", query }),
     );
   }
 }
