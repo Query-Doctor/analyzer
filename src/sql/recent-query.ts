@@ -8,6 +8,7 @@ import {
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
 import z from "zod";
+import type { LiveQueryOptimization } from "../remote/optimization.ts";
 
 /**
  * Constructed by syncing with {@link SegmentedQueryCache.sync}
@@ -38,11 +39,6 @@ export class RecentQuery {
   ) {
     this.username = data.username;
     this.query = data.query;
-    // this.formattedQuery = format(data.query, {
-    //   language: "postgresql",
-    //   keywordCase: "lower",
-    //   linesBetweenQueries: 2,
-    // });
     this.formattedQuery = data.query;
     this.meanTime = data.meanTime;
     this.calls = data.calls;
@@ -55,6 +51,12 @@ export class RecentQuery {
     this.isTargetlessSelectQuery = this.isSelectQuery
       ? RecentQuery.isTargetlessSelectQuery(tableReferences)
       : false;
+  }
+
+  withOptimization(
+    optimization: LiveQueryOptimization,
+  ): OptimizedQuery {
+    return Object.assign(this, { optimization });
   }
 
   static async analyze(
@@ -105,6 +107,10 @@ export type RawRecentQuery = {
   calls: string;
   rows: string;
   topLevel: boolean;
+};
+
+export type OptimizedQuery = RecentQuery & {
+  optimization: LiveQueryOptimization;
 };
 
 export const QueryHash = z.string().brand<"QueryHash">();

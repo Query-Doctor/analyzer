@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Connectable } from "../sync/connectable.ts";
 import { FullSchema } from "../sync/schema_differ.ts";
-import { OptimizedQuery } from "./query-optimizer.ts";
+import { OptimizedQuery } from "../sql/recent-query.ts";
 
 export const RemoteSyncRequest = z.codec(
   z.string(),
@@ -29,7 +29,7 @@ export type RemoteSyncFullSchemaResponse = z.infer<
 export const RemoteSyncQueriesResponse = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("ok"),
-    value: z.array(OptimizedQuery),
+    value: z.array(z.custom<OptimizedQuery>()),
   }),
   z.object({ type: z.literal("error"), error: z.string() }),
 ]);

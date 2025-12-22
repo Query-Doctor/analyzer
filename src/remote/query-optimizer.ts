@@ -1,5 +1,6 @@
 import EventEmitter from "node:events";
-import { QueryHash, RecentQuery } from "../sql/recent-query.ts";
+import { OptimizedQuery, QueryHash, RecentQuery } from "../sql/recent-query.ts";
+import type { LiveQueryOptimization } from "./optimization.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Sema } from "async-sema";
 import {
@@ -13,18 +14,16 @@ import {
 } from "@query-doctor/core";
 import { Connectable } from "../sync/connectable.ts";
 import { parse } from "@libpg-query/parser";
-import z from "zod";
 
 const MINIMUM_COST_CHANGE_PERCENTAGE = 5;
 const QUERY_TIMEOUT_MS = 10000;
 
 type EventMap = {
-  error: [Error, RecentQuery];
-  timeout: [RecentQuery, number];
-  zeroCostPlan: [RecentQuery];
-  queryUnsupported: [RecentQuery];
-  noImprovements: [RecentQuery, Extract<OptimizeResult, { kind: "ok" }>];
-  improvementsAvailable: [RecentQuery, Extract<OptimizeResult, { kind: "ok" }>];
+  error: [Error, OptimizedQuery];
+  timeout: [OptimizedQuery, number];
+  zeroCostPlan: [OptimizedQuery];
+  noImprovements: [OptimizedQuery];
+  improvementsAvailable: [OptimizedQuery];
 };
 
 type Target = {
@@ -80,9 +79,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     conn: Connectable,
     allRecentQueries: RecentQuery[],
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
-  ): Promise<RecentQuery[]> {
+  ): Promise<OptimizedQuery[]> {
     this.stop();
-    const validQueries: RecentQuery[] = [];
+    const validQueries: OptimizedQuery[] = [];
     for (const query of allRecentQueries) {
       let optimization: LiveQueryOptimization;
       const status = this.checkQueryUnsupported(query);
@@ -96,8 +95,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         case "ignored":
           continue;
       }
-      validQueries.push(query);
-      this.queries.set(query.hash, { query, optimization });
+      const optimized = query.withOptimization(optimization);
+
+      validQueries.push(optimized);
+      this.queries.set(query.hash, optimized);
     }
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(conn);
@@ -137,81 +138,43 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
 
     while (true) {
-      let recentQuery: RecentQuery | undefined;
+      let optimized: OptimizedQuery | undefined;
       const token = await this.semaphore.acquire();
       try {
         for (const [hash, entry] of this.queries.entries()) {
           if (entry.optimization.state !== "waiting") {
             continue;
           }
-          this.queries.set(hash, {
-            query: entry.query,
-            optimization: { state: "optimizing" },
-          });
-          recentQuery = entry.query;
+          this.queries.set(
+            hash,
+            entry.withOptimization({ state: "optimizing" }),
+          );
+          optimized = entry;
           break;
         }
       } finally {
         this.semaphore.release(token);
       }
-      if (!recentQuery) {
+      if (!optimized) {
         this._finish.resolve(0);
         break;
       }
       this._validQueriesProcessed++;
       const optimization = await this.optimizeQuery(
-        recentQuery,
+        optimized,
         this.target,
       );
 
-      this.queries.set(recentQuery.hash, {
-        query: recentQuery,
-        optimization,
-      });
+      this.queries.set(
+        optimized.hash,
+        optimized.withOptimization(optimization),
+      );
     }
   }
 
   getQueries(): OptimizedQuery[] {
     return Array.from(this.queries.values());
   }
-
-  // private summarizeQueue() {
-  //   let waitingQueries = 0;
-  //   let optimizingQueries = 0;
-  //   let improvementsAvailableQueries = 0;
-  //   let noImprovementFoundQueries = 0;
-  //   let timeoutQueries = 0;
-  //   let errorQueries = 0;
-  //   let notSupportedQueries = 0;
-
-  //   for (const [_hash, query] of this.queries.entries()) {
-  //     if (query.optimization.state === "waiting") {
-  //       waitingQueries++;
-  //     } else if (query.optimization.state === "optimizing") {
-  //       optimizingQueries++;
-  //     } else if (query.optimization.state === "improvements_available") {
-  //       improvementsAvailableQueries++;
-  //     } else if (query.optimization.state === "no_improvement_found") {
-  //       noImprovementFoundQueries++;
-  //     } else if (query.optimization.state === "timeout") {
-  //       timeoutQueries++;
-  //     } else if (query.optimization.state === "error") {
-  //       errorQueries++;
-  //     } else if (query.optimization.state === "not_supported") {
-  //       notSupportedQueries++;
-  //     }
-  //   }
-  //   console.log("============");
-  //   console.log(`waiting: ${waitingQueries}`);
-  //   console.log(`optimizing: ${optimizingQueries}`);
-  //   console.log(`timeout: ${timeoutQueries}`);
-  //   console.log(`error: ${errorQueries}`);
-  //   console.log(
-  //     `improvements: ${improvementsAvailableQueries}`,
-  //   );
-  //   console.log(`no improvements: ${noImprovementFoundQueries}`);
-  //   console.log("============");
-  // }
 
   private checkQueryUnsupported(
     query: RecentQuery,
@@ -236,7 +199,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private async optimizeQuery(
-    recent: RecentQuery,
+    recent: OptimizedQuery,
     target: Target,
     timeoutMs = QUERY_TIMEOUT_MS,
   ): Promise<LiveQueryOptimization> {
@@ -285,7 +248,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private onOptimizeReady(
     result: OptimizeResult,
-    recent: RecentQuery,
+    recent: OptimizedQuery,
   ): LiveQueryOptimization {
     switch (result.kind) {
       case "ok": {
@@ -299,7 +262,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           Math.abs(percentageReduction),
         );
         if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(recent, result);
+          this.onNoImprovements(recent, result.baseCost, indexesUsed);
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
@@ -324,15 +287,23 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onNoImprovements(
-    recent: RecentQuery,
-    result: Extract<OptimizeResult, { kind: "ok" }>,
+    recent: OptimizedQuery,
+    cost: number,
+    indexesUsed: string[],
   ) {
-    this.emit("noImprovements", recent, result);
+    this.emit(
+      "noImprovements",
+      recent.withOptimization({
+        state: "no_improvement_found",
+        cost,
+        indexesUsed,
+      }),
+    );
   }
 
   private getPotentialIndexCandidates(
     statistics: Statistics,
-    recent: RecentQuery,
+    recent: OptimizedQuery,
   ) {
     const analyzer = new Analyzer(parse);
     return analyzer.deriveIndexes(
@@ -342,7 +313,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onQueryUnsupported(reason: string): LiveQueryOptimization {
-    // this.emit("queryUnsupported", recent);
     this._invalidQueries++;
     return {
       state: "not_supported",
@@ -351,27 +321,37 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onImprovementsAvailable(
-    recent: RecentQuery,
+    recent: OptimizedQuery,
     result: Extract<OptimizeResult, { kind: "ok" }>,
   ) {
-    this.emit("improvementsAvailable", recent, result);
-    this.queries.set(recent.hash, {
-      query: recent,
-      optimization: {
-        state: "improvements_available",
-        cost: result.baseCost,
-        optimizedCost: result.finalCost,
-        costReductionPercentage: 0,
-        indexRecommendations: [],
-        indexesUsed: [],
-        // costReductionPercentage,
-        // indexRecommendations,
-        // indexesUsed,
-      },
-    });
+    const optimized = recent.withOptimization(
+      this.resultToImprovementsAvailable(result),
+    );
+    this.emit("improvementsAvailable", optimized);
+    this.queries.set(
+      optimized.hash,
+      optimized,
+    );
   }
 
-  private onZeroCostPlan(recent: RecentQuery): LiveQueryOptimization {
+  private resultToImprovementsAvailable(
+    result: Extract<OptimizeResult, { kind: "ok" }>,
+  ): LiveQueryOptimization {
+    const indexesUsed = Array.from(result.existingIndexes);
+    const indexRecommendations = Array.from(result.newIndexes)
+      .map((n) => result.triedIndexes.get(n)?.definition)
+      .filter((n) => n !== undefined);
+    return {
+      state: "improvements_available",
+      cost: result.baseCost,
+      optimizedCost: result.finalCost,
+      costReductionPercentage: 0,
+      indexRecommendations,
+      indexesUsed,
+    };
+  }
+
+  private onZeroCostPlan(recent: OptimizedQuery): LiveQueryOptimization {
     this.emit("zeroCostPlan", recent);
     return {
       state: "error",
@@ -382,7 +362,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onError(
-    recent: RecentQuery,
+    recent: OptimizedQuery,
     errorMessage: string,
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
@@ -391,7 +371,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onTimeout(
-    recent: RecentQuery,
+    recent: OptimizedQuery,
     waitedMs: number,
   ): LiveQueryOptimization {
     this.emit("timeout", recent, waitedMs);
@@ -440,35 +420,3 @@ export function costDifferencePercentage(
 ): PercentageDifference {
   return ((newVal - oldVal) / oldVal) * 100;
 }
-
-export const LiveQueryOptimization = z.discriminatedUnion("state", [
-  z.object({
-    state: z.literal("waiting"),
-  }),
-  z.object({ state: z.literal("optimizing") }),
-  z.object({ state: z.literal("not_supported"), reason: z.string() }),
-  z.object({
-    state: z.literal("improvements_available"),
-    cost: z.number(),
-    optimizedCost: z.number(),
-    costReductionPercentage: z.number(),
-    indexRecommendations: z.array(z.string()),
-    indexesUsed: z.array(z.string()),
-  }),
-  z.object({
-    state: z.literal("no_improvement_found"),
-    cost: z.number(),
-    indexesUsed: z.array(z.string()),
-  }),
-  z.object({ state: z.literal("timeout") }),
-  z.object({ state: z.literal("error"), error: z.instanceof(Error) }),
-]);
-
-export type LiveQueryOptimization = z.infer<typeof LiveQueryOptimization>;
-
-export const OptimizedQuery = z.object({
-  query: z.instanceof(RecentQuery),
-  optimization: LiveQueryOptimization,
-});
-
-export type OptimizedQuery = z.infer<typeof OptimizedQuery>;

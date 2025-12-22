@@ -75,7 +75,7 @@ Deno.test({
       const result = await remote.syncFrom(source);
       const optimizedQueries = remote.optimizer.getQueries();
 
-      const queries = optimizedQueries.map((f) => f.query.query);
+      const queries = optimizedQueries.map((f) => f.query);
       assertArrayIncludes(queries, [
         "create table testing(a int, b text)",
         "select * from testing where a = $1",
@@ -244,7 +244,7 @@ Deno.test({
       );
       await remote.syncFrom(sourceConn);
       const queries = remote.optimizer.getQueries();
-      const queryStrings = queries.map((q) => q.query.query);
+      const queryStrings = queries.map((q) => q.query);
 
       assertArrayIncludes(queryStrings, [
         "select * from conditions where time < $1",
