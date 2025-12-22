@@ -85,5 +85,9 @@ export function wrapGenericPostgresInterface(pg: postgres.Sql): Postgres {
         yield* row as T[];
       }
     },
+    // @ts-expect-error | this will be added to the pg interface later
+    close() {
+      return pg.end();
+    },
   };
 }

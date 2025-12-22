@@ -7,6 +7,7 @@ import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock";
+import { setTimeout } from "node:timers/promises";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -60,9 +61,6 @@ Deno.test({
     try {
       const ws = new WebSocket(`ws://localhost:${server.addr.port}/postgres`);
       const messageFunction = spy();
-      ws.addEventListener("open", (event) => {
-        console.log("OPENED", event);
-      });
       ws.addEventListener("error", console.log);
       ws.addEventListener("message", messageFunction);
 
@@ -79,7 +77,9 @@ Deno.test({
       );
 
       assertEquals(response?.status, 200);
+      await setTimeout(1000);
 
+      console.log("a", await response.json());
       const sql = postgres(
         target.withDatabaseName(Remote.optimizingDbName).toString(),
       );
@@ -91,10 +91,8 @@ Deno.test({
       assertEquals(indexesAfter.count, 1);
       assertEquals(tablesAfter[0], { tablename: "testing" });
       const rows = await sql`select * from testing`;
-      // expect no rows to have been synced
       assertEquals(rows.length, 0);
 
-      // exactly one query must have been processed
       assertSpyCalls(messageFunction, 1);
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop(), server.shutdown()]);

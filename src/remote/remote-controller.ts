@@ -59,8 +59,10 @@ export class RemoteController {
       if (!this.syncResponse) {
         this.syncResponse = this.remote.syncFrom(db);
       }
+      const { schema } = await this.syncResponse;
+      const queries = this.remote.optimizer.getQueries();
 
-      return Response.json(await this.syncResponse);
+      return Response.json({ schema, queries: { type: "ok", value: queries } });
     } catch (error) {
       console.error(error);
       return Response.json({
@@ -84,14 +86,25 @@ export class RemoteController {
     return response;
   }
 
-  private eventNoImprovementsAvailable(query: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+  private eventNoImprovementsAvailable(
+    query: RecentQuery,
+    result: Extract<OptimizeResult, { kind: "ok" }>,
+  ) {
     const indexesUsed = Array.from(result.existingIndexes);
     this.socket?.send(
-      JSON.stringify({ type: "noImprovements", query, cost: result.baseCost, indexesUsed }),
+      JSON.stringify({
+        type: "noImprovements",
+        query,
+        cost: result.baseCost,
+        indexesUsed,
+      }),
     );
   }
 
-  private eventImprovementsAvailable(query: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+  private eventImprovementsAvailable(
+    query: RecentQuery,
+    result: Extract<OptimizeResult, { kind: "ok" }>,
+  ) {
     const indexesUsed = Array.from(result.existingIndexes);
     const recommendedIndexes = Array.from(result.newIndexes)
       .map((n) => result.triedIndexes.get(n)?.definition)
@@ -108,7 +121,7 @@ export class RemoteController {
     );
   }
 
-  private eventError(recentQuery: RecentQuery, error: Error) {
+  private eventError(error: Error, recentQuery: RecentQuery) {
     this.socket?.send(
       JSON.stringify({
         type: "error",

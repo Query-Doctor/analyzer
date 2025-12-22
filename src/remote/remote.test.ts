@@ -73,9 +73,9 @@ Deno.test({
       );
 
       const result = await remote.syncFrom(source);
-      assertOk(result.queries);
+      const optimizedQueries = remote.optimizer.getQueries();
 
-      const queries = result.queries.value.map((f) => f.query);
+      const queries = optimizedQueries.map((f) => f.query.query);
       assertArrayIncludes(queries, [
         "create table testing(a int, b text)",
         "select * from testing where a = $1",
@@ -195,10 +195,15 @@ Deno.test({
         .withEnvironment({
           POSTGRES_HOST_AUTH_METHOD: "trust",
         })
+        .withCommand([
+          "-c",
+          "shared_preload_libraries=pg_stat_statements,timescaledb",
+        ])
         .withLogConsumer((a) => a.pipe(process.stdout))
         .withCopyContentToContainer([
           {
             content: `
+              create extension if not exists pg_stat_statements;
               create table conditions(
                 "time"      timestamptz not null,
                 device_id   integer,
@@ -217,6 +222,7 @@ Deno.test({
                 min(temperature)
               from conditions
               group by device_id, bucket;
+              select * from conditions where time < now();
             `,
             target: "/docker-entrypoint-initdb.d/init.sql",
           },
@@ -237,6 +243,12 @@ Deno.test({
         targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
       );
       await remote.syncFrom(sourceConn);
+      const queries = remote.optimizer.getQueries();
+      const queryStrings = queries.map((q) => q.query.query);
+
+      assertArrayIncludes(queryStrings, [
+        "select * from conditions where time < $1",
+      ]);
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public'",
       );
@@ -246,8 +258,9 @@ Deno.test({
         "Indexes were not copied over correctly from the source db",
       );
 
-      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
+      assertEquals(indexesAfter[0], { indexname: "conditions_time_idx" });
     } finally {
+      await manager.closeAll();
       await Promise.all([source.stop(), target.stop()]);
     }
   },

@@ -79,7 +79,11 @@ export class RecentQuery {
   }
 
   static isSystemQuery(referencedTables: string[]): boolean {
-    return referencedTables.some((table) => table.startsWith("pg_"));
+    return referencedTables.some((table) =>
+      table.startsWith("pg_") ||
+      /* timescaledb jobs */
+      table.startsWith("bgw_job_stat_")
+    );
   }
 
   static isIntrospection(data: RawRecentQuery): boolean {

@@ -19,7 +19,7 @@ const MINIMUM_COST_CHANGE_PERCENTAGE = 5;
 const QUERY_TIMEOUT_MS = 10000;
 
 type EventMap = {
-  error: [RecentQuery, Error];
+  error: [Error, RecentQuery];
   timeout: [RecentQuery, number];
   zeroCostPlan: [RecentQuery];
   queryUnsupported: [RecentQuery];
@@ -82,6 +82,23 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
   ): Promise<RecentQuery[]> {
     this.stop();
+    const validQueries: RecentQuery[] = [];
+    for (const query of allRecentQueries) {
+      let optimization: LiveQueryOptimization;
+      const status = this.checkQueryUnsupported(query);
+      switch (status.type) {
+        case "ok":
+          optimization = { state: "waiting" };
+          break;
+        case "not_supported":
+          optimization = this.onQueryUnsupported(status.reason);
+          break;
+        case "ignored":
+          continue;
+      }
+      validQueries.push(query);
+      this.queries.set(query.hash, { query, optimization });
+    }
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(conn);
     const ownStats = await Statistics.dumpStats(pg, version, "full");
@@ -99,23 +116,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     });
     this.target = { connectable: conn, optimizer, statistics };
 
-    const validQueries: RecentQuery[] = [];
-    for (const query of allRecentQueries) {
-      let optimization: LiveQueryOptimization;
-      const status = this.checkQueryUnsupported(query);
-      switch (status.type) {
-        case "ok":
-          optimization = { state: "waiting" };
-          break;
-        case "not_supported":
-          optimization = this.onQueryUnsupported();
-          break;
-        case "ignored":
-          continue;
-      }
-      validQueries.push(query);
-      this.queries.set(query.hash, { query, optimization });
-    }
     this._allQueries = this.queries.size;
     await this.work();
     return validQueries;
@@ -169,6 +169,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         optimization,
       });
     }
+  }
+
+  getQueries(): OptimizedQuery[] {
+    return Array.from(this.queries.values());
   }
 
   // private summarizeQueue() {
@@ -319,7 +323,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
   }
 
-  private onNoImprovements(recent: RecentQuery, result: Extract<OptimizeResult, { kind: "ok" }>) {
+  private onNoImprovements(
+    recent: RecentQuery,
+    result: Extract<OptimizeResult, { kind: "ok" }>,
+  ) {
     this.emit("noImprovements", recent, result);
   }
 
@@ -334,12 +341,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     );
   }
 
-  private onQueryUnsupported(): LiveQueryOptimization {
+  private onQueryUnsupported(reason: string): LiveQueryOptimization {
     // this.emit("queryUnsupported", recent);
     this._invalidQueries++;
     return {
       state: "not_supported",
-      reason: "Query is not supported",
+      reason,
     };
   }
 
@@ -379,7 +386,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     errorMessage: string,
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
-    this.emit("error", recent, error);
+    this.emit("error", error, recent);
     return { state: "error", error };
   }
 
