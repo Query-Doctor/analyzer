@@ -40,7 +40,6 @@ export class RemoteController {
     optimizer.on("error", onError);
     optimizer.on("timeout", onQueryProcessed);
     optimizer.on("zeroCostPlan", onQueryProcessed);
-    optimizer.on("queryUnsupported", onQueryProcessed);
   }
 
   private async onFullSync(request: Request): Promise<Response> {
