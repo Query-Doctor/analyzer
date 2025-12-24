@@ -129,6 +129,66 @@ Deno.test({
   },
 });
 
+// Users who upgraded from Postgres 13/14 may have a leftover bit_xor aggregate.
+// It became built-in in Postgres 15, but custom versions from older installs remain.
+// This test ensures sync handles this gracefully.
+Deno.test({
+  name: "syncs database with custom bit_xor aggregate",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              CREATE AGGREGATE public.bit_xor(v bigint) (
+                SFUNC = int8xor,
+                STYPE = bigint
+              );
+              create table testing(a bigint);
+              insert into testing values (1);
+              create index "testing_idx" on testing(a);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const remote = new Remote(
+        target,
+        ConnectionManager.forLocalDatabase(),
+      );
+
+      const result = await remote.syncFrom(source);
+      await remote.optimizer.finish;
+
+      // Assert sync completed successfully (aggregate excluded gracefully)
+      assertOk(result.schema);
+
+      const tableNames = result.schema.value.tables.map((table) =>
+        table.tableName
+      );
+      assertArrayIncludes(tableNames, ["testing"]);
+
+      const indexNames = result.schema.value.indexes.map((index) =>
+        index.indexName
+      );
+      assertArrayIncludes(indexNames, ["testing_idx"]);
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+  },
+});
+
 Deno.test({
   name: "raw timescaledb syncs correctly",
   sanitizeOps: false,
