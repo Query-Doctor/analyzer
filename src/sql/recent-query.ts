@@ -4,6 +4,7 @@ import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
   Analyzer,
   DiscoveredColumnReference,
+  Nudge,
   SQLCommenterTag,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
@@ -34,6 +35,7 @@ export class RecentQuery {
     readonly tableReferences: string[],
     readonly columnReferences: DiscoveredColumnReference[],
     readonly tags: SQLCommenterTag[],
+    readonly nudges: Nudge[],
     readonly hash: QueryHash,
     readonly seenAt: number,
   ) {
@@ -71,6 +73,7 @@ export class RecentQuery {
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
+      analysis.nudges,
       hash,
       seenAt,
     );
