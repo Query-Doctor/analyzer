@@ -25,8 +25,9 @@ import {
 } from "./reporters/reporter.ts";
 import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
 import { env } from "./env.ts";
-import { wrapGenericPostgresInterface } from "./sql/postgresjs.ts";
+import { connectToSource } from "./sql/postgresjs.ts";
 import { parse } from "@libpg-query/parser";
+import { Connectable } from "./sync/connectable.ts";
 
 export class Runner {
   private readonly seenQueries = new Set<number>();
@@ -45,12 +46,12 @@ export class Runner {
   ) {}
 
   static async build(options: {
-    postgresUrl: string;
+    postgresUrl: Connectable;
     statisticsPath?: string;
     maxCost?: number;
     logPath: string;
   }) {
-    const db = wrapGenericPostgresInterface({ url: options.postgresUrl });
+    const db = connectToSource(options.postgresUrl);
     const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
     const stats = await Statistics.fromPostgres(db, statisticsMode);
     const existingIndexes = await stats.getExistingIndexes();

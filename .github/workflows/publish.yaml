@@ -50,7 +50,7 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           # outputs: type=docker
           platforms: linux/amd64,linux/arm64
           tags: |
@@ -69,7 +69,7 @@ jobs:
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
       - name: Attest
         uses: actions/attest-build-provenance@v2
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.build.outputs.digest }}
