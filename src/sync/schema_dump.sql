@@ -220,6 +220,8 @@ all_functions as (
     n.nspname not like 'pg_%'
     AND n.nspname <> 'information_schema'
     AND d.objid IS NULL
+    -- Exclude bit_xor aggregate as pg_get_functiondef doesn't work on it
+    AND NOT (pro.proname = 'bit_xor' AND pro.prokind = 'a')
   ORDER BY
     n.nspname, pro.proname, pg_get_function_identity_arguments(pro.oid)
 ),
