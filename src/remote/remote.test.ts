@@ -73,6 +73,7 @@ Deno.test({
       );
 
       const result = await remote.syncFrom(source);
+      await remote.optimizer.finish;
       const optimizedQueries = remote.optimizer.getQueries();
 
       const queries = optimizedQueries.map((f) => f.query);
@@ -303,6 +304,7 @@ Deno.test({
         targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
       );
       await remote.syncFrom(sourceConn);
+      await remote.optimizer.finish;
       const queries = remote.optimizer.getQueries();
       const queryStrings = queries.map((q) => q.query);
 
