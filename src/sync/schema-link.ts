@@ -170,7 +170,7 @@ export class DumpCommand
     restore.stderr.pipeTo(
       new WritableStream({
         write: (chunk) => {
-          this.emit("dump", decoder.decode(chunk));
+          this.emit("restore", decoder.decode(chunk));
         },
       }),
     );
@@ -184,7 +184,7 @@ export class DumpCommand
 
     try {
       await this.process.stdout.pipeTo(restore.stdin);
-    } catch (error) {
+    } catch (_error) {
       return {
         dump: {
           status: await this.process.status,

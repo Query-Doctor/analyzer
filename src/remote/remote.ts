@@ -12,6 +12,12 @@ import { type RecentQuery } from "../sql/recent-query.ts";
 import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
+import { EventEmitter } from "node:events";
+
+type RemoteEvents = {
+  dumpLog: [line: string];
+  restoreLog: [line: string];
+};
 
 /**
  * Represents a db for doing optimization work.
@@ -22,7 +28,7 @@ import { QueryOptimizer } from "./query-optimizer.ts";
  * `Remote` only concerns itself with the remote it's doing optimization
  * against. It does not deal with the source in any way aside from running sync
  */
-export class Remote {
+export class Remote extends EventEmitter<RemoteEvents> {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
   static readonly optimizingDbName = PgIdentifier.fromString(
     "optimizing_db",
@@ -49,6 +55,7 @@ export class Remote {
     targetURL: Connectable,
     private readonly manager: ConnectionManager,
   ) {
+    super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
     this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
     this.optimizer = new QueryOptimizer(manager);
@@ -128,13 +135,14 @@ export class Remote {
     source: Connectable,
   ): Promise<void> {
     const dump = DumpCommand.spawn(source, "native-postgres");
-    // TODO: handle event emitter events
-    // dump.on("dump", (data) => {
-    //   console.log("got dump data", data);
-    // });
-    // dump.on("restore", (data) => {
-    //   console.log("got restore data", data);
-    // });
+    // is copying up events like this a good idea?
+    dump.on("dump", (data) => {
+      this.emit("dumpLog", data);
+    });
+    dump.on("restore", (data) => {
+      this.emit("restoreLog", data);
+    });
+
     const restore = RestoreCommand.spawn(target);
     const { dump: dumpResult, restore: restoreResult } = await dump.pipeTo(
       restore,

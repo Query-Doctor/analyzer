@@ -79,7 +79,6 @@ Deno.test({
       assertEquals(response?.status, 200);
       await setTimeout(1000);
 
-      console.log("a", await response.json());
       const sql = postgres(
         target.withDatabaseName(Remote.optimizingDbName).toString(),
       );
