@@ -4,6 +4,15 @@ import { QueryOptimizer } from "./query-optimizer.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
 
+const SyncStatus = {
+  NOT_STARTED: "notStarted",
+  IN_PROGRESS: "inProgress",
+  COMPLETED: "completed",
+  FAILED: "failed",
+};
+
+type SyncStatus = typeof SyncStatus[keyof typeof SyncStatus];
+
 export class RemoteController {
   /**
    * Only a single socket can be active at the same time.
@@ -11,6 +20,7 @@ export class RemoteController {
    */
   private socket?: WebSocket;
   private syncResponse?: ReturnType<Remote["syncFrom"]>;
+  private syncStatus: SyncStatus = SyncStatus.NOT_STARTED;
 
   constructor(
     private readonly remote: Remote,
@@ -28,6 +38,8 @@ export class RemoteController {
         return this.onWebsocketRequest(request);
       } else if (request.method === "POST") {
         return await this.onFullSync(request);
+      } else if (request.method === "GET") {
+        return await this.getStatus();
       }
     }
   }
@@ -44,6 +56,15 @@ export class RemoteController {
     remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
   }
 
+  private async getStatus(): Promise<Response> {
+    if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
+      return Response.json({ status: this.syncStatus });
+    }
+    const { schema } = await this.syncResponse;
+    const queries = this.remote.optimizer.getQueries();
+    return Response.json({ status: this.syncStatus, schema, queries });
+  }
+
   private async onFullSync(request: Request): Promise<Response> {
     const body = RemoteSyncRequest.safeDecode(await request.text());
     if (!body.success) {
@@ -53,13 +74,16 @@ export class RemoteController {
     const { db } = body.data;
     try {
       if (!this.syncResponse) {
+        this.syncStatus = SyncStatus.IN_PROGRESS;
         this.syncResponse = this.remote.syncFrom(db);
       }
       const { schema } = await this.syncResponse;
+      this.syncStatus = SyncStatus.COMPLETED;
       const queries = this.remote.optimizer.getQueries();
 
       return Response.json({ schema, queries: { type: "ok", value: queries } });
     } catch (error) {
+      this.syncStatus = SyncStatus.FAILED;
       console.error(error);
       return Response.json({
         error: env.HOSTED ? "Internal Server Error" : error,
