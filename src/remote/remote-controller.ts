@@ -15,7 +15,7 @@ export class RemoteController {
   constructor(
     private readonly remote: Remote,
   ) {
-    this.hookUpWebsockets(remote.optimizer);
+    this.hookUpWebsockets(remote);
   }
 
   async execute(
@@ -32,14 +32,16 @@ export class RemoteController {
     }
   }
 
-  private hookUpWebsockets(optimizer: QueryOptimizer) {
+  private hookUpWebsockets(remote: Remote) {
     const onQueryProcessed = this.eventOnQueryProcessed.bind(this);
     const onError = this.eventError.bind(this);
-    optimizer.on("noImprovements", onQueryProcessed);
-    optimizer.on("improvementsAvailable", onQueryProcessed);
-    optimizer.on("error", onError);
-    optimizer.on("timeout", onQueryProcessed);
-    optimizer.on("zeroCostPlan", onQueryProcessed);
+    remote.optimizer.on("noImprovements", onQueryProcessed);
+    remote.optimizer.on("improvementsAvailable", onQueryProcessed);
+    remote.optimizer.on("error", onError);
+    remote.optimizer.on("timeout", onQueryProcessed);
+    remote.optimizer.on("zeroCostPlan", onQueryProcessed);
+    remote.on("dumpLog", this.makeLoggingHandler("pg_dump").bind(this));
+    remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
   }
 
   private async onFullSync(request: Request): Promise<Response> {
@@ -82,6 +84,16 @@ export class RemoteController {
     });
 
     return response;
+  }
+
+  private makeLoggingHandler(process: "pg_restore" | "pg_dump") {
+    return (log: string) => {
+      this.socket?.send(JSON.stringify({
+        type: "log",
+        process,
+        log,
+      }));
+    };
   }
 
   private eventOnQueryProcessed(query: OptimizedQuery) {
