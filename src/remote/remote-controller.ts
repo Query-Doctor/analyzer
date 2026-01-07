@@ -1,6 +1,6 @@
 import { env } from "../env.ts";
+import { log } from "../log.ts";
 import { OptimizedQuery } from "../sql/recent-query.ts";
-import { QueryOptimizer } from "./query-optimizer.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
 
@@ -9,7 +9,7 @@ const SyncStatus = {
   IN_PROGRESS: "inProgress",
   COMPLETED: "completed",
   FAILED: "failed",
-};
+} as const;
 
 type SyncStatus = typeof SyncStatus[keyof typeof SyncStatus];
 
@@ -19,7 +19,7 @@ export class RemoteController {
    * Multi-tab support not currently available
    */
   private socket?: WebSocket;
-  private syncResponse?: ReturnType<Remote["syncFrom"]>;
+  private syncResponse?: Awaited<ReturnType<Remote["syncFrom"]>>;
   private syncStatus: SyncStatus = SyncStatus.NOT_STARTED;
 
   constructor(
@@ -39,7 +39,7 @@ export class RemoteController {
       } else if (request.method === "POST") {
         return await this.onFullSync(request);
       } else if (request.method === "GET") {
-        return await this.getStatus();
+        return this.getStatus();
       }
     }
   }
@@ -56,11 +56,11 @@ export class RemoteController {
     remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
   }
 
-  private async getStatus(): Promise<Response> {
+  private getStatus(): Response {
     if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
       return Response.json({ status: this.syncStatus });
     }
-    const { schema } = await this.syncResponse;
+    const { schema } = this.syncResponse;
     const queries = this.remote.optimizer.getQueries();
     return Response.json({ status: this.syncStatus, schema, queries });
   }
@@ -73,12 +73,10 @@ export class RemoteController {
 
     const { db } = body.data;
     try {
-      if (!this.syncResponse) {
-        this.syncStatus = SyncStatus.IN_PROGRESS;
-        this.syncResponse = this.remote.syncFrom(db);
-      }
-      const { schema } = await this.syncResponse;
+      this.syncStatus = SyncStatus.IN_PROGRESS;
+      this.syncResponse = await this.remote.syncFrom(db);
       this.syncStatus = SyncStatus.COMPLETED;
+      const { schema } = this.syncResponse;
       const queries = this.remote.optimizer.getQueries();
 
       return Response.json({ schema, queries: { type: "ok", value: queries } });
@@ -96,8 +94,8 @@ export class RemoteController {
 
   private onWebsocketRequest(request: Request): Response {
     const { socket, response } = Deno.upgradeWebSocket(request);
-    console.log({ socket });
     this.socket = socket;
+    log.debug("Websocket connection established", "remote-controller");
 
     socket.addEventListener("open", () => {
       this.syncResponse = undefined;
@@ -106,6 +104,7 @@ export class RemoteController {
 
     socket.addEventListener("close", () => {
       this.socket = undefined;
+      log.debug("Websocket connection closed", "remote-controller");
     });
 
     return response;
