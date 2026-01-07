@@ -67,7 +67,11 @@ export class RemoteController {
     }
     const { schema } = this.syncResponse;
     const queries = this.remote.optimizer.getQueries();
-    return Response.json({ status: this.syncStatus, schema, queries });
+    return Response.json({
+      status: this.syncStatus,
+      schema,
+      queries: { type: "ok", value: queries },
+    });
   }
 
   private async onFullSync(request: Request): Promise<Response> {
@@ -89,6 +93,7 @@ export class RemoteController {
       this.syncStatus = SyncStatus.FAILED;
       console.error(error);
       return Response.json({
+        type: "error",
         error: env.HOSTED ? "Internal Server Error" : error,
         message: "Failed to sync database",
       }, {
