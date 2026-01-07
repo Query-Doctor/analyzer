@@ -13,6 +13,7 @@ import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { EventEmitter } from "node:events";
+import { log } from "../log.ts";
 
 type RemoteEvents = {
   dumpLog: [line: string];
@@ -121,6 +122,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
    */
   private async resetDatabase(): Promise<void> {
     const databaseName = Remote.optimizingDbName;
+    log.info(`Resetting internal database: ${databaseName}`, "remote");
     const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
     // these cannot be run in the same `exec` block as that implicitly creates transactions
     await baseDb.exec(
