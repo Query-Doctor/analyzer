@@ -195,6 +195,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
     return connector.getSchema();
   }
 
+  async resetPgStatStatements(source: Connectable): Promise<void> {
+    const connector = this.manager.getConnectorFor(source);
+    await connector.resetPgStatStatements();
+  }
+
   /**
    * Process a successful sync and run any potential cleanup functions
    */
