@@ -341,11 +341,16 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const indexRecommendations = Array.from(result.newIndexes)
       .map((n) => result.triedIndexes.get(n)?.definition)
       .filter((n) => n !== undefined);
+    const percentageReduction = costDifferencePercentage(
+      result.baseCost,
+      result.finalCost,
+    );
+    const costReductionPercentage = Math.trunc(Math.abs(percentageReduction));
     return {
       state: "improvements_available",
       cost: result.baseCost,
       optimizedCost: result.finalCost,
-      costReductionPercentage: 0,
+      costReductionPercentage,
       indexRecommendations,
       indexesUsed,
     };
