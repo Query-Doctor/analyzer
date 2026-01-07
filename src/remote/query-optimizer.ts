@@ -6,6 +6,7 @@ import { Sema } from "async-sema";
 import {
   Analyzer,
   IndexOptimizer,
+  IndexRecommendation,
   OptimizeResult,
   PostgresQueryBuilder,
   PostgresVersion,
@@ -339,7 +340,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   ): LiveQueryOptimization {
     const indexesUsed = Array.from(result.existingIndexes);
     const indexRecommendations = Array.from(result.newIndexes)
-      .map((n) => result.triedIndexes.get(n)?.definition)
+      .map((n) => result.triedIndexes.get(n))
       .filter((n) => n !== undefined);
     const percentageReduction = costDifferencePercentage(
       result.baseCost,
@@ -405,7 +406,7 @@ export const withTimeout = <T>(
 
 function mapIndexRecommandations(
   result: Extract<OptimizeResult, { kind: "ok" }>,
-): string[] {
+): IndexRecommendation[] {
   return Array.from(result.newIndexes.keys(), (definition) => {
     const index = result.triedIndexes.get(definition);
     if (!index) {
@@ -413,7 +414,7 @@ function mapIndexRecommandations(
         `Index ${definition} not found in tried indexes. This shouldn't happen.`,
       );
     }
-    return definition;
+    return index;
   });
 }
 
