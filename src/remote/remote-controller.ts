@@ -101,6 +101,7 @@ export class RemoteController {
 
     socket.addEventListener("open", () => {
       this.syncResponse = undefined;
+      this.syncStatus = SyncStatus.NOT_STARTED;
     });
 
     socket.addEventListener("close", () => {
