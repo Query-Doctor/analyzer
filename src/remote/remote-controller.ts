@@ -32,6 +32,7 @@ export class RemoteController {
     request: Request,
   ): Promise<Response | undefined> {
     const url = new URL(request.url);
+
     if (url.pathname === "/postgres") {
       const isWebsocket = request.headers.get("upgrade") === "websocket";
       if (isWebsocket) {
@@ -41,6 +42,10 @@ export class RemoteController {
       } else if (request.method === "GET") {
         return this.getStatus();
       }
+    }
+
+    if (url.pathname === "/postgres/reset" && request.method === "POST") {
+      return await this.onReset(request);
     }
   }
 
@@ -89,6 +94,23 @@ export class RemoteController {
       }, {
         status: 500,
       });
+    }
+  }
+
+  private async onReset(request: Request): Promise<Response> {
+    const body = RemoteSyncRequest.safeDecode(await request.text());
+    if (!body.success) {
+      return new Response(JSON.stringify(body.error), { status: 400 });
+    }
+
+    try {
+      await this.remote.resetPgStatStatements(body.data.db);
+      return Response.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      return Response.json({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }, { status: 500 });
     }
   }
 
