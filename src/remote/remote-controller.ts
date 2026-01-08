@@ -65,10 +65,11 @@ export class RemoteController {
     if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
       return Response.json({ status: this.syncStatus });
     }
-    const { schema } = this.syncResponse;
+    const { schema, meta } = this.syncResponse;
     const queries = this.remote.optimizer.getQueries();
     return Response.json({
       status: this.syncStatus,
+      meta,
       schema,
       queries: { type: "ok", value: queries },
     });
@@ -85,10 +86,10 @@ export class RemoteController {
       this.syncStatus = SyncStatus.IN_PROGRESS;
       this.syncResponse = await this.remote.syncFrom(db);
       this.syncStatus = SyncStatus.COMPLETED;
-      const { schema } = this.syncResponse;
+      const { schema, meta } = this.syncResponse;
       const queries = this.remote.optimizer.getQueries();
 
-      return Response.json({ schema, queries: { type: "ok", value: queries } });
+      return Response.json({ meta, schema, queries: { type: "ok", value: queries } });
     } catch (error) {
       this.syncStatus = SyncStatus.FAILED;
       console.error(error);
