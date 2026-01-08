@@ -14,7 +14,7 @@ export class ConnectionManager {
   // ConnectionMap should be responsible for closing connections
   private readonly connections = new Map<string, Postgres>();
 
-  constructor(
+  private constructor(
     private readonly factory: (connectable: Connectable) => Postgres,
   ) {}
 

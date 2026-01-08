@@ -5,6 +5,7 @@ import {
   PostgresVersion,
 } from "@query-doctor/core";
 import { Connectable } from "../sync/connectable.ts";
+import { log } from "../log.ts";
 
 type PgConnectionOptions = postgres.Options<
   Record<string, postgres.PostgresType>
@@ -21,11 +22,29 @@ const DEFAULT_MAX_LIFETIME_SECONDS = 60 * 5;
  * Connecting to the local optimizer
  */
 export function connectToOptimizer(connectable: Connectable) {
-  const connectionOptions: PgConnectionOptions = {
+  const hostname = connectable.url.searchParams.get("host");
+  const baseConnectionOptions: PgConnectionOptions = {
     max: 100,
   };
 
-  return connect(connectable, connectionOptions);
+  console.log({ hostname });
+  if (hostname) {
+    const database = connectable.url.pathname.slice(1);
+    const connectionOptions: PgConnectionOptions = {
+      ...baseConnectionOptions,
+      username: "postgres",
+      database,
+      hostname,
+    };
+    const pg = postgres(connectionOptions);
+    return wrapGenericPostgresInterface(pg);
+  } else {
+    log.info(
+      `Connecting to optimizing db ${connectable} using custom POSTGRES_URL`,
+      "postgres",
+    );
+    return connect(connectable, baseConnectionOptions);
+  }
 }
 
 /**

@@ -84,12 +84,23 @@ export class RemoteController {
     const { db } = body.data;
     try {
       this.syncStatus = SyncStatus.IN_PROGRESS;
-      this.syncResponse = await this.remote.syncFrom(db);
+      this.syncResponse = await this.remote.syncFrom(db, {
+        type: "static",
+        stats: {
+          kind: "fromAssumption",
+          relpages: 1,
+          reltuples: 10000,
+        },
+      });
       this.syncStatus = SyncStatus.COMPLETED;
       const { schema, meta } = this.syncResponse;
       const queries = this.remote.optimizer.getQueries();
 
-      return Response.json({ meta, schema, queries: { type: "ok", value: queries } });
+      return Response.json({
+        meta,
+        schema,
+        queries: { type: "ok", value: queries },
+      });
     } catch (error) {
       this.syncStatus = SyncStatus.FAILED;
       console.error(error);
@@ -140,6 +151,7 @@ export class RemoteController {
 
   private makeLoggingHandler(process: "pg_restore" | "pg_dump") {
     return (log: string) => {
+      console.log(log);
       this.socket?.send(JSON.stringify({
         type: "log",
         process,
@@ -156,6 +168,8 @@ export class RemoteController {
   }
 
   private eventError(error: Error, query: OptimizedQuery) {
+    console.error(error);
+    this.eventOnQueryProcessed(query);
     this.socket?.send(
       JSON.stringify({
         type: "error",

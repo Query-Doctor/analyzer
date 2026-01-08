@@ -34,7 +34,7 @@ export const LiveQueryOptimization = z.discriminatedUnion("state", [
     indexesUsed: z.array(z.string()),
   }),
   z.object({ state: z.literal("timeout") }),
-  z.object({ state: z.literal("error"), error: z.instanceof(Error) }),
+  z.object({ state: z.literal("error"), error: z.string() }),
 ]);
 
 export type LiveQueryOptimization = z.infer<typeof LiveQueryOptimization>;

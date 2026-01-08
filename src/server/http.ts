@@ -15,7 +15,7 @@ import { Connectable } from "../sync/connectable.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Remote } from "../remote/remote.ts";
 
-const sourceConnectionManager = new ConnectionManager(connectToSource);
+const sourceConnectionManager = ConnectionManager.forRemoteDatabase();
 
 const syncer = new PostgresSyncer(sourceConnectionManager);
 
@@ -159,9 +159,7 @@ export function createServer(
   port: number,
   targetDb?: Connectable,
 ) {
-  const optimizingDbConnectionManager = new ConnectionManager(
-    connectToOptimizer,
-  );
+  const optimizingDbConnectionManager = ConnectionManager.forLocalDatabase();
 
   const remoteController = targetDb
     ? new RemoteController(

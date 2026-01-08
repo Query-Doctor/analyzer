@@ -1,0 +1,79 @@
+commit af216329e97ae69911a017c6ac1b8723dc5df028
+Author: Xetera <contact@xetera.dev>
+Date:   Mon Sep 29 23:49:25 2025 +0300
+
+    patch: use pg_class stats for all page estimates in the planner
+
+diff --git a/src/backend/access/table/tableam.c b/src/backend/access/table/tableam.c
+index e57a0b7ea3..a85697cd0b 100644
+--- a/src/backend/access/table/tableam.c
++++ b/src/backend/access/table/tableam.c
+@@ -663,7 +663,8 @@ table_block_relation_estimate_size(Relation rel, int32 *attr_widths,
+ 	double		density;
+
+ 	/* it should have storage, so we can call the smgr */
+-	curpages = RelationGetNumberOfBlocks(rel);
++	// curpages = RelationGetNumberOfBlocks(rel);
++	curpages = (BlockNumber) rel->rd_rel->relpages;
+
+ 	/* coerce values in pg_class to more desirable types */
+ 	relpages = (BlockNumber) rel->rd_rel->relpages;
+diff --git a/src/backend/commands/analyze.c b/src/backend/commands/analyze.c
+index c590a2adc3..c70ffa70cd 100644
+--- a/src/backend/commands/analyze.c
++++ b/src/backend/commands/analyze.c
+@@ -193,7 +193,8 @@ analyze_rel(Oid relid, RangeVar *relation,
+ 		/* Regular table, so we'll use the regular row acquisition function */
+ 		acquirefunc = acquire_sample_rows;
+ 		/* Also get regular table's size */
+-		relpages = RelationGetNumberOfBlocks(onerel);
++		// relpages = RelationGetNumberOfBlocks(onerel);
++		relpages = onerel->rd_rel->relpages;
+ 	}
+ 	else if (onerel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+ 	{
+@@ -1177,7 +1178,8 @@ acquire_sample_rows(Relation onerel, int elevel,
+
+ 	Assert(targrows > 0);
+
+-	totalblocks = RelationGetNumberOfBlocks(onerel);
++	// totalblocks = RelationGetNumberOfBlocks(onerel);
++	totalblocks = onerel->rd_rel->relpages;
+
+ 	/* Need a cutoff xmin for HeapTupleSatisfiesVacuum */
+ 	OldestXmin = GetOldestNonRemovableTransactionId(onerel);
+@@ -1423,7 +1425,8 @@ acquire_inherited_sample_rows(Relation onerel, int elevel,
+ 		{
+ 			/* Regular table, so use the regular row acquisition function */
+ 			acquirefunc = acquire_sample_rows;
+-			relpages = RelationGetNumberOfBlocks(childrel);
++			// relpages = RelationGetNumberOfBlocks(childrel);
++			relpages = childrel->rd_rel->relpages;
+ 		}
+ 		else if (childrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+ 		{
+diff --git a/src/backend/optimizer/util/plancat.c b/src/backend/optimizer/util/plancat.c
+index 86655f05dc..53284f6df5 100644
+--- a/src/backend/optimizer/util/plancat.c
++++ b/src/backend/optimizer/util/plancat.c
+@@ -472,7 +472,8 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
+ 			{
+ 				if (info->indpred == NIL)
+ 				{
+-					info->pages = RelationGetNumberOfBlocks(indexRelation);
++					// info->pages = RelationGetNumberOfBlocks(indexRelation);
++					info->pages = indexRelation->rd_rel->relpages;
+ 					info->tuples = rel->tuples;
+ 				}
+ 				else
+@@ -1079,7 +1080,8 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
+ 		 */
+
+ 		/* it has storage, ok to call the smgr */
+-		curpages = RelationGetNumberOfBlocks(rel);
++		// curpages = RelationGetNumberOfBlocks(rel);
++		curpages = rel->rd_rel->relpages;
+
+ 		/* report estimated # pages */
+ 		*pages = curpages;
+
