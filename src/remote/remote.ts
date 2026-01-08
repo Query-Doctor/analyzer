@@ -65,9 +65,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
   async syncFrom(
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
-  ): Promise<{ schema: RemoteSyncFullSchemaResponse }> {
+  ): Promise<{ meta: { version?: string }; schema: RemoteSyncFullSchemaResponse }> {
     await this.resetDatabase();
-    const [_restoreResult, recentQueries, fullSchema, pulledStats] =
+    const [_restoreResult, recentQueries, fullSchema, pulledStats, _statsStrategy, databaseInfo] =
       await Promise
         .allSettled([
           // This potentially creates a lot of connections to the source
@@ -76,6 +76,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
           this.getFullSchema(source),
           this.dumpSourceStats(source),
           this.resolveStatisticsStrategy(source, statsStrategy),
+          this.getDatabaseInfo(source),
         ]);
 
     if (fullSchema.status === "fulfilled") {
@@ -104,6 +105,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
     );
 
     return {
+      meta: {
+        version: databaseInfo.status === "fulfilled"
+          ? databaseInfo.value.serverVersion
+          : undefined,
+      },
       schema: fullSchema.status === "fulfilled"
         ? { type: "ok", value: fullSchema.value }
         : {
@@ -193,6 +199,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private getFullSchema(source: Connectable): Promise<FullSchema> {
     const connector = this.manager.getConnectorFor(source);
     return connector.getSchema();
+  }
+
+  private getDatabaseInfo(source: Connectable) {
+    const connector = this.manager.getConnectorFor(source);
+    return connector.getDatabaseInfo();
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
