@@ -186,6 +186,15 @@ export function createServer(
           307,
         );
       }
+      if (url.pathname === "/health") {
+        return new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
+        });
+      }
       const limit = limiter.sync.check(url.pathname, info.remoteAddr.hostname);
       if (limit.limited) {
         return limiter.appendHeaders(
