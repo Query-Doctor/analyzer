@@ -87,7 +87,7 @@ export class RecentQuery {
     return referencedTables.some((table) =>
       table.startsWith("pg_") ||
       /* timescaledb jobs */
-      table.startsWith("bgw_job_stat_")
+      table.startsWith("bgw_job_")
     );
   }
 
