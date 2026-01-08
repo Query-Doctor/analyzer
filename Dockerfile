@@ -1,6 +1,54 @@
-# Adapted from https://github.com/dojyorin/deno_docker_image/blob/master/src/alpine.dockerfile
 ARG ALPINE_VERSION=3.22
 ARG DENO_VERSION=2.4.5
+FROM alpine:${ALPINE_VERSION} AS pg-builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    build-base \
+    git \
+    openssh-client \
+    readline-dev \
+    zlib-dev \
+    flex \
+    bison \
+    perl \
+    bash \
+    cmake \
+    openssl-dev \
+    krb5-dev \
+    linux-headers
+
+# Clone PostgreSQL 17 from official source
+RUN git clone --depth 1 --branch REL_17_STABLE https://github.com/postgres/postgres.git /postgres
+
+WORKDIR /postgres
+
+# Copy and apply the patch
+COPY fix.diff /tmp/fix.diff
+RUN git apply /tmp/fix.diff
+
+# Build PostgreSQL with debug flags
+RUN ./configure \
+    --without-icu \
+    --with-openssl \
+  --prefix=/usr/local/pgsql
+
+RUN make -j$(nproc) all
+RUN make install
+
+RUN cd contrib && make -j$(nproc) && make install
+
+# Clone and build TimescaleDB
+ARG TIMESCALEDB_VERSION=2.24.0
+WORKDIR /timescaledb
+RUN git clone --depth 1 --branch ${TIMESCALEDB_VERSION} https://github.com/timescale/timescaledb.git .
+
+# Bootstrap and build TimescaleDB
+RUN ./bootstrap -DREGRESS_CHECKS=OFF -DPG_CONFIG=/usr/local/pgsql/bin/pg_config
+RUN cd build && make -j$(nproc)
+RUN cd build && make install
+
+# Adapted from https://github.com/dojyorin/deno_docker_image/blob/master/src/alpine.dockerfile
 FROM denoland/deno:alpine-${DENO_VERSION} AS deno
 
 RUN apk add --no-cache \
@@ -48,7 +96,14 @@ RUN deno compile \
 FROM alpine:${ALPINE_VERSION}
 ENV LD_LIBRARY_PATH="/usr/local/lib"
 
-RUN apk add -uU --no-cache postgresql-client
+RUN apk add -uU --no-cache \
+    postgresql-client \
+    readline \
+    zlib \
+    bash \
+    su-exec \
+    openssl \
+    krb5
 
 COPY --from=deno --chmod=755 --chown=root:root /usr/bin/pg_dump /usr/bin/pg_dump
 COPY --from=build --chmod=755 --chown=root:root /app/analyzer /app/analyzer
@@ -56,12 +111,30 @@ COPY --from=cc --chmod=755 --chown=root:root /lib/*-linux-gnu/* /usr/local/lib/
 COPY --from=sym --chmod=755 --chown=root:root /tmp/lib /lib
 COPY --from=sym --chmod=755 --chown=root:root /tmp/lib /lib64
 
+# Copy PostgreSQL installation from builder
+COPY --from=pg-builder /usr/local/pgsql /usr/local/pgsql
+
+# Setup postgres user and directories
+RUN mkdir -p /var/lib/postgresql/data \
+    && chown -R postgres:postgres /var/lib/postgresql \
+    && chown -R postgres:postgres /usr/local/pgsql \
+    && chmod 1777 /tmp
+
 WORKDIR /app
 ENV PG_DUMP_BINARY=/usr/bin/pg_dump
+ENV PATH="/usr/local/pgsql/bin:$PATH"
+ENV PGDATA=/var/lib/postgresql/data
 
 RUN sed -i 's|nobody:/|nobody:/home|' /etc/passwd && chown nobody:nobody /home
-USER nobody
 
-# Development command
-CMD ["/app/analyzer"]
+ENV POSTGRES_URL=postgresql://postgres@localhost/postgres?host=/tmp
 
+# Development command - starts both PostgreSQL and the analyzer
+CMD ["/bin/bash", "-c", "\
+    su-exec postgres initdb -D $PGDATA || true && \
+    echo \"shared_preload_libraries = 'timescaledb,pg_stat_statements'\" >> $PGDATA/postgresql.conf && \
+    echo \"listen_addresses = ''\" >> $PGDATA/postgresql.conf && \
+    echo \"unix_socket_directories = '/tmp'\" >> $PGDATA/postgresql.conf && \
+    su-exec postgres pg_ctl -D $PGDATA -l $PGDATA/logfile start || (cat $PGDATA/logfile && exit 1) && \
+    until su-exec postgres pg_isready -h /tmp; do sleep 0.5; done && \
+    /app/analyzer"]

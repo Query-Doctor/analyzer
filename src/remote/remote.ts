@@ -55,29 +55,42 @@ export class Remote extends EventEmitter<RemoteEvents> {
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
     targetURL: Connectable,
     private readonly manager: ConnectionManager,
+    /** The manager for ONLY the source db connections */
+    private readonly sourceManager: ConnectionManager = ConnectionManager
+      .forRemoteDatabase(),
   ) {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
     this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
+    console.log(this.optimizingDbUDRL);
     this.optimizer = new QueryOptimizer(manager);
   }
 
   async syncFrom(
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
-  ): Promise<{ meta: { version?: string }; schema: RemoteSyncFullSchemaResponse }> {
+  ): Promise<
+    { meta: { version?: string }; schema: RemoteSyncFullSchemaResponse }
+  > {
+    console.log("syncing", source, this.optimizingDbUDRL);
     await this.resetDatabase();
-    const [_restoreResult, recentQueries, fullSchema, pulledStats, _statsStrategy, databaseInfo] =
-      await Promise
-        .allSettled([
-          // This potentially creates a lot of connections to the source
-          this.pipeSchema(this.optimizingDbUDRL, source),
-          this.getRecentQueries(source),
-          this.getFullSchema(source),
-          this.dumpSourceStats(source),
-          this.resolveStatisticsStrategy(source, statsStrategy),
-          this.getDatabaseInfo(source),
-        ]);
+    const [
+      restoreResult,
+      recentQueries,
+      fullSchema,
+      pulledStats,
+      databaseInfo,
+    ] = await Promise
+      .allSettled([
+        // This potentially creates a lot of connections to the source
+        this.pipeSchema(this.optimizingDbUDRL, source),
+        this.getRecentQueries(source),
+        this.getFullSchema(source),
+        this.resolveStatistics(source, statsStrategy),
+        this.getDatabaseInfo(source),
+      ]);
+
+    console.log({ restoreResult });
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(source, fullSchema.value);
@@ -151,6 +164,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       this.emit("restoreLog", data);
     });
 
+    console.log("target", target);
     const restore = RestoreCommand.spawn(target);
     const { dump: dumpResult, restore: restoreResult } = await dump.pipeTo(
       restore,
@@ -167,7 +181,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
   }
 
-  private resolveStatisticsStrategy(
+  private resolveStatistics(
     source: Connectable,
     strategy: StatisticsStrategy,
   ): Promise<StatisticsMode> {
@@ -180,7 +194,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
   }
 
   private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
-    const pg = this.manager.getOrCreateConnection(source);
+    const pg = this.sourceManager.getOrCreateConnection(
+      source,
+    );
     const stats = await Statistics.dumpStats(
       pg,
       PostgresVersion.parse("17"),
@@ -192,22 +208,22 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private async getRecentQueries(
     source: Connectable,
   ): Promise<RecentQuery[]> {
-    const connector = this.manager.getConnectorFor(source);
+    const connector = this.sourceManager.getConnectorFor(source);
     return await connector.getRecentQueries();
   }
 
   private getFullSchema(source: Connectable): Promise<FullSchema> {
-    const connector = this.manager.getConnectorFor(source);
+    const connector = this.sourceManager.getConnectorFor(source);
     return connector.getSchema();
   }
 
   private getDatabaseInfo(source: Connectable) {
-    const connector = this.manager.getConnectorFor(source);
+    const connector = this.sourceManager.getConnectorFor(source);
     return connector.getDatabaseInfo();
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
-    const connector = this.manager.getConnectorFor(source);
+    const connector = this.sourceManager.getConnectorFor(source);
     await connector.resetPgStatStatements();
   }
 

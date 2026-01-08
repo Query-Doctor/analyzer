@@ -213,6 +213,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       );
       cost = explain.Plan["Total Cost"];
     } catch (error) {
+      console.error("Error with baseline run", error);
       if (error instanceof TimeoutError) {
         return this.onTimeout(recent, timeoutMs);
       } else if (error instanceof Error) {
@@ -232,11 +233,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     try {
       result = await withTimeout(
         target.optimizer.run(builder, indexes),
-        QUERY_TIMEOUT_MS,
+        timeoutMs,
       );
     } catch (error) {
+      console.error("Error with optimization", error);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, QUERY_TIMEOUT_MS);
+        return this.onTimeout(recent, timeoutMs);
       } else if (error instanceof Error) {
         return this.onError(recent, error.message);
       } else {
@@ -361,9 +363,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this.emit("zeroCostPlan", recent);
     return {
       state: "error",
-      error: new Error(
+      error:
         "Query plan had zero cost. This should not happen on a patched postgres instance",
-      ),
     };
   }
 
@@ -373,7 +374,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
     this.emit("error", error, recent);
-    return { state: "error", error };
+    return { state: "error", error: error.message };
   }
 
   private onTimeout(
