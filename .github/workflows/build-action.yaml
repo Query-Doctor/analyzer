@@ -34,6 +34,9 @@ jobs:
 
       - name: Run tests
         run: deno run test
+        env:
+          PG_DUMP_BINARY: /usr/lib/postgresql/17/bin/pg_dump
+          PG_RESTORE_BINARY: /usr/lib/postgresql/17/bin/pg_restore
 
       - name: Upload files to release
         uses: softprops/action-gh-release@v2
