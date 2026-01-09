@@ -239,6 +239,7 @@ Deno.test({
 
       assertEquals(indexesAfter[0], { indexname: "testing_1234" });
     } finally {
+      await manager.closeAll();
       await Promise.all([source.stop(), target.stop()]);
     }
   },
