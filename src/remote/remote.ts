@@ -62,7 +62,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
     this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
-    console.log(this.optimizingDbUDRL);
     this.optimizer = new QueryOptimizer(manager);
   }
 
@@ -72,7 +71,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
   ): Promise<
     { meta: { version?: string }; schema: RemoteSyncFullSchemaResponse }
   > {
-    console.log("syncing", source, this.optimizingDbUDRL);
     await this.resetDatabase();
     const [
       restoreResult,
@@ -89,8 +87,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
         this.resolveStatistics(source, statsStrategy),
         this.getDatabaseInfo(source),
       ]);
-
-    console.log({ restoreResult });
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(source, fullSchema.value);
@@ -164,7 +160,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
       this.emit("restoreLog", data);
     });
 
-    console.log("target", target);
     const restore = RestoreCommand.spawn(target);
     const { dump: dumpResult, restore: restoreResult } = await dump.pipeTo(
       restore,

@@ -27,7 +27,6 @@ export function connectToOptimizer(connectable: Connectable) {
     max: 100,
   };
 
-  console.log({ hostname });
   if (hostname) {
     const database = connectable.url.pathname.slice(1);
     const connectionOptions: PgConnectionOptions = {
