@@ -25,6 +25,13 @@ jobs:
       - name: Typecheck
         run: deno check
 
+      - name: Install PostgreSQL 17 client
+        run: |
+          sudo apt install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt update
+          sudo apt install -y postgresql-client-17
+
       - name: Run tests
         run: deno run test
 
