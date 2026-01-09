@@ -309,7 +309,7 @@ Deno.test({
       const queryStrings = queries.map((q) => q.query);
 
       assertArrayIncludes(queryStrings, [
-        "select * from conditions where time < $1",
+        "select * from conditions where time < now()",
       ]);
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public'",

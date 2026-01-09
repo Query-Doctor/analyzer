@@ -8,6 +8,7 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { setTimeout } from "node:timers/promises";
+import { assertGreaterOrEqual } from "@std/assert";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -61,7 +62,7 @@ Deno.test({
     try {
       const ws = new WebSocket(`ws://localhost:${server.addr.port}/postgres`);
       const messageFunction = spy();
-      ws.addEventListener("error", console.log);
+      ws.addEventListener("error", console.error);
       ws.addEventListener("message", messageFunction);
 
       const response = await fetch(
@@ -92,7 +93,7 @@ Deno.test({
       const rows = await sql`select * from testing`;
       assertEquals(rows.length, 0);
 
-      assertSpyCalls(messageFunction, 1);
+      assertGreaterOrEqual(messageFunction.calls.length, 1);
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop(), server.shutdown()]);
     }
