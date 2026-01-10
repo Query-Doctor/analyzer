@@ -1,4 +1,5 @@
-// import { format } from "sql-formatter";
+import * as prettier from "prettier";
+import prettierPluginSql from "prettier-plugin-sql";
 // deno-lint-ignore no-unused-vars
 import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
@@ -41,7 +42,7 @@ export class RecentQuery {
   ) {
     this.username = data.username;
     this.query = data.query;
-    this.formattedQuery = data.query;
+    this.formattedQuery = data.formattedQuery;
     this.meanTime = data.meanTime;
     this.calls = data.calls;
     this.rows = data.rows;
@@ -68,8 +69,9 @@ export class RecentQuery {
   ) {
     const analyzer = new Analyzer(parse);
     const analysis = await analyzer.analyze(data.query);
+    const formattedQuery = await RecentQuery.formatQuery(analysis.queryWithoutTags);
     return new RecentQuery(
-      { ...data, query: analysis.queryWithoutTags },
+      { ...data, query: analysis.queryWithoutTags, formattedQuery },
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
@@ -77,6 +79,19 @@ export class RecentQuery {
       hash,
       seenAt,
     );
+  }
+
+  private static async formatQuery(query: string): Promise<string> {
+    try {
+      return await prettier.format(query, {
+        parser: "sql",
+        plugins: [prettierPluginSql],
+        language: "postgresql",
+        keywordCase: "upper",
+      });
+    } catch {
+      return query;
+    }
   }
 
   static isSelectQuery(data: RawRecentQuery): boolean {

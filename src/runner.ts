@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
-import { format } from "sql-formatter";
+import * as prettier from "prettier";
+import prettierPluginSql from "prettier-plugin-sql";
 import csv from "fast-csv";
 import { Readable } from "node:stream";
 import { fingerprint } from "@libpg-query/parser";
@@ -190,8 +191,9 @@ export class Runner {
     this.seenQueries.add(fingerprintNum);
 
     const analyzer = new Analyzer(parse);
+    const formattedQuery = await this.formatQuery(query);
     const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
-      await analyzer.analyze(this.formatQuery(query));
+      await analyzer.analyze(formattedQuery);
 
     const selectsCatalog = referencedTables.find((table) =>
       table.startsWith("pg_")
@@ -220,7 +222,7 @@ export class Runner {
           kind: "cost_past_threshold",
           warning: {
             fingerprint: fingerprintNum,
-            formattedQuery: this.formatQuery(query),
+            formattedQuery,
             baseCost: log.plan.cost,
             explainPlan: log.plan.json,
             maxCost: this.maxCost,
@@ -274,7 +276,7 @@ export class Runner {
               kind: "recommendation",
               recommendation: {
                 fingerprint: fingerprintNum,
-                formattedQuery: this.formatQuery(query),
+                formattedQuery,
                 baseCost: out.baseCost,
                 baseExplainPlan: out.baseExplainPlan,
                 optimizedCost: out.finalCost,
@@ -298,7 +300,7 @@ export class Runner {
                 kind: "cost_past_threshold",
                 warning: {
                   fingerprint: fingerprintNum,
-                  formattedQuery: this.formatQuery(query),
+                  formattedQuery,
                   baseCost: out.baseCost,
                   optimization: {
                     newCost: out.finalCost,
@@ -328,12 +330,17 @@ export class Runner {
     );
   }
 
-  private formatQuery(query: string) {
-    return format(query, {
-      language: "postgresql",
-      keywordCase: "lower",
-      linesBetweenQueries: 2,
-    });
+  private async formatQuery(query: string): Promise<string> {
+    try {
+      return await prettier.format(query, {
+        parser: "sql",
+        plugins: [prettierPluginSql],
+        language: "postgresql",
+        keywordCase: "upper",
+      });
+    } catch {
+      return query;
+    }
   }
 
   private printLegend() {
