@@ -42,7 +42,8 @@
     "jsondiffpatch": "npm:jsondiffpatch@^0.7.3",
     "nunjucks": "npm:nunjucks@^3.2.4",
     "pgsql-deparser": "npm:pgsql-deparser@^17.11.1",
-    "sql-formatter": "npm:sql-formatter@^15.6.6",
+    "prettier": "npm:prettier@^3",
+    "prettier-plugin-sql": "npm:prettier-plugin-sql@^0.19",
     "sql-highlight": "npm:sql-highlight@^6.1.0",
     "postgresjs": "https://deno.land/x/postgresjs@v3.4.7/mod.js",
     "zod": "npm:zod@^4.1.12"
