@@ -90,6 +90,7 @@ RUN deno compile \
   --allow-write \
   --allow-env \
   --allow-net \
+  --allow-sys \
   -o /app/analyzer \
   src/main.ts
 
