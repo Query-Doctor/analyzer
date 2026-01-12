@@ -1,0 +1,54 @@
+commit b19fbdf7db9fff706c43d1dedd49c0d45e7a0291
+Author: Xetera <contact@xetera.dev>
+Date:   Mon Jan 12 20:18:33 2026 +0300
+
+    fix: use stats for block size in planner
+
+diff --git a/src/backend/access/table/tableam.c b/src/backend/access/table/tableam.c
+index 66f0f84386c..eed9368f11a 100644
+--- a/src/backend/access/table/tableam.c
++++ b/src/backend/access/table/tableam.c
+@@ -675,7 +675,7 @@ table_block_relation_estimate_size(Relation rel, int32 *attr_widths,
+ 	double		density;
+ 
+ 	/* it should have storage, so we can call the smgr */
+-	curpages = RelationGetNumberOfBlocks(rel);
++	curpages = (BlockNumber) rel->rd_rel->relpages;
+ 
+ 	/* coerce values in pg_class to more desirable types */
+ 	relpages = (BlockNumber) rel->rd_rel->relpages;
+diff --git a/src/backend/commands/analyze.c b/src/backend/commands/analyze.c
+index b5917309a5e..532f0c39b4e 100644
+--- a/src/backend/commands/analyze.c
++++ b/src/backend/commands/analyze.c
+@@ -203,7 +203,7 @@ analyze_rel(Oid relid, RangeVar *relation,
+ 		/* Regular table, so we'll use the regular row acquisition function */
+ 		acquirefunc = acquire_sample_rows;
+ 		/* Also get regular table's size */
+-		relpages = RelationGetNumberOfBlocks(onerel);
++		relpages = onerel->rd_rel->relpages;
+ 	}
+ 	else if (onerel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+ 	{
+diff --git a/src/backend/optimizer/util/plancat.c b/src/backend/optimizer/util/plancat.c
+index e7856b54bbb..5e73448046e 100644
+--- a/src/backend/optimizer/util/plancat.c
++++ b/src/backend/optimizer/util/plancat.c
+@@ -417,7 +417,7 @@ get_relation_info(PlannerInfo *root, Oid relationObjectId, bool inhparent,
+ 			 */
+ 			if (info->indpred == NIL)
+ 			{
+-				info->pages = RelationGetNumberOfBlocks(indexRelation);
++				info->pages = indexRelation->rd_rel->relpages;
+ 				info->tuples = rel->tuples;
+ 			}
+ 			else
+@@ -1022,7 +1022,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
+ 			 */
+ 
+ 			/* it has storage, ok to call the smgr */
+-			curpages = RelationGetNumberOfBlocks(rel);
++			curpages = rel->rd_rel->relpages;
+ 
+ 			/* report estimated # pages */
+ 			*pages = curpages;
