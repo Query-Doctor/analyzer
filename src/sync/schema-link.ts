@@ -112,7 +112,7 @@ export class DumpCommand
       "--disable-triggers",
       "--schema-only",
       ...DumpCommand.formatFlags(targetType),
-      ...DumpCommand.extraFlags(connectable, targetType),
+      ...DumpCommand.extraFlags(connectable),
       connectable.toString(),
     ];
     const command = new Deno.Command(DumpCommand.binaryPath, {
@@ -228,7 +228,6 @@ export class DumpCommand
 
   private static extraFlags(
     connectable: Connectable,
-    format: DumpTargetType,
   ): string[] {
     // creating an array twice just for flags is super inefficient
     const flags = [
@@ -243,12 +242,6 @@ export class DumpCommand
         ],
       ),
     ];
-    // we want to drop existing objects when syncing
-    // to regular postgres. Not needed for pglite
-    // since we always create a new db anyway
-    if (format === "native-postgres") {
-      flags.push("--clean", "--if-exists");
-    }
 
     return flags;
   }
@@ -273,8 +266,6 @@ export class RestoreCommand {
     const args = [
       "--no-owner",
       "--no-acl",
-      "--clean",
-      "--if-exists",
       "--verbose",
       ...RestoreCommand.formatFlags(),
       "--dbname",
