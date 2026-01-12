@@ -85,12 +85,7 @@ export class RemoteController {
     try {
       this.syncStatus = SyncStatus.IN_PROGRESS;
       this.syncResponse = await this.remote.syncFrom(db, {
-        type: "static",
-        stats: {
-          kind: "fromAssumption",
-          relpages: 1,
-          reltuples: 10000,
-        },
+        type: "pullFromSource",
       });
       this.syncStatus = SyncStatus.COMPLETED;
       const { schema, meta } = this.syncResponse;
