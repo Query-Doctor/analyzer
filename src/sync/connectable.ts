@@ -20,6 +20,30 @@ export class Connectable {
     return new Connectable(newUrl);
   }
 
+  isLocalhost() {
+    return this.url.hostname === "localhost" ||
+      this.url.hostname.startsWith("127.") || this.url.hostname === "0.0.0.0" ||
+      this.url.hostname === "::1";
+  }
+
+  /**
+   * Sometimes when the user tries to connect to `localhost`
+   * what they really mean is the database running on the docker host
+   */
+  escapeDocker() {
+    if (env.HOSTED) {
+      return this;
+    }
+
+    const url = new URL(this.url);
+    if (this.isLocalhost()) {
+      url.hostname = "host.docker.internal";
+    } else {
+      return this;
+    }
+    return new Connectable(url);
+  }
+
   /**
    * Custom logic for parsing a string into a {@link Connectable} through zod.
    */
