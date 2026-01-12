@@ -177,7 +177,7 @@ export class DumpCommand
     restore.stdout.pipeTo(
       new WritableStream({
         write: (chunk) => {
-          this.emit("dump", decoder.decode(chunk));
+          this.emit("restore", decoder.decode(chunk));
         },
       }),
     );
