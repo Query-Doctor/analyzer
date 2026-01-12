@@ -123,6 +123,7 @@ RUN mkdir -p /var/lib/postgresql/data \
 
 WORKDIR /app
 ENV PG_DUMP_BINARY=/usr/bin/pg_dump
+ENV PG_RESTORE_BINARY=/usr/bin/pg_restore
 ENV PATH="/usr/local/pgsql/bin:$PATH"
 ENV PGDATA=/var/lib/postgresql/data
 
