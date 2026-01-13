@@ -59,7 +59,7 @@ RUN apk add --no-cache \
     postgresql-client
 
 # Download, build, and install pgBadger
-ARG PGBADGER_VERSION=13.1
+ARG PGBADGER_VERSION=13.2
 WORKDIR /tmp
 
 RUN curl -L https://github.com/darold/pgbadger/archive/v${PGBADGER_VERSION}.tar.gz | tar -xzf - && \
