@@ -2,6 +2,8 @@ ARG ALPINE_VERSION=3.22
 ARG DENO_VERSION=2.4.5
 FROM alpine:${ALPINE_VERSION} AS pg-builder
 
+ARG PG_BRANCH=REL_14_STABLE
+
 # Install build dependencies
 RUN apk add --no-cache \
     build-base \
@@ -16,15 +18,16 @@ RUN apk add --no-cache \
     cmake \
     openssl-dev \
     krb5-dev \
+    # required for timescaledb
     linux-headers
 
-RUN git clone --depth 1 --branch REL_14_STABLE https://github.com/postgres/postgres.git /postgres
+RUN git clone --depth 1 --branch ${PG_BRANCH} https://github.com/postgres/postgres.git /postgres
 
 WORKDIR /postgres
 
-# Copy and apply the patch
-COPY fix14.diff /tmp/fix14.diff
-RUN git apply /tmp/fix14.diff
+# apply our custom patches on top of postgres
+COPY patches/pg14/*.patch /tmp
+RUN git apply /tmp/*.patch
 
 # Build PostgreSQL with debug flags
 RUN ./configure \

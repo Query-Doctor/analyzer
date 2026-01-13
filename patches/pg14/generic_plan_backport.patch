@@ -1,0 +1,334 @@
+commit 33aae1f840b94292d91446728c3d4c8c23ae54b6
+Author: Xetera <contact@xetera.dev>
+Date:   Tue Jan 13 16:54:28 2026 +0300
+
+    experimental: backport generic plan to pg14
+
+diff --git a/src/backend/commands/explain.c b/src/backend/commands/explain.c
+index 70551522dac..bc60cae80fc 100644
+--- a/src/backend/commands/explain.c
++++ b/src/backend/commands/explain.c
+@@ -190,6 +190,8 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
+ 			es->wal = defGetBoolean(opt);
+ 		else if (strcmp(opt->defname, "settings") == 0)
+ 			es->settings = defGetBoolean(opt);
++		else if (strcmp(opt->defname, "generic_plan") == 0)
++			es->generic = defGetBoolean(opt);
+ 		else if (strcmp(opt->defname, "timing") == 0)
+ 		{
+ 			timing_set = true;
+@@ -227,6 +229,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
+ 					 parser_errposition(pstate, opt->location)));
+ 	}
+ 
++	/* check that WAL is used with EXPLAIN ANALYZE */
+ 	if (es->wal && !es->analyze)
+ 		ereport(ERROR,
+ 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+@@ -241,6 +244,12 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt,
+ 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+ 				 errmsg("EXPLAIN option TIMING requires ANALYZE")));
+ 
++	/* check that GENERIC_PLAN is not used with EXPLAIN ANALYZE */
++	if (es->generic && es->analyze)
++		ereport(ERROR,
++				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
++				 errmsg("EXPLAIN options ANALYZE and GENERIC_PLAN cannot be used together")));
++
+ 	/* if the summary was not set explicitly, set default value */
+ 	es->summary = (summary_set) ? es->summary : es->analyze;
+ 
+@@ -572,6 +581,8 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
+ 		eflags = 0;				/* default run-to-completion flags */
+ 	else
+ 		eflags = EXEC_FLAG_EXPLAIN_ONLY;
++	if (es->generic)
++		eflags |= EXEC_FLAG_EXPLAIN_GENERIC;
+ 	if (into)
+ 		eflags |= GetIntoRelEFlags(into);
+ 
+diff --git a/src/backend/executor/execMain.c b/src/backend/executor/execMain.c
+index 5d6410480cd..e0983cadaed 100644
+--- a/src/backend/executor/execMain.c
++++ b/src/backend/executor/execMain.c
+@@ -910,7 +910,7 @@ InitPlan(QueryDesc *queryDesc, int eflags)
+ 		 * prepared to handle REWIND efficiently; otherwise there is no need.
+ 		 */
+ 		sp_eflags = eflags
+-			& (EXEC_FLAG_EXPLAIN_ONLY | EXEC_FLAG_WITH_NO_DATA);
++			& ~(EXEC_FLAG_REWIND | EXEC_FLAG_BACKWARD | EXEC_FLAG_MARK);
+ 		if (bms_is_member(i, plannedstmt->rewindPlanIDs))
+ 			sp_eflags |= EXEC_FLAG_REWIND;
+ 
+diff --git a/src/backend/executor/execPartition.c b/src/backend/executor/execPartition.c
+index 5386e665a94..0a5216a7f1b 100644
+--- a/src/backend/executor/execPartition.c
++++ b/src/backend/executor/execPartition.c
+@@ -1719,7 +1719,7 @@ ExecCreatePartitionPruneState(PlanState *planstate,
+ 			 * Initialize pruning contexts as needed.
+ 			 */
+ 			pprune->initial_pruning_steps = pinfo->initial_pruning_steps;
+-			if (pinfo->initial_pruning_steps)
++			if (pinfo->initial_pruning_steps && !(estate->es_top_eflags & EXEC_FLAG_EXPLAIN_GENERIC))
+ 			{
+ 				ExecInitPruningContext(&pprune->initial_context,
+ 									   pinfo->initial_pruning_steps,
+@@ -1728,7 +1728,7 @@ ExecCreatePartitionPruneState(PlanState *planstate,
+ 				prunestate->do_initial_prune = true;
+ 			}
+ 			pprune->exec_pruning_steps = pinfo->exec_pruning_steps;
+-			if (pinfo->exec_pruning_steps)
++			if (pinfo->exec_pruning_steps && !(estate->es_top_eflags & EXEC_FLAG_EXPLAIN_GENERIC))
+ 			{
+ 				ExecInitPruningContext(&pprune->exec_context,
+ 									   pinfo->exec_pruning_steps,
+diff --git a/src/backend/parser/analyze.c b/src/backend/parser/analyze.c
+index fcb79c12fb5..35c9255377a 100644
+--- a/src/backend/parser/analyze.c
++++ b/src/backend/parser/analyze.c
+@@ -27,6 +27,7 @@
+ #include "access/sysattr.h"
+ #include "catalog/pg_proc.h"
+ #include "catalog/pg_type.h"
++#include "commands/defrem.h"
+ #include "miscadmin.h"
+ #include "nodes/makefuncs.h"
+ #include "nodes/nodeFuncs.h"
+@@ -2898,10 +2899,38 @@ static Query *
+ transformExplainStmt(ParseState *pstate, ExplainStmt *stmt)
+ {
+ 	Query	   *result;
++	bool		generic_plan = false;
++	Oid		   *paramTypes = NULL;
++	int			numParams = 0;
++
++	/*
++	 * If we have no external source of parameter definitions, and the
++	 * GENERIC_PLAN option is specified, then accept variable parameter
++	 * definitions (similarly to PREPARE, for example).
++	 */
++	if (pstate->p_paramref_hook == NULL)
++	{
++		ListCell   *lc;
++
++		foreach(lc, stmt->options)
++		{
++			DefElem    *opt = (DefElem *) lfirst(lc);
++
++			if (strcmp(opt->defname, "generic_plan") == 0)
++				generic_plan = defGetBoolean(opt);
++			/* don't "break", as we want the last value */
++		}
++		if (generic_plan)
++			setup_parse_variable_parameters(pstate, &paramTypes, &numParams);
++	}
+ 
+ 	/* transform contained query, allowing SELECT INTO */
+ 	stmt->query = (Node *) transformOptionalSelectInto(pstate, stmt->query);
+ 
++	/* make sure all is well with parameter types */
++	if (generic_plan)
++		check_variable_parameters(pstate, (Query *) stmt->query);
++
+ 	/* represent the command as a utility Query */
+ 	result = makeNode(Query);
+ 	result->commandType = CMD_UTILITY;
+diff --git a/src/bin/psql/tab-complete.c b/src/bin/psql/tab-complete.c
+index 4f0416d6b30..2ef37dea1b5 100644
+--- a/src/bin/psql/tab-complete.c
++++ b/src/bin/psql/tab-complete.c
+@@ -3270,9 +3270,9 @@ psql_completion(const char *text, int start, int end)
+ 		 * one word, so the above test is correct.
+ 		 */
+ 		if (ends_with(prev_wd, '(') || ends_with(prev_wd, ','))
+-			COMPLETE_WITH("ANALYZE", "VERBOSE", "COSTS", "SETTINGS",
++			COMPLETE_WITH("ANALYZE", "VERBOSE", "COSTS", "SETTINGS", "GENERIC_PLAN",
+ 						  "BUFFERS", "WAL", "TIMING", "SUMMARY", "FORMAT");
+-		else if (TailMatches("ANALYZE|VERBOSE|COSTS|SETTINGS|BUFFERS|WAL|TIMING|SUMMARY"))
++		else if (TailMatches("ANALYZE|VERBOSE|COSTS|SETTINGS|GENERIC_PLAN|BUFFERS|WAL|TIMING|SUMMARY"))
+ 			COMPLETE_WITH("ON", "OFF");
+ 		else if (TailMatches("FORMAT"))
+ 			COMPLETE_WITH("TEXT", "XML", "JSON", "YAML");
+diff --git a/src/include/commands/explain.h b/src/include/commands/explain.h
+index e94d9e49cf6..8175402bd36 100644
+--- a/src/include/commands/explain.h
++++ b/src/include/commands/explain.h
+@@ -46,6 +46,7 @@ typedef struct ExplainState
+ 	bool		timing;			/* print detailed node timing */
+ 	bool		summary;		/* print total planning and execution timing */
+ 	bool		settings;		/* print modified settings */
++	bool		generic;		/* generate a generic plan */
+ 	ExplainFormat format;		/* output format */
+ 	/* state for output formatting --- not reset for each new plan tree */
+ 	int			indent;			/* current indentation level */
+diff --git a/src/include/executor/executor.h b/src/include/executor/executor.h
+index 4bb1744286a..dc4ddf5a022 100644
+--- a/src/include/executor/executor.h
++++ b/src/include/executor/executor.h
+@@ -36,6 +36,11 @@
+  * of startup should occur.  However, error checks (such as permission checks)
+  * should be performed.
+  *
++ * EXPLAIN_GENERIC can only be used together with EXPLAIN_ONLY.  It indicates
++ * that a generic plan is being shown using EXPLAIN (GENERIC_PLAN), which
++ * means that missing parameter values must be tolerated.  Currently, the only
++ * effect is to suppress execution-time partition pruning.
++ *
+  * REWIND indicates that the plan node should try to efficiently support
+  * rescans without parameter changes.  (Nodes must support ExecReScan calls
+  * in any case, but if this flag was not given, they are at liberty to do it
+@@ -52,13 +57,18 @@
+  * AfterTriggerBeginQuery/AfterTriggerEndQuery.  This does not necessarily
+  * mean that the plan can't queue any AFTER triggers; just that the caller
+  * is responsible for there being a trigger context for them to be queued in.
++ *
++ * WITH_NO_DATA indicates that we are performing REFRESH MATERIALIZED VIEW
++ * ... WITH NO DATA.  Currently, the only effect is to suppress errors about
++ * scanning unpopulated materialized views.
+  */
+-#define EXEC_FLAG_EXPLAIN_ONLY	0x0001	/* EXPLAIN, no ANALYZE */
+-#define EXEC_FLAG_REWIND		0x0002	/* need efficient rescan */
+-#define EXEC_FLAG_BACKWARD		0x0004	/* need backward scan */
+-#define EXEC_FLAG_MARK			0x0008	/* need mark/restore */
+-#define EXEC_FLAG_SKIP_TRIGGERS 0x0010	/* skip AfterTrigger calls */
+-#define EXEC_FLAG_WITH_NO_DATA	0x0020	/* rel scannability doesn't matter */
++#define EXEC_FLAG_EXPLAIN_ONLY		0x0001	/* EXPLAIN, no ANALYZE */
++#define EXEC_FLAG_EXPLAIN_GENERIC	0x0002	/* EXPLAIN (GENERIC_PLAN) */
++#define EXEC_FLAG_REWIND			0x0004	/* need efficient rescan */
++#define EXEC_FLAG_BACKWARD			0x0008	/* need backward scan */
++#define EXEC_FLAG_MARK				0x0010	/* need mark/restore */
++#define EXEC_FLAG_SKIP_TRIGGERS		0x0020	/* skip AfterTrigger setup */
++#define EXEC_FLAG_WITH_NO_DATA		0x0040	/* REFRESH ... WITH NO DATA */
+ 
+ 
+ /* Hook for plugins to get control in ExecutorStart() */
+diff --git a/src/test/regress/expected/explain.out b/src/test/regress/expected/explain.out
+index cda28098baa..8cfc7a6b7de 100644
+--- a/src/test/regress/expected/explain.out
++++ b/src/test/regress/expected/explain.out
+@@ -290,6 +290,48 @@ select explain_filter_to_json('explain (settings, format json) select * from int
+ (1 row)
+ 
+ rollback;
++-- GENERIC_PLAN option
++select explain_filter('explain (generic_plan) select unique1 from tenk1 where thousand = $1');
++                                 explain_filter                                  
++---------------------------------------------------------------------------------
++ Bitmap Heap Scan on tenk1  (cost=N.N..N.N rows=N width=N)
++   Recheck Cond: (thousand = $N)
++   ->  Bitmap Index Scan on tenk1_thous_tenthous  (cost=N.N..N.N rows=N width=N)
++         Index Cond: (thousand = $N)
++(4 rows)
++
++-- should fail
++select explain_filter('explain (analyze, generic_plan) select unique1 from tenk1 where thousand = $1');
++ERROR:  EXPLAIN options ANALYZE and GENERIC_PLAN cannot be used together
++CONTEXT:  PL/pgSQL function explain_filter(text) line 5 at FOR over EXECUTE statement
++-- Test EXPLAIN (GENERIC_PLAN) with partition pruning
++-- partitions should be pruned at plan time, based on constants,
++-- but there should be no pruning based on parameter placeholders
++create table gen_part (
++  key1 integer not null,
++  key2 integer not null
++) partition by list (key1);
++create table gen_part_1
++  partition of gen_part for values in (1)
++  partition by range (key2);
++create table gen_part_1_1
++  partition of gen_part_1 for values from (1) to (2);
++create table gen_part_1_2
++  partition of gen_part_1 for values from (2) to (3);
++create table gen_part_2
++  partition of gen_part for values in (2);
++-- should scan gen_part_1_1 and gen_part_1_2, but not gen_part_2
++select explain_filter('explain (generic_plan) select key1, key2 from gen_part where key1 = 1 and key2 = $1');
++                              explain_filter                               
++---------------------------------------------------------------------------
++ Append  (cost=N.N..N.N rows=N width=N)
++   ->  Seq Scan on gen_part_1_1 gen_part_1  (cost=N.N..N.N rows=N width=N)
++         Filter: ((key1 = N) AND (key2 = $N))
++   ->  Seq Scan on gen_part_1_2 gen_part_2  (cost=N.N..N.N rows=N width=N)
++         Filter: ((key1 = N) AND (key2 = $N))
++(5 rows)
++
++drop table gen_part;
+ --
+ -- Test production of per-worker data
+ --
+diff --git a/src/test/regress/sql/explain.sql b/src/test/regress/sql/explain.sql
+index 3f9ae9843a2..820d90f979f 100644
+--- a/src/test/regress/sql/explain.sql
++++ b/src/test/regress/sql/explain.sql
+@@ -75,6 +75,32 @@ select true as "OK"
+ select explain_filter_to_json('explain (settings, format json) select * from int8_tbl i8') #> '{0,Settings,plan_cache_mode}';
+ rollback;
+ 
++-- GENERIC_PLAN option
++
++select explain_filter('explain (generic_plan) select unique1 from tenk1 where thousand = $1');
++-- should fail
++select explain_filter('explain (analyze, generic_plan) select unique1 from tenk1 where thousand = $1');
++
++-- Test EXPLAIN (GENERIC_PLAN) with partition pruning
++-- partitions should be pruned at plan time, based on constants,
++-- but there should be no pruning based on parameter placeholders
++create table gen_part (
++  key1 integer not null,
++  key2 integer not null
++) partition by list (key1);
++create table gen_part_1
++  partition of gen_part for values in (1)
++  partition by range (key2);
++create table gen_part_1_1
++  partition of gen_part_1 for values from (1) to (2);
++create table gen_part_1_2
++  partition of gen_part_1 for values from (2) to (3);
++create table gen_part_2
++  partition of gen_part for values in (2);
++-- should scan gen_part_1_1 and gen_part_1_2, but not gen_part_2
++select explain_filter('explain (generic_plan) select key1, key2 from gen_part where key1 = 1 and key2 = $1');
++drop table gen_part;
++
+ --
+ -- Test production of per-worker data
+ --
+diff --git a/src/backend/parser/parse_param.c b/src/backend/parser/parse_param.c
+index 68a55343939..55125702485 100644
+--- a/src/backend/parser/parse_param.c
++++ b/src/backend/parser/parse_param.c
+@@ -92,6 +92,22 @@ parse_variable_parameters(ParseState *pstate,
+ 	pstate->p_coerce_param_hook = variable_coerce_param_hook;
+ }
+ 
++/*
++ * Set up to process a query containing references to variable parameters.
++ */
++void
++setup_parse_variable_parameters(ParseState *pstate,
++								Oid **paramTypes, int *numParams)
++{
++	VarParamState *parstate = palloc_object(VarParamState);
++
++	parstate->paramTypes = paramTypes;
++	parstate->numParams = numParams;
++	pstate->p_ref_hook_state = parstate;
++	pstate->p_paramref_hook = variable_paramref_hook;
++	pstate->p_coerce_param_hook = variable_coerce_param_hook;
++}
++
+ /*
+  * Transform a ParamRef using fixed parameter types.
+  */
+diff --git a/src/include/parser/parse_param.h b/src/include/parser/parse_param.h
+index b42fff296ce..fee8aa557ca 100644
+--- a/src/include/parser/parse_param.h
++++ b/src/include/parser/parse_param.h
+@@ -19,6 +19,8 @@ extern void parse_fixed_parameters(ParseState *pstate,
+ 								   Oid *paramTypes, int numParams);
+ extern void parse_variable_parameters(ParseState *pstate,
+ 									  Oid **paramTypes, int *numParams);
++extern void setup_parse_variable_parameters(ParseState *pstate,
++								Oid **paramTypes, int *numParams);
+ extern void check_variable_parameters(ParseState *pstate, Query *query);
+ extern bool query_contains_extern_params(Query *query);
+ 
