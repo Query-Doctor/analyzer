@@ -364,7 +364,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return {
       state: "error",
       error:
-        "Query plan had zero cost. This should not happen on a patched postgres instance",
+        "Query plan had zero cost. You're likely pulling statistics from a source database with a table that has no rows.",
     };
   }
 
