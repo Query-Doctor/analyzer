@@ -41,7 +41,7 @@ RUN make install
 RUN cd contrib && make -j$(nproc) && make install
 
 # Clone and build TimescaleDB
-ARG TIMESCALEDB_VERSION=2.14.0
+ARG TIMESCALEDB_VERSION=2.16.1
 WORKDIR /timescaledb
 RUN git clone --depth 1 --branch ${TIMESCALEDB_VERSION} https://github.com/timescale/timescaledb.git .
 
