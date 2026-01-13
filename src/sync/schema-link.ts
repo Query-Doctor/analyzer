@@ -110,7 +110,13 @@ export class DumpCommand
       "--no-publications",
       // not sure if this is 100% necessary but we don't want triggers anyway
       "--disable-triggers",
-      "--schema-only",
+      // this is our alternative to `--schema-only`
+      "--exclude-table-data-and-children",
+      // it excludes all user data
+      "public.*",
+      "--exclude-table-data-and-children",
+      // and some specific stuff from timescaledb, but not its chunks
+      "_timescaledb_internal._hyper_*",
       ...DumpCommand.formatFlags(targetType),
       ...DumpCommand.extraFlags(connectable),
       connectable.toString(),
