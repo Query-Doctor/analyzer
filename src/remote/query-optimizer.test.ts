@@ -5,6 +5,7 @@ import { Connectable } from "../sync/connectable.ts";
 import { setTimeout } from "node:timers/promises";
 import { assertArrayIncludes } from "@std/assert/array-includes";
 import { assert } from "@std/assert";
+import { RecentQuery } from "../sql/recent-query.ts";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -116,6 +117,38 @@ Deno.test({
       assertArrayIncludes(expectedNoImprovements, noImprovements);
       improvements = [];
       noImprovements = [];
+      await optimizer.addQueries([
+        new RecentQuery(
+          {
+            calls: "0",
+            formattedQuery: "select * from testing where a >= $1",
+            meanTime: 100,
+            query: "select * from testing where a >= $1",
+            rows: "1",
+            topLevel: true,
+            username: "test",
+          },
+          [{ table: "testing" }],
+          [{
+            parts: [{ text: "a", quoted: false }],
+            frequency: 1,
+            ignored: false,
+            position: { start: 1, end: 2 },
+            representation: "a",
+          }],
+          [],
+          [],
+          0 as any,
+          1,
+        ),
+      ]);
+      assertArrayIncludes(
+        [...expectedImprovements, "select * from testing where a >= $1"],
+        improvements,
+      );
+      assertArrayIncludes(expectedNoImprovements, noImprovements);
+      console.log("improvements 1", improvements);
+      console.log("no improvements 1", noImprovements);
       await optimizer.start(conn, recentQueries, {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
@@ -123,7 +156,7 @@ Deno.test({
           tableName: "testing",
           schemaName: "public",
           relpages: 1,
-          reltuples: 100,
+          reltuples: 100000,
           relallvisible: 1,
           columns: [{
             columnName: "a",
@@ -140,9 +173,9 @@ Deno.test({
           }],
         }],
       });
-      await setTimeout(1_000);
-      console.log(improvements);
-      console.log(noImprovements);
+      await setTimeout(2_000);
+      console.log("improvements", improvements);
+      console.log("no improvements", noImprovements);
     } finally {
       await pg.stop();
     }

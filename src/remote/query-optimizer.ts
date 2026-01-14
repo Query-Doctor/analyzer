@@ -48,6 +48,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private _validQueriesProcessed = 0;
   private _invalidQueries = 0;
   private _allQueries = 0;
+  private running = false;
 
   constructor(
     private readonly manager: ConnectionManager,
@@ -82,25 +83,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
   ): Promise<OptimizedQuery[]> {
     this.stop();
-    const validQueries: OptimizedQuery[] = [];
-    for (const query of allRecentQueries) {
-      let optimization: LiveQueryOptimization;
-      const status = this.checkQueryUnsupported(query);
-      switch (status.type) {
-        case "ok":
-          optimization = { state: "waiting" };
-          break;
-        case "not_supported":
-          optimization = this.onQueryUnsupported(status.reason);
-          break;
-        case "ignored":
-          continue;
-      }
-      const optimized = query.withOptimization(optimization);
-
-      validQueries.push(optimized);
-      this.queries.set(query.hash, optimized);
-    }
+    const validQueries = this.appendQueries(allRecentQueries);
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(conn);
     const ownStats = await Statistics.dumpStats(pg, version, "full");
@@ -123,6 +106,47 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return validQueries;
   }
 
+  /**
+   * Insert new queries to be processed. The {@link start} method must
+   * have been called previously for this to take effect
+   */
+  async addQueries(queries: RecentQuery[]) {
+    this.appendQueries(queries);
+    if (!this.running) {
+      await this.work();
+    }
+  }
+
+  private appendQueries(queries: RecentQuery[]): OptimizedQuery[] {
+    const validQueries: OptimizedQuery[] = [];
+    for (const query of queries) {
+      const existingOptimization = this.queries.get(query.hash);
+      if (existingOptimization) {
+        validQueries.push(existingOptimization);
+        continue;
+      }
+      let optimization: LiveQueryOptimization;
+      const status = this.checkQueryUnsupported(query);
+      switch (status.type) {
+        case "ok":
+          optimization = { state: "waiting" };
+          break;
+        case "not_supported":
+          optimization = this.onQueryUnsupported(status.reason);
+          break;
+        case "ignored":
+          continue;
+      }
+      const optimized = query.withOptimization(optimization);
+
+      validQueries.push(optimized);
+      if (!existingOptimization) {
+        this.queries.set(query.hash, optimized);
+      }
+    }
+    return validQueries;
+  }
+
   stop() {
     this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
     this.queries.clear();
@@ -138,38 +162,43 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       return;
     }
 
-    while (true) {
-      let optimized: OptimizedQuery | undefined;
-      const token = await this.semaphore.acquire();
-      try {
-        for (const [hash, entry] of this.queries.entries()) {
-          if (entry.optimization.state !== "waiting") {
-            continue;
+    this.running = true;
+    try {
+      while (true) {
+        let optimized: OptimizedQuery | undefined;
+        const token = await this.semaphore.acquire();
+        try {
+          for (const [hash, entry] of this.queries.entries()) {
+            if (entry.optimization.state !== "waiting") {
+              continue;
+            }
+            this.queries.set(
+              hash,
+              entry.withOptimization({ state: "optimizing" }),
+            );
+            optimized = entry;
+            break;
           }
-          this.queries.set(
-            hash,
-            entry.withOptimization({ state: "optimizing" }),
-          );
-          optimized = entry;
+        } finally {
+          this.semaphore.release(token);
+        }
+        if (!optimized) {
+          this._finish.resolve(0);
           break;
         }
-      } finally {
-        this.semaphore.release(token);
-      }
-      if (!optimized) {
-        this._finish.resolve(0);
-        break;
-      }
-      this._validQueriesProcessed++;
-      const optimization = await this.optimizeQuery(
-        optimized,
-        this.target,
-      );
+        this._validQueriesProcessed++;
+        const optimization = await this.optimizeQuery(
+          optimized,
+          this.target,
+        );
 
-      this.queries.set(
-        optimized.hash,
-        optimized.withOptimization(optimization),
-      );
+        this.queries.set(
+          optimized.hash,
+          optimized.withOptimization(optimization),
+        );
+      }
+    } finally {
+      this.running = false;
     }
   }
 
