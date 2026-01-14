@@ -7,7 +7,7 @@ import {
   DiscoveredColumnReference,
   Nudge,
   SQLCommenterTag,
-  TableReference,
+  type TableReference,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
 import z from "zod";
@@ -70,7 +70,9 @@ export class RecentQuery {
   ) {
     const analyzer = new Analyzer(parse);
     const analysis = await analyzer.analyze(data.query);
-    const formattedQuery = await RecentQuery.formatQuery(analysis.queryWithoutTags);
+    const formattedQuery = await RecentQuery.formatQuery(
+      analysis.queryWithoutTags,
+    );
     return new RecentQuery(
       { ...data, query: analysis.queryWithoutTags, formattedQuery },
       analysis.referencedTables,
@@ -102,8 +104,9 @@ export class RecentQuery {
   static isSystemQuery(referencedTables: TableReference[]): boolean {
     return referencedTables.some((ref) =>
       ref.table.startsWith("pg_") ||
-      /* timescaledb jobs */
-      ref.table.startsWith("bgw_job_")
+      ref.schema &&
+        (ref.schema.startsWith("_timescale") ||
+          ref.schema === "timescaledb_information")
     );
   }
 
