@@ -173,10 +173,12 @@ export function createServer(
       log.http(req);
 
       if (req.method === "OPTIONS") {
-        return new Response("OK", {
-          status: 200,
-          headers: corsHeaders,
-        });
+        return transformResponse(
+          new Response("OK", {
+            status: 200,
+            headers: corsHeaders,
+          }),
+        );
       }
       if (url.pathname === "/") {
         return Response.redirect(
@@ -185,13 +187,15 @@ export function createServer(
         );
       }
       if (url.pathname === "/health") {
-        return new Response(JSON.stringify({ status: "ok" }), {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
-        });
+        return transformResponse(
+          new Response(JSON.stringify({ status: "ok" }), {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              ...corsHeaders,
+            },
+          }),
+        );
       }
       const limit = limiter.sync.check(url.pathname, info.remoteAddr.hostname);
       if (limit.limited) {
@@ -200,43 +204,61 @@ export function createServer(
           limit,
         );
       }
-      if (url.pathname === "/postgres/all") {
-        if (req.method !== "POST") {
-          return new Response("Method not allowed", { status: 405 });
+      try {
+        if (url.pathname === "/postgres/all") {
+          if (req.method !== "POST") {
+            return new Response("Method not allowed", { status: 405 });
+          }
+          const res = await onSync(req);
+          return transformResponse(res, limit);
+        } else if (url.pathname === "/postgres/live") {
+          if (req.method !== "POST") {
+            return new Response("Method not allowed", { status: 405 });
+          }
+          const res = await onSyncLiveQuery(req);
+          return transformResponse(res, limit);
+        } else if (url.pathname === "/postgres/reset") {
+          if (req.method !== "POST") {
+            return new Response("Method not allowed", { status: 405 });
+          }
+          const res = await onReset(req);
+          return transformResponse(res, limit);
         }
-        const res = await onSync(req);
-        return transformResponse(res, limit);
-      } else if (url.pathname === "/postgres/live") {
-        if (req.method !== "POST") {
-          return new Response("Method not allowed", { status: 405 });
+        const remoteResponse = await remoteController?.execute(req);
+        if (remoteResponse) {
+          // WebSocket upgrade responses have immutable headers, skip transform
+          if (req.headers.get("upgrade") === "websocket") {
+            return remoteResponse;
+          }
+          return transformResponse(remoteResponse, limit);
         }
-        const res = await onSyncLiveQuery(req);
-        return transformResponse(res, limit);
-      } else if (url.pathname === "/postgres/reset") {
-        if (req.method !== "POST") {
-          return new Response("Method not allowed", { status: 405 });
-        }
-        const res = await onReset(req);
-        return transformResponse(res, limit);
+        return new Response("Not found", { status: 404 });
+      } catch (error) {
+        return transformResponse(
+          new Response(
+            JSON.stringify({
+              error: error instanceof Error
+                ? error.message
+                : "Internal server error",
+            }),
+            {
+              status: 500,
+            },
+          ),
+          limit,
+        );
       }
-      const remoteResponse = await remoteController?.execute(req);
-      if (remoteResponse) {
-        // WebSocket upgrade responses have immutable headers, skip transform
-        if (req.headers.get("upgrade") === "websocket") {
-          return remoteResponse;
-        }
-        return transformResponse(remoteResponse, limit);
-      }
-      return new Response("Not found", { status: 404 });
     },
   );
 }
 
-function transformResponse(res: Response, limit: RateLimitResult): Response {
+function transformResponse(res: Response, limit?: RateLimitResult): Response {
   for (const [key, value] of Object.entries(corsHeaders)) {
     res.headers.set(key, value);
   }
-  limiter.appendHeaders(res, limit);
+  if (limit) {
+    limiter.appendHeaders(res, limit);
+  }
   return res;
 }
 
