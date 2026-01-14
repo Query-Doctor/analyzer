@@ -131,15 +131,9 @@ export class RemoteController {
     this.socket = socket;
     log.debug("Websocket connection established", "remote-controller");
 
-    socket.addEventListener("open", () => {
-      this.syncResponse = undefined;
-      this.syncStatus = SyncStatus.NOT_STARTED;
-    });
-
     socket.addEventListener("close", () => {
-      this.socket = undefined;
       log.debug("Websocket connection closed", "remote-controller");
-    });
+    }, { once: true });
 
     return response;
   }
