@@ -195,8 +195,8 @@ export class Runner {
     const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
       await analyzer.analyze(formattedQuery);
 
-    const selectsCatalog = referencedTables.find((table) =>
-      table.startsWith("pg_")
+    const selectsCatalog = referencedTables.find((ref) =>
+      ref.table.startsWith("pg_")
     );
     if (selectsCatalog) {
       if (env.DEBUG) {

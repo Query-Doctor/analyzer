@@ -7,6 +7,7 @@ import {
   DiscoveredColumnReference,
   Nudge,
   SQLCommenterTag,
+  TableReference,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
 import z from "zod";
@@ -33,7 +34,7 @@ export class RecentQuery {
   /** Use {@link RecentQuery.analyze} instead */
   constructor(
     data: RawRecentQuery,
-    readonly tableReferences: string[],
+    readonly tableReferences: TableReference[],
     readonly columnReferences: DiscoveredColumnReference[],
     readonly tags: SQLCommenterTag[],
     readonly nudges: Nudge[],
@@ -98,11 +99,11 @@ export class RecentQuery {
     return /^select/i.test(data.query);
   }
 
-  static isSystemQuery(referencedTables: string[]): boolean {
-    return referencedTables.some((table) =>
-      table.startsWith("pg_") ||
+  static isSystemQuery(referencedTables: TableReference[]): boolean {
+    return referencedTables.some((ref) =>
+      ref.table.startsWith("pg_") ||
       /* timescaledb jobs */
-      table.startsWith("bgw_job_")
+      ref.table.startsWith("bgw_job_")
     );
   }
 
@@ -111,7 +112,7 @@ export class RecentQuery {
   }
 
   static isTargetlessSelectQuery(
-    referencedTables: string[],
+    referencedTables: TableReference[],
   ): boolean {
     return referencedTables.length === 0;
   }
