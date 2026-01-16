@@ -117,6 +117,9 @@ export class DumpCommand
       "--exclude-table-data-and-children",
       // and some specific stuff from timescaledb, but not its chunks
       "_timescaledb_internal._hyper_*",
+      "--exclude-table-data-and-children",
+      // also including compressed hypertable chunks
+      "_timescaledb_internal.compress_hyper_*",
       ...DumpCommand.formatFlags(targetType),
       ...DumpCommand.extraFlags(connectable),
       connectable.toString(),
