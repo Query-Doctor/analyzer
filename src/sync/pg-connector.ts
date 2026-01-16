@@ -413,6 +413,28 @@ ORDER BY
     return FullSchema.parse(results.result);
   }
 
+  public async getTotalRowCount(
+    tables: { schemaName: string; tableName: string }[],
+  ): Promise<number> {
+    if (tables.length === 0) return 0;
+
+    // Strip surrounding quotes from identifiers (they come pre-quoted from schema dump)
+    const stripQuotes = (s: string) => s.replace(/^"|"$/g, "");
+    const schemaNames = tables.map((t) => stripQuotes(t.schemaName));
+    const tableNames = tables.map((t) => stripQuotes(t.tableName));
+
+    const results = await this.db.exec<{ total_rows: string }>(
+      `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
+         ON n.nspname = t.schema_name AND c.relname = t.table_name
+       WHERE c.relkind = 'r'`,
+      [schemaNames, tableNames],
+    );
+    return Number(results[0]?.total_rows ?? 0);
+  }
+
   public async getDatabaseInfo() {
     const results = await this.db.exec<{
       serverVersion: string;

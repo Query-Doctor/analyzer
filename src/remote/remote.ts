@@ -34,6 +34,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
   static readonly optimizingDbName = PgIdentifier.fromString(
     "optimizing_db",
   );
+  /* Threshold that we determine is "too few rows" for Postgres to start using indexes
+   * and not defaulting to table scan.
+   */
+  private static readonly STATS_ROWS_THRESHOLD = 5_000;
 
   private readonly differ = new SchemaDiffer();
   readonly optimizer: QueryOptimizer;
@@ -69,14 +73,18 @@ export class Remote extends EventEmitter<RemoteEvents> {
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
   ): Promise<
-    { meta: { version?: string }; schema: RemoteSyncFullSchemaResponse }
+    {
+      meta: { version?: string; inferredStatsStrategy?: InferredStatsStrategy };
+      schema: RemoteSyncFullSchemaResponse;
+    }
   > {
     await this.resetDatabase();
+
+    // First batch: get schema and other info in parallel (needed for stats decision)
     const [
       restoreResult,
       recentQueries,
       fullSchema,
-      pulledStats,
       databaseInfo,
     ] = await Promise
       .allSettled([
@@ -84,13 +92,22 @@ export class Remote extends EventEmitter<RemoteEvents> {
         this.pipeSchema(this.optimizingDbUDRL, source),
         this.getRecentQueries(source),
         this.getFullSchema(source),
-        this.resolveStatistics(source, statsStrategy),
         this.getDatabaseInfo(source),
       ]);
 
     if (fullSchema.status === "fulfilled") {
       this.differ.put(source, fullSchema.value);
     }
+
+    // Second: resolve stats strategy using table list from schema
+    const tables = fullSchema.status === "fulfilled"
+      ? fullSchema.value.tables
+      : [];
+    const statsResult = await this.resolveStatistics(
+      source,
+      statsStrategy,
+      tables,
+    );
 
     const pg = this.manager.getOrCreateConnection(
       this.optimizingDbUDRL,
@@ -101,16 +118,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
       queries = recentQueries.value;
     }
 
-    let stats: StatisticsMode | undefined;
-    if (pulledStats.status === "fulfilled") {
-      stats = pulledStats.value;
-    }
-
     await this.onSuccessfulSync(
       pg,
       source,
       queries,
-      stats,
+      statsResult.mode,
     );
 
     return {
@@ -118,6 +130,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
         version: databaseInfo.status === "fulfilled"
           ? databaseInfo.value.serverVersion
           : undefined,
+        inferredStatsStrategy: statsResult.strategy,
       },
       schema: fullSchema.status === "fulfilled"
         ? { type: "ok", value: fullSchema.value }
@@ -176,16 +189,38 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
   }
 
-  private resolveStatistics(
+  private async resolveStatistics(
     source: Connectable,
     strategy: StatisticsStrategy,
-  ): Promise<StatisticsMode> {
-    switch (strategy.type) {
-      case "static":
-        return Promise.resolve(strategy.stats);
-      case "pullFromSource":
-        return this.dumpSourceStats(source);
+    tables: { schemaName: string; tableName: string }[],
+  ): Promise<StatsResult> {
+    if (strategy.type === "static") {
+      // Static strategy doesn't go through inference
+      return { mode: strategy.stats, strategy: "fromSource" };
     }
+    return this.decideStatsStrategy(source, tables);
+  }
+
+  private async decideStatsStrategy(
+    source: Connectable,
+    tables: { schemaName: string; tableName: string }[],
+  ): Promise<StatsResult> {
+    const connector = this.sourceManager.getConnectorFor(source);
+    const totalRows = await connector.getTotalRowCount(tables);
+
+    if (totalRows < Remote.STATS_ROWS_THRESHOLD) {
+      log.info(
+        `Total rows (${totalRows}) below threshold, using default 10k stats`,
+        "remote",
+      );
+      return { mode: Statistics.defaultStatsMode, strategy: "10k" };
+    }
+
+    log.info(
+      `Total rows (${totalRows}) above threshold, pulling source stats`,
+      "remote",
+    );
+    return { mode: await this.dumpSourceStats(source), strategy: "fromSource" };
   }
 
   private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
@@ -257,4 +292,11 @@ export type StatisticsStrategy = {
 } | {
   type: "static";
   stats: StatisticsMode;
+};
+
+export type InferredStatsStrategy = "10k" | "fromSource";
+
+type StatsResult = {
+  mode: StatisticsMode;
+  strategy: InferredStatsStrategy;
 };
