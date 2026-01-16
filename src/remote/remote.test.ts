@@ -248,6 +248,100 @@ Deno.test({
 });
 
 Deno.test({
+  name: "infers '10k' stats strategy when row count is below threshold",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    // Create source with very few rows (below 5000 threshold)
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              create table small_table(id int);
+              insert into small_table select generate_series(1, 100);
+              analyze small_table;
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const remote = new Remote(
+        target,
+        ConnectionManager.forLocalDatabase(),
+      );
+
+      const result = await remote.syncFrom(source);
+      await remote.optimizer.finish;
+
+      assertEquals(
+        result.meta.inferredStatsStrategy,
+        "10k",
+        "Should infer '10k' strategy for small databases",
+      );
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+  },
+});
+
+Deno.test({
+  name: "infers 'fromSource' stats strategy when row count is above threshold",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    // Create source with many rows (above 5000 threshold)
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              create table large_table(id int);
+              insert into large_table select generate_series(1, 10000);
+              analyze large_table;
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const remote = new Remote(
+        target,
+        ConnectionManager.forLocalDatabase(),
+      );
+
+      const result = await remote.syncFrom(source);
+      await remote.optimizer.finish;
+
+      assertEquals(
+        result.meta.inferredStatsStrategy,
+        "fromSource",
+        "Should infer 'fromSource' strategy for large databases",
+      );
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+  },
+});
+
+Deno.test({
   name: "timescaledb with continuous aggregates sync correctly",
   sanitizeOps: false,
   sanitizeResources: false,
