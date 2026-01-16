@@ -414,14 +414,12 @@ ORDER BY
   }
 
   public async getTotalRowCount(
-    tables: { schemaName: string; tableName: string }[],
+    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<number> {
     if (tables.length === 0) return 0;
 
-    // Strip surrounding quotes from identifiers (they come pre-quoted from schema dump)
-    const stripQuotes = (s: string) => s.replace(/^"|"$/g, "");
-    const schemaNames = tables.map((t) => stripQuotes(t.schemaName));
-    const tableNames = tables.map((t) => stripQuotes(t.tableName));
+    const schemaNames = tables.map((t) => t.schemaName.toString());
+    const tableNames = tables.map((t) => t.tableName.toString());
 
     const results = await this.db.exec<{ total_rows: string }>(
       `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
