@@ -341,6 +341,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return analyzer.deriveIndexes(
       statistics.ownMetadata,
       recent.columnReferences,
+      recent.tableReferences,
     );
   }
 

@@ -211,6 +211,7 @@ export class Runner {
     const indexCandidates = analyzer.deriveIndexes(
       this.stats.ownMetadata,
       indexesToCheck,
+      referencedTables,
     );
     if (indexCandidates.length === 0) {
       if (env.DEBUG) {
