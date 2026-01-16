@@ -12,7 +12,7 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
-import { Postgres } from "@query-doctor/core";
+import { Postgres, PgIdentifier } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
@@ -281,8 +281,8 @@ ORDER BY
     options: DependencyAnalyzerOptions,
   ): Promise<SerializeResult> {
     const schema = await this.getSchema();
-    const mkKey = (schema: string, table: string, column: string) =>
-      `${schema.toLowerCase()}:${table.toLowerCase()}:${column}`;
+    const mkKey = (schema: PgIdentifier, table: PgIdentifier, column: string) =>
+      `${schema.toString().toLowerCase()}:${table.toString().toLowerCase()}:${column}`;
     const schemaMap = new Map<string, FullSchemaColumn>();
     if (schema.tables) {
       for (const table of schema.tables) {
@@ -421,14 +421,12 @@ ORDER BY
   }
 
   public async getTotalRowCount(
-    tables: { schemaName: string; tableName: string }[],
+    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<number> {
     if (tables.length === 0) return 0;
 
-    // Strip surrounding quotes from identifiers (they come pre-quoted from schema dump)
-    const stripQuotes = (s: string) => s.replace(/^"|"$/g, "");
-    const schemaNames = tables.map((t) => stripQuotes(t.schemaName));
-    const tableNames = tables.map((t) => stripQuotes(t.tableName));
+    const schemaNames = tables.map((t) => t.schemaName.toString());
+    const tableNames = tables.map((t) => t.tableName.toString());
 
     const results = await this.db.exec<{ total_rows: string }>(
       `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows

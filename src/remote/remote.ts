@@ -192,7 +192,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private async resolveStatistics(
     source: Connectable,
     strategy: StatisticsStrategy,
-    tables: { schemaName: string; tableName: string }[],
+    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<StatsResult> {
     if (strategy.type === "static") {
       // Static strategy doesn't go through inference
@@ -203,7 +203,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   private async decideStatsStrategy(
     source: Connectable,
-    tables: { schemaName: string; tableName: string }[],
+    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<StatsResult> {
     const connector = this.sourceManager.getConnectorFor(source);
     const totalRows = await connector.getTotalRowCount(tables);
