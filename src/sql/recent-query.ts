@@ -6,6 +6,7 @@ import {
   Analyzer,
   DiscoveredColumnReference,
   Nudge,
+  PssRewriter,
   SQLCommenterTag,
   type TableReference,
 } from "@query-doctor/core";
@@ -18,6 +19,8 @@ import type { LiveQueryOptimization } from "../remote/optimization.ts";
  * and supplying the date the query was last seen
  */
 export class RecentQuery {
+  private static rewriter = new PssRewriter();
+
   readonly formattedQuery: string;
   readonly username: string;
   readonly query: string;
@@ -69,7 +72,8 @@ export class RecentQuery {
     seenAt: number,
   ) {
     const analyzer = new Analyzer(parse);
-    const analysis = await analyzer.analyze(data.query);
+    const rewrittenQuery = RecentQuery.rewriter.rewrite(data.query);
+    const analysis = await analyzer.analyze(rewrittenQuery);
     const formattedQuery = await RecentQuery.formatQuery(
       analysis.queryWithoutTags,
     );
