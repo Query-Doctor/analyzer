@@ -427,7 +427,7 @@ ORDER BY
        JOIN pg_namespace n ON n.oid = c.relnamespace
        JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
          ON n.nspname = t.schema_name AND c.relname = t.table_name
-       WHERE c.relkind = 'r'`,
+       WHERE c.relkind IN ('r', 'm')`,
       [schemaNames, tableNames],
     );
     return Number(results[0]?.total_rows ?? 0);
