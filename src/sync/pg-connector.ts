@@ -12,7 +12,7 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
-import { Postgres } from "@query-doctor/core";
+import { Postgres, PgIdentifier } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
@@ -281,8 +281,8 @@ ORDER BY
     options: DependencyAnalyzerOptions,
   ): Promise<SerializeResult> {
     const schema = await this.getSchema();
-    const mkKey = (schema: string, table: string, column: string) =>
-      `${schema.toLowerCase()}:${table.toLowerCase()}:${column}`;
+    const mkKey = (schema: PgIdentifier, table: PgIdentifier, column: string) =>
+      `${schema.toString().toLowerCase()}:${table.toString().toLowerCase()}:${column}`;
     const schemaMap = new Map<string, FullSchemaColumn>();
     if (schema.tables) {
       for (const table of schema.tables) {
@@ -418,6 +418,26 @@ ORDER BY
       () => this.db.exec<{ result: FullSchema }>(schemaDumpSql, []),
     )();
     return FullSchema.parse(results.result);
+  }
+
+  public async getTotalRowCount(
+    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
+  ): Promise<number> {
+    if (tables.length === 0) return 0;
+
+    const schemaNames = tables.map((t) => t.schemaName.toString());
+    const tableNames = tables.map((t) => t.tableName.toString());
+
+    const results = await this.db.exec<{ total_rows: string }>(
+      `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
+         ON n.nspname = t.schema_name AND c.relname = t.table_name
+       WHERE c.relkind IN ('r', 'm')`,
+      [schemaNames, tableNames],
+    );
+    return Number(results[0]?.total_rows ?? 0);
   }
 
   public async getDatabaseInfo() {

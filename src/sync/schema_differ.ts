@@ -1,3 +1,4 @@
+import { PgIdentifier } from "@query-doctor/core";
 import { create } from "jsondiffpatch";
 import { format, type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { z } from "zod";
@@ -98,8 +99,8 @@ export type FullSchemaColumn = z.infer<typeof FullSchemaColumn>;
 export const FullSchemaTable = z.object({
   type: z.literal("table"),
   oid: z.number(),
-  schemaName: z.string(),
-  tableName: z.string(),
+  schemaName: z.string().transform((v) => PgIdentifier.fromString(v)),
+  tableName: z.string().transform((v) => PgIdentifier.fromString(v)),
   tablespace: z.string().optional(),
   partitionKeyDef: z.string().optional(),
   // tables without columns do exist
