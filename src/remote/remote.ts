@@ -237,6 +237,19 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
     this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
   }
+
+  async cleanup(): Promise<void> {
+    await this.optimizer.finish;
+    this.optimizer.stop();
+    await Promise.all([
+      this.manager.closeAll(),
+      this.sourceManager.closeAll(),
+    ]);
+  }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.cleanup();
+  }
 }
 
 export type StatisticsStrategy = {
