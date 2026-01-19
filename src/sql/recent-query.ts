@@ -104,7 +104,7 @@ export class RecentQuery {
   }
 
   static isSelectQuery(data: RawRecentQuery): boolean {
-    return /^select/i.test(data.query);
+    return /select/i.test(data.query);
   }
 
   static isSystemQuery(referencedTables: TableReference[]): boolean {
