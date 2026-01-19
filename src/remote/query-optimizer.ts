@@ -193,14 +193,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           break;
         }
         this._validQueriesProcessed++;
-        const { optimization, explainPlan } = await this.optimizeQuery(
+        const optimization = await this.optimizeQuery(
           optimized,
           this.target,
         );
 
         this.queries.set(
           optimized.hash,
-          optimized.withOptimization(optimization, explainPlan),
+          optimized.withOptimization(optimization),
         );
       }
     } finally {
@@ -238,9 +238,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     target: Target,
     timeoutMs = QUERY_TIMEOUT_MS,
-  ): Promise<
-    { optimization: LiveQueryOptimization; explainPlan?: PostgresExplainStage }
-  > {
+  ): Promise<LiveQueryOptimization> {
     const builder = new PostgresQueryBuilder(recent.query);
     let cost: number;
     let explainPlan: PostgresExplainStage | undefined;
@@ -254,15 +252,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } catch (error) {
       console.error("Error with baseline run", error);
       if (error instanceof TimeoutError) {
-        return { optimization: this.onTimeout(recent, timeoutMs) };
+        return this.onTimeout(recent, timeoutMs);
       } else if (error instanceof Error) {
-        return { optimization: this.onError(recent, error.message) };
+        return this.onError(recent, error.message);
       } else {
-        return { optimization: this.onError(recent, "Internal error") };
+        return this.onError(recent, "Internal error");
       }
     }
     if (cost === 0) {
-      return { optimization: this.onZeroCostPlan(recent), explainPlan };
+      return this.onZeroCostPlan(recent, explainPlan);
     }
     const indexes = this.getPotentialIndexCandidates(
       target.statistics,
@@ -277,26 +275,24 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } catch (error) {
       console.error("Error with optimization", error);
       if (error instanceof TimeoutError) {
-        return { optimization: this.onTimeout(recent, timeoutMs), explainPlan };
+        return this.onTimeout(recent, timeoutMs);
       } else if (error instanceof Error) {
-        return {
-          optimization: this.onError(recent, error.message),
-          explainPlan,
-        };
+        return this.onError(recent, error.message, explainPlan);
       } else {
-        return {
-          optimization: this.onError(recent, "Internal error"),
-          explainPlan,
-        };
+        return this.onError(recent, "Internal error", explainPlan);
       }
     }
 
-    return { optimization: this.onOptimizeReady(result, recent), explainPlan };
+    if (!explainPlan) {
+      throw new Error("explainPlan should be defined after baseline run");
+    }
+    return this.onOptimizeReady(result, recent, explainPlan);
   }
 
   private onOptimizeReady(
     result: OptimizeResult,
     recent: OptimizedQuery,
+    explainPlan: PostgresExplainStage,
   ): LiveQueryOptimization {
     switch (result.kind) {
       case "ok": {
@@ -310,14 +306,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           Math.abs(percentageReduction),
         );
         if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(recent, result.baseCost, indexesUsed);
+          this.onNoImprovements(recent, result.baseCost, indexesUsed, explainPlan);
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
             indexesUsed,
+            explainPlan,
           };
         } else {
-          this.onImprovementsAvailable(recent, result);
+          this.onImprovementsAvailable(recent, result, explainPlan);
           return {
             state: "improvements_available",
             cost: result.baseCost,
@@ -325,12 +322,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             costReductionPercentage,
             indexRecommendations,
             indexesUsed,
+            explainPlan,
           };
         }
       }
       // unlikely to hit if we've already checked the base plan for zero cost
       case "zero_cost_plan":
-        return this.onZeroCostPlan(recent);
+        return this.onZeroCostPlan(recent, explainPlan);
     }
   }
 
@@ -338,6 +336,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     cost: number,
     indexesUsed: string[],
+    explainPlan: PostgresExplainStage,
   ) {
     this.emit(
       "noImprovements",
@@ -345,6 +344,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         state: "no_improvement_found",
         cost,
         indexesUsed,
+        explainPlan,
       }),
     );
   }
@@ -372,9 +372,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onImprovementsAvailable(
     recent: OptimizedQuery,
     result: Extract<OptimizeResult, { kind: "ok" }>,
+    explainPlan: PostgresExplainStage,
   ) {
     const optimized = recent.withOptimization(
-      this.resultToImprovementsAvailable(result),
+      this.resultToImprovementsAvailable(result, explainPlan),
     );
     this.emit("improvementsAvailable", optimized);
     this.queries.set(
@@ -385,6 +386,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private resultToImprovementsAvailable(
     result: Extract<OptimizeResult, { kind: "ok" }>,
+    explainPlan: PostgresExplainStage,
   ): LiveQueryOptimization {
     const indexesUsed = Array.from(result.existingIndexes);
     const indexRecommendations = Array.from(result.newIndexes)
@@ -402,25 +404,31 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       costReductionPercentage,
       indexRecommendations,
       indexesUsed,
+      explainPlan,
     };
   }
 
-  private onZeroCostPlan(recent: OptimizedQuery): LiveQueryOptimization {
+  private onZeroCostPlan(
+    recent: OptimizedQuery,
+    explainPlan?: PostgresExplainStage,
+  ): LiveQueryOptimization {
     this.emit("zeroCostPlan", recent);
     return {
       state: "error",
       error:
         "Query plan had zero cost. You're likely pulling statistics from a source database with a table that has no rows.",
+      explainPlan,
     };
   }
 
   private onError(
     recent: OptimizedQuery,
     errorMessage: string,
+    explainPlan?: PostgresExplainStage,
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
     this.emit("error", error, recent);
-    return { state: "error", error: error.message };
+    return { state: "error", error: error.message, explainPlan };
   }
 
   private onTimeout(
