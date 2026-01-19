@@ -8,6 +8,7 @@ import {
   Nudge,
   PssRewriter,
   SQLCommenterTag,
+  type PostgresExplainStage,
   type TableReference,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
@@ -62,8 +63,9 @@ export class RecentQuery {
 
   withOptimization(
     optimization: LiveQueryOptimization,
+    explainPlan?: PostgresExplainStage,
   ): OptimizedQuery {
-    return Object.assign(this, { optimization });
+    return Object.assign(this, { optimization, explainPlan });
   }
 
   static async analyze(
@@ -137,6 +139,7 @@ export type RawRecentQuery = {
 
 export type OptimizedQuery = RecentQuery & {
   optimization: LiveQueryOptimization;
+  explainPlan?: PostgresExplainStage;
 };
 
 export const QueryHash = z.string().brand<"QueryHash">();

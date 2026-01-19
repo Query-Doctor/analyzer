@@ -8,6 +8,7 @@ import {
   IndexOptimizer,
   IndexRecommendation,
   OptimizeResult,
+  PostgresExplainStage,
   PostgresQueryBuilder,
   PostgresVersion,
   Statistics,
@@ -187,14 +188,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           break;
         }
         this._validQueriesProcessed++;
-        const optimization = await this.optimizeQuery(
+        const { optimization, explainPlan } = await this.optimizeQuery(
           optimized,
           this.target,
         );
 
         this.queries.set(
           optimized.hash,
-          optimized.withOptimization(optimization),
+          optimized.withOptimization(optimization, explainPlan),
         );
       }
     } finally {
@@ -232,27 +233,29 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     target: Target,
     timeoutMs = QUERY_TIMEOUT_MS,
-  ): Promise<LiveQueryOptimization> {
+  ): Promise<{ optimization: LiveQueryOptimization; explainPlan?: PostgresExplainStage }> {
     const builder = new PostgresQueryBuilder(recent.query);
     let cost: number;
+    let explainPlan: PostgresExplainStage | undefined;
     try {
       const explain = await withTimeout(
         target.optimizer.testQueryWithStats(builder),
         timeoutMs,
       );
       cost = explain.Plan["Total Cost"];
+      explainPlan = explain.Plan;
     } catch (error) {
       console.error("Error with baseline run", error);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, timeoutMs);
+        return { optimization: this.onTimeout(recent, timeoutMs) };
       } else if (error instanceof Error) {
-        return this.onError(recent, error.message);
+        return { optimization: this.onError(recent, error.message) };
       } else {
-        return this.onError(recent, "Internal error");
+        return { optimization: this.onError(recent, "Internal error") };
       }
     }
     if (cost === 0) {
-      return this.onZeroCostPlan(recent);
+      return { optimization: this.onZeroCostPlan(recent), explainPlan };
     }
     const indexes = this.getPotentialIndexCandidates(
       target.statistics,
@@ -267,15 +270,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } catch (error) {
       console.error("Error with optimization", error);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, timeoutMs);
+        return { optimization: this.onTimeout(recent, timeoutMs), explainPlan };
       } else if (error instanceof Error) {
-        return this.onError(recent, error.message);
+        return { optimization: this.onError(recent, error.message), explainPlan };
       } else {
-        return this.onError(recent, "Internal error");
+        return { optimization: this.onError(recent, "Internal error"), explainPlan };
       }
     }
 
-    return this.onOptimizeReady(result, recent);
+    return { optimization: this.onOptimizeReady(result, recent), explainPlan };
   }
 
   private onOptimizeReady(
