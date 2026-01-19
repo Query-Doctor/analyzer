@@ -14,6 +14,7 @@ import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { EventEmitter } from "node:events";
 import { log } from "../log.ts";
+import { QueryLoader } from "./query-loader.ts";
 
 type RemoteEvents = {
   dumpLog: [line: string];
@@ -50,6 +51,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private baseDbURL: Connectable;
   /** The URL of the optimizing db */
   private readonly optimizingDbUDRL: Connectable;
+
+  private isPolling = false;
+  private queryLoader?: QueryLoader;
 
   constructor(
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
@@ -128,6 +132,21 @@ export class Remote extends EventEmitter<RemoteEvents> {
             : "Unknown error",
         },
     };
+  }
+
+  /**
+   * Runs a single poll of pg_stat_statements if
+   * there isn't already an in-flight request
+   */
+  async pollQueriesOnce() {
+    if (this.queryLoader && !this.isPolling) {
+      try {
+        this.isPolling = true;
+        await this.queryLoader.poll();
+      } finally {
+        this.isPolling = false;
+      }
+    }
   }
 
   /**
@@ -235,7 +254,33 @@ export class Remote extends EventEmitter<RemoteEvents> {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
+    this.startQueryLoader(source);
     this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
+  }
+
+  private startQueryLoader(source: Connectable) {
+    if (this.queryLoader) {
+      this.queryLoader.stop();
+    }
+    this.queryLoader = new QueryLoader(this.sourceManager, source);
+    this.queryLoader.on("pollError", (error) => {
+      log.error("Failed to poll queries", "remote");
+      console.error(error);
+    });
+    this.queryLoader.on("poll", (queries) => {
+      this.optimizer.addQueries(queries).catch((error) => {
+        log.error(
+          `Failed to add ${queries.length} queries to optimizer`,
+          "remote",
+        );
+        console.error(error);
+      });
+    });
+    this.queryLoader.on("exit", () => {
+      log.error("Query loader exited", "remote");
+      this.queryLoader = undefined;
+    });
+    this.queryLoader.start();
   }
 
   async cleanup(): Promise<void> {
