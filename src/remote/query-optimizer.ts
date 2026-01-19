@@ -208,6 +208,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
   }
 
+  /**
+   * Gets the status of the current queries in the optimizer
+   */
   getQueries(): OptimizedQuery[] {
     return Array.from(this.queries.values());
   }
