@@ -2,6 +2,7 @@ import { create } from "jsondiffpatch";
 import { format, type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { z } from "zod";
 import { Connectable } from "./connectable.ts";
+import { PgIdentifier } from "@query-doctor/core";
 
 export class SchemaDiffer {
   private readonly differ = create({
@@ -45,9 +46,11 @@ export class SchemaDiffer {
   }
 }
 
+const Identifier = z.string().transform((v) => PgIdentifier.fromString(v));
+
 export const FullSchemaKeyColumn = z.object({
   type: z.literal("indexColumn"),
-  name: z.string(),
+  name: Identifier,
   order: z.enum(["ASC", "DESC"]).optional(),
   nulls: z.enum(["FIRST", "LAST"]).optional(),
   opclass: z.string().optional(),
@@ -57,7 +60,7 @@ export const FullSchemaKeyColumn = z.object({
 export type FullSchemaKeyColumn = z.infer<typeof FullSchemaKeyColumn>;
 
 export const FullSchemaIncludedColumn = z.object({
-  name: z.string(),
+  name: Identifier,
 });
 
 export type FullSchemaIncludedColumn = z.infer<typeof FullSchemaIncludedColumn>;
@@ -65,9 +68,9 @@ export type FullSchemaIncludedColumn = z.infer<typeof FullSchemaIncludedColumn>;
 export const FullSchemaIndex = z.object({
   type: z.literal("index"),
   oid: z.number(),
-  schemaName: z.string(),
-  tableName: z.string(),
-  indexName: z.string(),
+  schemaName: Identifier,
+  tableName: Identifier,
+  indexName: Identifier,
   indexType: z.string(),
   isUnique: z.boolean(),
   isPrimary: z.boolean(),
@@ -82,7 +85,7 @@ export type FullSchemaIndex = z.infer<typeof FullSchemaIndex>;
 
 export const FullSchemaColumn = z.object({
   type: z.literal("column"),
-  name: z.string(),
+  name: Identifier,
   order: z.number(),
   columnType: z.string(),
   isNullable: z.boolean(),
@@ -98,8 +101,8 @@ export type FullSchemaColumn = z.infer<typeof FullSchemaColumn>;
 export const FullSchemaTable = z.object({
   type: z.literal("table"),
   oid: z.number(),
-  schemaName: z.string(),
-  tableName: z.string(),
+  schemaName: Identifier,
+  tableName: Identifier,
   tablespace: z.string().optional(),
   partitionKeyDef: z.string().optional(),
   // tables without columns do exist
@@ -111,9 +114,9 @@ export type FullSchemaTable = z.infer<typeof FullSchemaTable>;
 export const FullSchemaConstraint = z.object({
   type: z.literal("constraint"),
   oid: z.number(),
-  schemaName: z.string(),
-  tableName: z.string(),
-  constraintName: z.string(),
+  schemaName: Identifier,
+  tableName: Identifier,
+  constraintName: Identifier,
   constraintType: z.enum([
     "check",
     "foreign_key",
@@ -132,8 +135,8 @@ export type FullSchemaConstraint = z.infer<typeof FullSchemaConstraint>;
 
 export const FullSchemaFunction = z.object({
   type: z.literal("function"),
-  schemaName: z.string(),
-  objectName: z.string(),
+  schemaName: Identifier,
+  objectName: Identifier,
   objectType: z.enum(["function", "procedure", "aggregate", "window function"]),
   identityArguments: z.string().optional(),
   definition: z.string(),
@@ -144,15 +147,15 @@ export type FullSchemaFunction = z.infer<typeof FullSchemaFunction>;
 export const FullSchemaExtension = z.object({
   extensionName: z.string(),
   version: z.string(),
-  schemaName: z.string(),
+  schemaName: Identifier,
 });
 
 export type FullSchemaExtension = z.infer<typeof FullSchemaExtension>;
 
 export const FullSchemaView = z.object({
   type: z.literal("view"),
-  schemaName: z.string(),
-  viewName: z.string(),
+  schemaName: Identifier,
+  viewName: Identifier,
   objectType: z.enum(["view", "materialized_view"]),
   definition: z.string(),
   tablespace: z.string().optional(),
@@ -161,7 +164,7 @@ export const FullSchemaView = z.object({
 export type FullSchemaView = z.infer<typeof FullSchemaView>;
 
 export const FullSchemaTypeConstraint = z.object({
-  name: z.string(),
+  name: Identifier,
   definition: z.string(),
 });
 
@@ -169,9 +172,9 @@ export type FullSchemaTypeConstraint = z.infer<typeof FullSchemaTypeConstraint>;
 
 export const FullSchemaCompositeAttribute = z.object({
   type: z.literal("compositeAttribute"),
-  name: z.string(),
+  name: Identifier,
   attributeType: z.string(),
-  collation: z.string().optional(),
+  collation: Identifier,
 });
 
 export type FullSchemaCompositeAttribute = z.infer<
@@ -180,8 +183,8 @@ export type FullSchemaCompositeAttribute = z.infer<
 
 export const FullSchemaType = z.object({
   type: z.literal("type"),
-  schemaName: z.string(),
-  typeName: z.string(),
+  schemaName: Identifier,
+  typeName: Identifier,
   typeCategory: z.enum(["enum", "domain", "composite"]),
   enumLabels: z.array(z.string()).optional(),
   domainBaseType: z.string().optional(),
@@ -194,9 +197,9 @@ export const FullSchemaType = z.object({
 export type FullSchemaType = z.infer<typeof FullSchemaType>;
 
 export const FullSchemaTrigger = z.object({
-  schemaName: z.string(),
-  tableName: z.string(),
-  triggerName: z.string(),
+  schemaName: Identifier,
+  tableName: Identifier,
+  triggerName: Identifier,
   definition: z.string(),
   enabledMode: z.string(),
 });

@@ -84,13 +84,14 @@ Deno.test({
       assertOk(result.schema);
 
       const tableNames = result.schema.value.tables.map((table) =>
-        table.tableName
+        table.tableName.toString()
       );
+      console.log("tablenames", tableNames);
 
       assertArrayIncludes(tableNames, ["testing"]);
 
       const indexNames = result.schema.value.indexes.map((index) =>
-        index.indexName
+        index.indexName.toString()
       );
       assertArrayIncludes(indexNames, ["testing_1234"]);
 
@@ -177,12 +178,12 @@ Deno.test({
       assertOk(result.schema);
 
       const tableNames = result.schema.value.tables.map((table) =>
-        table.tableName
+        table.tableName.toString()
       );
       assertArrayIncludes(tableNames, ["testing"]);
 
       const indexNames = result.schema.value.indexes.map((index) =>
-        index.indexName
+        index.indexName.toString()
       );
       assertArrayIncludes(indexNames, ["testing_idx"]);
     } finally {
