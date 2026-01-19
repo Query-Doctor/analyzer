@@ -12,7 +12,7 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
-import { Postgres } from "@query-doctor/core";
+import { PgIdentifier, Postgres } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
@@ -281,8 +281,11 @@ ORDER BY
     options: DependencyAnalyzerOptions,
   ): Promise<SerializeResult> {
     const schema = await this.getSchema();
-    const mkKey = (schema: string, table: string, column: string) =>
-      `${schema.toLowerCase()}:${table.toLowerCase()}:${column}`;
+    const mkKey = (
+      schema: PgIdentifier,
+      table: PgIdentifier,
+      column: PgIdentifier,
+    ) => `${schema}:${table}:${column}`;
     const schemaMap = new Map<string, FullSchemaColumn>();
     if (schema.tables) {
       for (const table of schema.tables) {
@@ -371,18 +374,8 @@ ORDER BY
           `(${
             tableSchema.columns
               .map((col) => {
-                // TODO: find a better way to do this
-                // We shouldn't just pass around a bare string representing identifiers
-                // and it would be better to turn them into something like
-                // ```ts
-                // type Identifier = { name: string; quoted: boolean; };
-                // ```
-                // but the problem is we often need to use these identifiers as map keys
-                // which doesn't work well with objects.
-                const quotedStrippedColName = col.name.replace(/(^"|"$)/g, "");
-                const value = (row as Record<string, unknown>)[
-                  quotedStrippedColName
-                ];
+                const value =
+                  (row as Record<string, unknown>)[col.name.toString()];
                 if (value === null) {
                   return "NULL";
                 }
