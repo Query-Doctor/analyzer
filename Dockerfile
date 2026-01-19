@@ -24,8 +24,8 @@ RUN git clone --depth 1 --branch REL_17_STABLE https://github.com/postgres/postg
 WORKDIR /postgres
 
 # Copy and apply the patch
-COPY fix.diff /tmp/fix.diff
-RUN git apply /tmp/fix.diff
+COPY patches/pg17/zero_cost_plan.patch /tmp
+RUN git apply /tmp/*.patch
 
 # Build PostgreSQL with debug flags
 RUN ./configure \
