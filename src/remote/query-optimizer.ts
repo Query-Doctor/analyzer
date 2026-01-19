@@ -69,6 +69,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this._allQueries;
   }
 
+  /**
+   * This getter has to be evaluated immediately before
+   * calling `await` on it. The underlying promise is
+   * reassigned after new work gets queued and may be stale.
+   */
   get finish() {
     return this._finish.promise;
   }
@@ -233,7 +238,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     target: Target,
     timeoutMs = QUERY_TIMEOUT_MS,
-  ): Promise<{ optimization: LiveQueryOptimization; explainPlan?: PostgresExplainStage }> {
+  ): Promise<
+    { optimization: LiveQueryOptimization; explainPlan?: PostgresExplainStage }
+  > {
     const builder = new PostgresQueryBuilder(recent.query);
     let cost: number;
     let explainPlan: PostgresExplainStage | undefined;
@@ -272,9 +279,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       if (error instanceof TimeoutError) {
         return { optimization: this.onTimeout(recent, timeoutMs), explainPlan };
       } else if (error instanceof Error) {
-        return { optimization: this.onError(recent, error.message), explainPlan };
+        return {
+          optimization: this.onError(recent, error.message),
+          explainPlan,
+        };
       } else {
-        return { optimization: this.onError(recent, "Internal error"), explainPlan };
+        return {
+          optimization: this.onError(recent, "Internal error"),
+          explainPlan,
+        };
       }
     }
 

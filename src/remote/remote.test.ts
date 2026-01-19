@@ -67,13 +67,12 @@ Deno.test({
       const target = Connectable.fromString(targetDb.getConnectionUri());
       const source = Connectable.fromString(sourceDb.getConnectionUri());
 
-      const remote = new Remote(
+      await using remote = new Remote(
         target,
         ConnectionManager.forLocalDatabase(),
       );
 
       const result = await remote.syncFrom(source);
-      await remote.optimizer.finish;
       const optimizedQueries = remote.optimizer.getQueries();
 
       const queries = optimizedQueries.map((f) => f.query);
@@ -124,6 +123,8 @@ Deno.test({
       const rows = await sql`select * from testing`;
       // expect no rows to have been synced
       assertEquals(rows.length, 0, "Table in target db not empty");
+
+      await sql.end();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
@@ -164,7 +165,7 @@ Deno.test({
       const target = Connectable.fromString(targetDb.getConnectionUri());
       const source = Connectable.fromString(sourceDb.getConnectionUri());
 
-      const remote = new Remote(
+      await using remote = new Remote(
         target,
         ConnectionManager.forLocalDatabase(),
       );
@@ -221,9 +222,10 @@ Deno.test({
     const sourceConn = Connectable.fromString(source.getConnectionUri());
     const targetConn = Connectable.fromString(target.getConnectionUri());
     const manager = ConnectionManager.forLocalDatabase();
-    const remote = new Remote(targetConn, manager);
 
     try {
+      await using remote = new Remote(targetConn, manager);
+
       const t = manager.getOrCreateConnection(
         targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
       );
@@ -239,7 +241,6 @@ Deno.test({
 
       assertEquals(indexesAfter[0], { indexname: "testing_1234" });
     } finally {
-      await manager.closeAll();
       await Promise.all([source.stop(), target.stop()]);
     }
   },
@@ -298,14 +299,14 @@ Deno.test({
     const sourceConn = Connectable.fromString(source.getConnectionUri());
     const targetConn = Connectable.fromString(target.getConnectionUri());
     const manager = ConnectionManager.forLocalDatabase();
-    const remote = new Remote(targetConn, manager);
 
     try {
+      await using remote = new Remote(targetConn, manager);
+
       const t = manager.getOrCreateConnection(
         targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
       );
       await remote.syncFrom(sourceConn);
-      await remote.optimizer.finish;
       const queries = remote.optimizer.getQueries();
       const queryStrings = queries.map((q) => q.query);
 
@@ -323,7 +324,6 @@ Deno.test({
 
       assertEquals(indexesAfter[0], { indexname: "conditions_time_idx" });
     } finally {
-      await manager.closeAll();
       await Promise.all([source.stop(), target.stop()]);
     }
   },

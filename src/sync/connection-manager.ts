@@ -59,4 +59,8 @@ export class ConnectionManager {
     this.connections.clear();
     await Promise.all(closePromises);
   }
+
+  async [Symbol.asyncDispose](): Promise<void> {
+    await this.closeAll();
+  }
 }
