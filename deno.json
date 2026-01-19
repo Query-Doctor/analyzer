@@ -25,7 +25,7 @@
     "@libpg-query/parser": "npm:@libpg-query/parser@^17.6.3",
     "@opentelemetry/api": "jsr:@opentelemetry/api@^1.9.0",
     "@pgsql/types": "npm:@pgsql/types@^17.6.1",
-    "@query-doctor/core": "npm:@query-doctor/core@^0.1.6",
+    "@query-doctor/core": "npm:@query-doctor/core@^0.1.7",
     "@rabbit-company/rate-limiter": "jsr:@rabbit-company/rate-limiter@^3.0.0",
     "@std/assert": "jsr:@std/assert@^1.0.14",
     "@std/collections": "jsr:@std/collections@^1.1.3",
