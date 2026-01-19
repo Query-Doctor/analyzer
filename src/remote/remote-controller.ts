@@ -67,6 +67,10 @@ export class RemoteController {
     }
     const { schema, meta } = this.syncResponse;
     const queries = this.remote.optimizer.getQueries();
+    this.remote.pollQueriesOnce().catch((error) => {
+      log.error("Failed to poll queries", "remote-controller");
+      console.error(error);
+    });
     return Response.json({
       status: this.syncStatus,
       meta,
