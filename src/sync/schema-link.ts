@@ -276,6 +276,7 @@ export class RestoreCommand {
       "--no-owner",
       "--no-acl",
       "--verbose",
+      "--disable-triggers",
       ...RestoreCommand.formatFlags(),
       "--dbname",
       connectable.toString(),
