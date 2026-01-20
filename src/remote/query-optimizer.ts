@@ -112,6 +112,25 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return validQueries;
   }
 
+  stop() {
+    this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
+    this.queries.clear();
+    this.target = undefined;
+    this._finish = Promise.withResolvers();
+    this._allQueries = 0;
+    this._invalidQueries = 0;
+    this._validQueriesProcessed = 0;
+  }
+
+  restart() {
+    this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
+    this.queries.clear();
+    this._finish = Promise.withResolvers();
+    this._allQueries = 0;
+    this._invalidQueries = 0;
+    this._validQueriesProcessed = 0;
+  }
+
   /**
    * Insert new queries to be processed. The {@link start} method must
    * have been called previously for this to take effect
@@ -151,16 +170,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       }
     }
     return validQueries;
-  }
-
-  stop() {
-    this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
-    this.queries.clear();
-    this.target = undefined;
-    this._allQueries = 0;
-    this._finish = Promise.withResolvers();
-    this._invalidQueries = 0;
-    this._validQueriesProcessed = 0;
   }
 
   private async work() {
@@ -309,7 +318,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           Math.abs(percentageReduction),
         );
         if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(recent, result.baseCost, indexesUsed, explainPlan);
+          this.onNoImprovements(
+            recent,
+            result.baseCost,
+            indexesUsed,
+            explainPlan,
+          );
           return {
             state: "no_improvement_found",
             cost: result.baseCost,

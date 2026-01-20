@@ -7,7 +7,6 @@ import { ZodError } from "zod";
 import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
-import { connectToOptimizer, connectToSource } from "../sql/postgresjs.ts";
 import type { RateLimitResult } from "@rabbit-company/rate-limiter";
 import * as errors from "../sync/errors.ts";
 import { RemoteController } from "../remote/remote-controller.ts";
@@ -122,38 +121,6 @@ async function onSyncLiveQuery(req: Request) {
   }
 }
 
-async function onReset(req: Request) {
-  let body: LiveQueryRequest;
-  try {
-    body = LiveQueryRequest.parse(await req.json());
-  } catch (e: unknown) {
-    if (e instanceof ZodError) {
-      return Response.json(
-        {
-          kind: "error",
-          type: "invalid_body",
-          error: e.issues.map((issue) => issue.message).join("\n"),
-        },
-        { status: 400 },
-      );
-    }
-    throw e;
-  }
-  try {
-    await syncer.reset(body.db);
-    return Response.json({ kind: "ok" }, { status: 500 });
-  } catch (error) {
-    if (error instanceof errors.PostgresError) {
-      return error.toResponse();
-    }
-    if (error instanceof errors.ExtensionNotInstalledError) {
-      return error.toResponse();
-    }
-
-    return makeUnexpectedErrorResponse(error);
-  }
-}
-
 export function createServer(
   hostname: string,
   port: number,
@@ -216,12 +183,6 @@ export function createServer(
             return new Response("Method not allowed", { status: 405 });
           }
           const res = await onSyncLiveQuery(req);
-          return transformResponse(res, limit);
-        } else if (url.pathname === "/postgres/reset") {
-          if (req.method !== "POST") {
-            return new Response("Method not allowed", { status: 405 });
-          }
-          const res = await onReset(req);
           return transformResponse(res, limit);
         }
         const remoteResponse = await remoteController?.execute(req);

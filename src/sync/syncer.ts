@@ -141,15 +141,4 @@ export class PostgresSyncer {
     const deltas = this.differ.put(connectable, schema);
     return { queries, deltas };
   }
-
-  /**
-   * @throws {ExtensionNotInstalledError}
-   * @throws {PostgresError}
-   */
-  async reset(
-    connectable: Connectable,
-  ): Promise<void> {
-    const connector = this.manager.getConnectorFor(connectable);
-    await connector.resetPgStatStatements();
-  }
 }
