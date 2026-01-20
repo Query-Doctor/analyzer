@@ -164,12 +164,15 @@ export function createServer(
           }),
         );
       }
-      const limit = limiter.sync.check(url.pathname, info.remoteAddr.hostname);
-      if (limit.limited) {
-        return limiter.appendHeaders(
-          new Response("Rate limit exceeded", { status: 429 }),
-          limit,
-        );
+      let limit: RateLimitResult | undefined;
+      if (env.HOSTED) {
+        limit = limiter.sync.check(url.pathname, info.remoteAddr.hostname);
+        if (limit.limited) {
+          return limiter.appendHeaders(
+            new Response("Rate limit exceeded", { status: 429 }),
+            limit,
+          );
+        }
       }
       try {
         if (url.pathname === "/postgres/all") {
