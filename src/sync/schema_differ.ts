@@ -174,7 +174,7 @@ export const FullSchemaCompositeAttribute = z.object({
   type: z.literal("compositeAttribute"),
   name: Identifier,
   attributeType: z.string(),
-  collation: Identifier,
+  collation: Identifier.optional(),
 });
 
 export type FullSchemaCompositeAttribute = z.infer<
