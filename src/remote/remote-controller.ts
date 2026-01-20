@@ -1,8 +1,9 @@
 import { env } from "../env.ts";
 import { log } from "../log.ts";
-import { OptimizedQuery } from "../sql/recent-query.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
+import * as errors from "../sync/errors.ts";
+import type { OptimizedQuery } from "../sql/recent-query.ts";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -42,9 +43,9 @@ export class RemoteController {
       } else if (request.method === "GET") {
         return this.getStatus();
       }
-    }
-
-    if (url.pathname === "/postgres/reset" && request.method === "POST") {
+    } else if (
+      url.pathname === "/postgres/reset" && request.method === "POST"
+    ) {
       return await this.onReset(request);
     }
   }
@@ -124,6 +125,12 @@ export class RemoteController {
       return Response.json({ success: true });
     } catch (error) {
       console.error(error);
+      if (error instanceof errors.PostgresError) {
+        return error.toResponse();
+      }
+      if (error instanceof errors.ExtensionNotInstalledError) {
+        return error.toResponse();
+      }
       return Response.json({
         error: error instanceof Error ? error.message : "Unknown error",
       }, { status: 500 });
