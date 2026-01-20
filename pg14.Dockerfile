@@ -18,7 +18,9 @@ RUN apk add --no-cache \
     cmake \
     openssl-dev \
     krb5-dev \
-    # required for timescaledb
+    # needed for the uuid-ossp extension
+    ossp-uuid-dev \
+  # required for timescaledb
     linux-headers
 
 RUN git clone --depth 1 --branch ${PG_BRANCH} https://github.com/postgres/postgres.git /postgres
@@ -31,6 +33,7 @@ RUN git apply /tmp/*.patch
 
 # Build PostgreSQL with debug flags
 RUN ./configure \
+    --with-uuid=ossp \
     --without-icu \
     --with-openssl \
   --prefix=/usr/local/pgsql
@@ -108,6 +111,7 @@ RUN apk add -uU --no-cache \
     bash \
     su-exec \
     openssl \
+    ossp-uuid-dev \
     postgresql-client \
     krb5
 
