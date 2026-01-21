@@ -340,6 +340,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             indexRecommendations,
             indexesUsed,
             explainPlan,
+            optimizedExplainPlan: result.explainPlan,
           };
         }
       }
@@ -422,6 +423,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       indexRecommendations,
       indexesUsed,
       explainPlan,
+      optimizedExplainPlan: result.explainPlan,
     };
   }
 

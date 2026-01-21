@@ -29,6 +29,7 @@ export const LiveQueryOptimization = z.discriminatedUnion("state", [
     indexRecommendations: z.array(IndexRecommendation),
     indexesUsed: z.array(z.string()),
     explainPlan: z.custom<PostgresExplainStage>(),
+    optimizedExplainPlan: z.custom<PostgresExplainStage>(),
   }),
   z.object({
     state: z.literal("no_improvement_found"),
