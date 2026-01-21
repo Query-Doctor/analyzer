@@ -418,8 +418,12 @@ ORDER BY
   ): Promise<number> {
     if (tables.length === 0) return 0;
 
-    const schemaNames = tables.map((t) => t.schemaName.toString());
-    const tableNames = tables.map((t) => t.tableName.toString());
+    const schemaNames = Array.from(
+      new Set(tables.map((t) => t.schemaName.toString())),
+    );
+    const tableNames = Array.from(
+      new Set(tables.map((t) => t.tableName.toString())),
+    );
 
     const results = await this.db.exec<{ total_rows: string }>(
       `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
