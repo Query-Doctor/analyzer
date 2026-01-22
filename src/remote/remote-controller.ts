@@ -4,6 +4,9 @@ import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
 import * as errors from "../sync/errors.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
+import { ToggleIndexDto } from "./remote-controller.dto.ts";
+import { ZodError } from "zod";
+import { PgIdentifier } from "@query-doctor/core";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -43,10 +46,21 @@ export class RemoteController {
       } else if (request.method === "GET") {
         return this.getStatus();
       }
-    } else if (
-      url.pathname === "/postgres/reset" && request.method === "POST"
-    ) {
-      return await this.onReset(request);
+      return methodNotAllowed();
+    }
+
+    if (url.pathname === "/postgres/indexes/toggle") {
+      if (request.method === "POST") {
+        return await this.toggleIndex(request);
+      }
+      return methodNotAllowed();
+    }
+
+    if (url.pathname === "/postgres/reset") {
+      if (request.method === "POST") {
+        return await this.onReset(request);
+      }
+      return methodNotAllowed();
     }
   }
 
@@ -60,6 +74,32 @@ export class RemoteController {
     remote.optimizer.on("zeroCostPlan", onQueryProcessed);
     remote.on("dumpLog", this.makeLoggingHandler("pg_dump").bind(this));
     remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
+  }
+
+  private async toggleIndex(request: Request): Promise<Response> {
+    try {
+      const data = await request.json();
+      const index = ToggleIndexDto.decode(data);
+      const isDisabled = this.remote.optimizer.toggleIndex(index.indexName);
+      return Response.json({ isDisabled });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return Response.json({
+          type: "error",
+          error: "invalid_body",
+          message: error.message,
+        }, {
+          status: 400,
+        });
+      }
+      return Response.json({
+        type: "error",
+        error: env.HOSTED ? "Internal Server Error" : error,
+        message: "Failed to sync database",
+      }, {
+        status: 500,
+      });
+    }
   }
 
   private getStatus(): Response {
@@ -178,4 +218,8 @@ export class RemoteController {
       }),
     );
   }
+}
+
+function methodNotAllowed(): Response {
+  return Response.json("Method not allowed", { status: 405 });
 }
