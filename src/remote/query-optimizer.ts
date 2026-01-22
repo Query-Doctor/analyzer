@@ -5,17 +5,21 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Sema } from "async-sema";
 import {
   Analyzer,
+  dropIndex,
   IndexOptimizer,
   IndexRecommendation,
   OptimizeResult,
+  PgIdentifier,
   PostgresExplainStage,
   PostgresQueryBuilder,
+  PostgresTransaction,
   PostgresVersion,
   Statistics,
   StatisticsMode,
 } from "@query-doctor/core";
 import { Connectable } from "../sync/connectable.ts";
 import { parse } from "@libpg-query/parser";
+import { DisabledIndexes } from "./disabled-indexes.ts";
 
 const MINIMUM_COST_CHANGE_PERCENTAGE = 5;
 const QUERY_TIMEOUT_MS = 10000;
@@ -43,6 +47,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     reltuples: 10_000,
   };
   private readonly queries = new Map<QueryHash, OptimizedQuery>();
+  private readonly disabledIndexes = new DisabledIndexes();
+
   private target?: Target;
   private semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
   private _finish = Promise.withResolvers();
@@ -126,13 +132,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this._validQueriesProcessed = 0;
   }
 
-  restart() {
+  async restart() {
     this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
     this.queries.clear();
     this._finish = Promise.withResolvers();
     this._allQueries = 0;
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
+    await this.work();
   }
 
   /**
@@ -141,9 +148,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
    */
   async addQueries(queries: RecentQuery[]) {
     this.appendQueries(queries);
-    if (!this.running) {
-      await this.work();
-    }
+    await this.work();
   }
 
   private appendQueries(queries: RecentQuery[]): OptimizedQuery[] {
@@ -178,6 +183,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private async work() {
     if (!this.target) {
+      return;
+    }
+
+    if (this.running) {
       return;
     }
 
@@ -300,7 +309,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     let result: OptimizeResult;
     try {
       result = await withTimeout(
-        target.optimizer.run(builder, indexes),
+        target.optimizer.run(
+          builder,
+          indexes,
+          (tx) => this.dropDisabledIndexes(tx),
+        ),
         timeoutMs,
       );
     } catch (error) {
@@ -318,6 +331,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       throw new Error("explainPlan should be defined after baseline run");
     }
     return this.onOptimizeReady(result, recent, explainPlan);
+  }
+
+  private async dropDisabledIndexes(tx: PostgresTransaction): Promise<void> {
+    for (const indexName of this.disabledIndexes) {
+      await dropIndex(tx, indexName);
+    }
   }
 
   private onOptimizeReady(
