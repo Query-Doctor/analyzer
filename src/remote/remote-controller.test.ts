@@ -6,7 +6,7 @@ import { assertEquals } from "@std/assert/equals";
 import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
-import { assertSpyCalls, spy } from "@std/testing/mock";
+import { spy } from "@std/testing/mock";
 import { setTimeout } from "node:timers/promises";
 import { assertGreaterOrEqual } from "@std/assert";
 
