@@ -26,6 +26,8 @@ type EventMap = {
   zeroCostPlan: [OptimizedQuery];
   noImprovements: [OptimizedQuery];
   improvementsAvailable: [OptimizedQuery];
+  vacuumStart: [];
+  vacuumEnd: [];
 };
 
 type Target = {
@@ -210,7 +212,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         );
         this.queriedSinceVacuum++;
         if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
-          console.log("Vacuuming database...");
           await this.vacuum();
           this.queriedSinceVacuum = 0;
         }
@@ -234,7 +235,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private async vacuum() {
     const connector = this.manager.getConnectorFor(this.connectable);
-    await connector.vacuum();
+    try {
+      this.emit("vacuumStart");
+      await connector.vacuum();
+    } finally {
+      this.emit("vacuumEnd");
+    }
   }
 
   private checkQueryUnsupported(
