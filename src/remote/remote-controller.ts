@@ -108,6 +108,7 @@ export class RemoteController {
     }
     const { schema, meta } = this.syncResponse;
     const queries = this.remote.optimizer.getQueries();
+    const disabledIndexes = this.remote.optimizer.getDisabledIndexes();
     this.remote.pollQueriesOnce().catch((error) => {
       log.error("Failed to poll queries", "remote-controller");
       console.error(error);
@@ -117,6 +118,7 @@ export class RemoteController {
       meta,
       schema,
       queries: { type: "ok", value: queries },
+      disabledIndexes: { type: "ok", value: disabledIndexes },
     });
   }
 

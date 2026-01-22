@@ -89,6 +89,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this._finish.promise;
   }
 
+  getDisabledIndexes(): PgIdentifier[] {
+    return [...this.disabledIndexes];
+  }
+
   /**
    * Start optimizing a new set of queries
    * @returns Promise of array of queries that were considered for optimization.
