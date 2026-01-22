@@ -30,8 +30,8 @@ Deno.test("DisabledIndexes.remove returns false for non-existent index", () => {
 Deno.test("DisabledIndexes.toggle disables an enabled index", () => {
   const indexes = new DisabledIndexes();
   const indexName = PgIdentifier.fromString("my_index");
-  const wasDisabled = indexes.toggle(indexName);
-  assertEquals(wasDisabled, false);
+  const isDisabled = indexes.toggle(indexName);
+  assertEquals(isDisabled, true);
   assertEquals([...indexes].length, 1);
 });
 
@@ -39,8 +39,8 @@ Deno.test("DisabledIndexes.toggle enables a disabled index", () => {
   const indexes = new DisabledIndexes();
   const indexName = PgIdentifier.fromString("my_index");
   indexes.add(indexName);
-  const wasDisabled = indexes.toggle(indexName);
-  assertEquals(wasDisabled, true);
+  const isDisabled = indexes.toggle(indexName);
+  assertEquals(isDisabled, false);
   assertEquals([...indexes].length, 0);
 });
 

@@ -21,15 +21,15 @@ export class DisabledIndexes {
 
   /**
    * Toggles the visibility of the index
-   * @returns did the index get disabled?
+   * @returns is the boolean disabled?
    */
   toggle(indexName: PgIdentifier): boolean {
     const deleted = this.remove(indexName);
     if (!deleted) {
       this.add(indexName);
-      return false;
+      return true;
     }
-    return true;
+    return false;
   }
 
   [Symbol.iterator](): Iterator<PgIdentifier> {

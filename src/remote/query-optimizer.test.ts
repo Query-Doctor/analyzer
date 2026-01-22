@@ -183,6 +183,136 @@ Deno.test({
 });
 
 Deno.test({
+  name: "disabling an index removes it from indexesUsed and recommends it",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const pg = await new PostgreSqlContainer("postgres:17")
+      .withCopyContentToContainer([
+        {
+          content: `
+            create table users(id int, email text);
+            insert into users (id, email) select i, 'user' || i || '@example.com' from generate_series(1, 1000) i;
+            create index "users_email_idx" on users(email);
+            create extension pg_stat_statements;
+            select * from users where email = 'test@example.com';
+          `,
+          target: "/docker-entrypoint-initdb.d/init.sql",
+        },
+      ])
+      .withCommand([
+        "-c",
+        "shared_preload_libraries=pg_stat_statements",
+        "-c",
+        "autovacuum=off",
+        "-c",
+        "track_counts=off",
+        "-c",
+        "track_io_timing=off",
+        "-c",
+        "track_activities=off",
+      ])
+      .start();
+
+    const manager = ConnectionManager.forLocalDatabase();
+
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn);
+    const connector = manager.getConnectorFor(conn);
+
+    const statsMode = {
+      kind: "fromStatisticsExport" as const,
+      source: { kind: "inline" as const },
+      stats: [{
+        tableName: "users",
+        schemaName: "public",
+        relpages: 10000,
+        reltuples: 10_000_000,
+        relallvisible: 1,
+        columns: [
+          { columnName: "id", stats: null },
+          { columnName: "email", stats: null },
+        ],
+        indexes: [{
+          indexName: "users_email_idx",
+          relpages: 100,
+          reltuples: 10_000_000,
+          relallvisible: 1,
+        }],
+      }],
+    };
+
+    try {
+      const recentQueries = await connector.getRecentQueries();
+      const emailQuery = recentQueries.find((q) =>
+        q.query.includes("email") && q.query.includes("users")
+      );
+      assert(emailQuery, "Expected to find email query in recent queries");
+
+      await optimizer.start([emailQuery], statsMode);
+      await optimizer.finish;
+
+      const queriesAfterFirstRun = optimizer.getQueries();
+      const emailQueryResult = queriesAfterFirstRun.find((q) =>
+        q.query.includes("email")
+      );
+      assert(emailQueryResult, "Expected email query in results");
+      assert(
+        emailQueryResult.optimization.state === "no_improvement_found",
+        `Expected no_improvement_found but got ${emailQueryResult.optimization.state}`,
+      );
+      assertArrayIncludes(
+        emailQueryResult.optimization.indexesUsed,
+        ["users_email_idx"],
+      );
+      const costWithIndex = emailQueryResult.optimization.cost;
+
+      const { PgIdentifier } = await import("@query-doctor/core");
+      optimizer.toggleIndex(PgIdentifier.fromString("users_email_idx"));
+      const disabledIndexes = optimizer.getDisabledIndexes();
+      assert(
+        disabledIndexes.some((i) => i.toString() === "users_email_idx"),
+        `Expected users_email_idx to be disabled`,
+      );
+
+      await optimizer.addQueries([emailQuery]);
+      await optimizer.finish;
+
+      const queriesAfterToggle = optimizer.getQueries();
+      const emailQueryAfterToggle = queriesAfterToggle.find((q) =>
+        q.query.includes("email")
+      );
+      assert(emailQueryAfterToggle, "Expected email query after toggle");
+      assert(
+        emailQueryAfterToggle.optimization.state === "improvements_available",
+        `Expected improvements_available after toggle but got ${emailQueryAfterToggle.optimization.state}`,
+      );
+      assert(
+        !emailQueryAfterToggle.optimization.indexesUsed.includes(
+          "users_email_idx",
+        ),
+        "Expected users_email_idx to NOT be in indexesUsed after disabling",
+      );
+      assertGreater(
+        emailQueryAfterToggle.optimization.cost,
+        costWithIndex,
+        "Expected cost without index to be higher than cost with index",
+      );
+      const recommendations =
+        emailQueryAfterToggle.optimization.indexRecommendations;
+      assert(
+        recommendations.some((r) =>
+          r.columns.some((c) => c.column === "email")
+        ),
+        "Expected recommendation for email column after disabling the index",
+      );
+    } finally {
+      await pg.stop();
+    }
+  },
+});
+
+Deno.test({
   name: "hypertable optimization includes index recommendations",
   sanitizeOps: false,
   sanitizeResources: false,

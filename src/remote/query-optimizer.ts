@@ -138,9 +138,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   async restart() {
     this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
-    this.queries.clear();
+    this.resetQueryOptimizationState();
     this._finish = Promise.withResolvers();
-    this._allQueries = 0;
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
     if (this.target) {
@@ -153,6 +152,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     await this.work();
   }
 
+  toggleIndex(identifier: PgIdentifier): boolean {
+    const disabled = this.disabledIndexes.toggle(identifier);
+    // TODO: Instead of blindly restarting the query optimizer
+    // we should introspect the index and only reset the queries
+    // that touch the table the index is defined on
+    this.restart();
+    return disabled;
+  }
+
   /**
    * Insert new queries to be processed. The {@link start} method must
    * have been called previously for this to take effect
@@ -160,6 +168,28 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   async addQueries(queries: RecentQuery[]) {
     this.appendQueries(queries);
     await this.work();
+  }
+
+  private resetQueryOptimizationState() {
+    for (const [hash, query] of this.queries) {
+      const status = this.checkQueryUnsupported(query);
+      let optimization: LiveQueryOptimization;
+      switch (status.type) {
+        case "ok":
+          optimization = { state: "waiting" };
+          break;
+        case "not_supported":
+          optimization = this.onQueryUnsupported(status.reason);
+          break;
+        case "ignored":
+          continue;
+      }
+      this.queries.set(
+        hash,
+        query.withOptimization(optimization),
+      );
+    }
+    this._allQueries = this.queries.size;
   }
 
   private appendQueries(queries: RecentQuery[]): OptimizedQuery[] {
@@ -266,7 +296,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private filterDisabledIndexes(indexes: IndexedTable[]): IndexedTable[] {
     return indexes.filter((idx) => {
       const indexName = PgIdentifier.fromString(idx.index_name);
-      return this.disabledIndexes.has(indexName);
+      return !this.disabledIndexes.has(indexName);
     });
   }
 
