@@ -29,7 +29,6 @@ type EventMap = {
 };
 
 type Target = {
-  connectable: Connectable;
   optimizer: IndexOptimizer;
   statistics: Statistics;
 };
@@ -51,8 +50,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private _allQueries = 0;
   private running = false;
 
+  private queriedSinceVacuum = 0;
+  private static readonly vacuumThreshold = 5;
+
   constructor(
     private readonly manager: ConnectionManager,
+    private readonly connectable: Connectable,
   ) {
     super();
   }
@@ -84,14 +87,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
    * Resolves when all queries are optimized
    */
   async start(
-    conn: Connectable,
     allRecentQueries: RecentQuery[],
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
   ): Promise<OptimizedQuery[]> {
     this.stop();
     const validQueries = this.appendQueries(allRecentQueries);
     const version = PostgresVersion.parse("17");
-    const pg = this.manager.getOrCreateConnection(conn);
+    const pg = this.manager.getOrCreateConnection(this.connectable);
     const ownStats = await Statistics.dumpStats(pg, version, "full");
     const statistics = new Statistics(
       pg,
@@ -105,7 +107,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       // so traces have to be disabled
       trace: false,
     });
-    this.target = { connectable: conn, optimizer, statistics };
+    this.target = { optimizer, statistics };
 
     this._allQueries = this.queries.size;
     await this.work();
@@ -206,6 +208,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           optimized,
           this.target,
         );
+        this.queriedSinceVacuum++;
+        if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
+          console.log("Vacuuming database...");
+          await this.vacuum();
+          this.queriedSinceVacuum = 0;
+        }
 
         this.queries.set(
           optimized.hash,
@@ -222,6 +230,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
    */
   getQueries(): OptimizedQuery[] {
     return Array.from(this.queries.values());
+  }
+
+  private async vacuum() {
+    const connector = this.manager.getConnectorFor(this.connectable);
+    await connector.vacuum();
   }
 
   private checkQueryUnsupported(

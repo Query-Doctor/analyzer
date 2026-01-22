@@ -5,7 +5,7 @@ import { Connectable } from "../sync/connectable.ts";
 import { setTimeout } from "node:timers/promises";
 import { assertArrayIncludes } from "@std/assert/array-includes";
 import { assert, assertGreater } from "@std/assert";
-import { RecentQuery, type OptimizedQuery } from "../sql/recent-query.ts";
+import { type OptimizedQuery, RecentQuery } from "../sql/recent-query.ts";
 
 Deno.test({
   name: "controller syncs correctly",
@@ -48,7 +48,8 @@ Deno.test({
       .start();
 
     const manager = ConnectionManager.forLocalDatabase();
-    const optimizer = new QueryOptimizer(manager);
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn);
 
     const expectedImprovements = ["select * from testing where a = $1"];
     const expectedNoImprovements = [
@@ -71,11 +72,10 @@ Deno.test({
       noImprovements.push(query.query);
     });
 
-    const conn = Connectable.fromString(pg.getConnectionUri());
     const connector = manager.getConnectorFor(conn);
     try {
       const recentQueries = await connector.getRecentQueries();
-      const includedQueries = await optimizer.start(conn, recentQueries, {
+      const includedQueries = await optimizer.start(recentQueries, {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
         stats: [{
@@ -149,7 +149,7 @@ Deno.test({
       assertArrayIncludes(expectedNoImprovements, noImprovements);
       console.log("improvements 1", improvements);
       console.log("no improvements 1", noImprovements);
-      await optimizer.start(conn, recentQueries, {
+      await optimizer.start(recentQueries, {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
         stats: [{
@@ -187,7 +187,9 @@ Deno.test({
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
-    const pg = await new PostgreSqlContainer("timescale/timescaledb:latest-pg16")
+    const pg = await new PostgreSqlContainer(
+      "timescale/timescaledb:latest-pg16",
+    )
       .withCopyContentToContainer([
         {
           content: `
@@ -248,7 +250,8 @@ Deno.test({
       .start();
 
     const manager = ConnectionManager.forLocalDatabase();
-    const optimizer = new QueryOptimizer(manager);
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn);
 
     const improvementsWithRecommendations: OptimizedQuery[] = [];
 
@@ -259,12 +262,11 @@ Deno.test({
       improvementsWithRecommendations.push(query);
     });
 
-    const conn = Connectable.fromString(pg.getConnectionUri());
     const connector = manager.getConnectorFor(conn);
     try {
       const recentQueries = await connector.getRecentQueries();
 
-      await optimizer.start(conn, recentQueries, {
+      await optimizer.start(recentQueries, {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
         stats: [
