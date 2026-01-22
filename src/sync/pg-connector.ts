@@ -12,7 +12,11 @@ import type {
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
-import { PgIdentifier, Postgres } from "@query-doctor/core";
+import {
+  PgIdentifier,
+  Postgres,
+  PostgresQueryBuilder,
+} from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
@@ -517,6 +521,17 @@ ORDER BY
       ) {
         throw new ExtensionNotInstalledError("pg_stat_statements");
       }
+      throw new PostgresError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  public async vacuum(): Promise<void> {
+    const vacuumAnalyze = new PostgresQueryBuilder("vacuum analyze")
+      .introspect()
+      .build();
+    try {
+      await this.db.exec(vacuumAnalyze);
+    } catch (err) {
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
   }

@@ -70,7 +70,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
     this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
-    this.optimizer = new QueryOptimizer(manager);
+    this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
   }
 
   async syncFrom(
@@ -291,7 +291,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       await postgres.exec("drop schema if exists extensions cascade");
     }
     this.startQueryLoader(source);
-    this.optimizer.start(this.optimizingDbUDRL, recentQueries, stats);
+    this.optimizer.start(recentQueries, stats);
   }
 
   private startQueryLoader(source: Connectable) {
