@@ -9,12 +9,14 @@ import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { type RecentQuery } from "../sql/recent-query.ts";
-import { type FullSchema, SchemaDiffer } from "../sync/schema_differ.ts";
+import { type Op } from "jsondiffpatch/formatters/jsonpatch";
+import { type FullSchema } from "../sync/schema_differ.ts";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { EventEmitter } from "node:events";
 import { log } from "../log.ts";
 import { QueryLoader } from "./query-loader.ts";
+import { SchemaLoader } from "./schema-loader.ts";
 
 type RemoteEvents = {
   dumpLog: [line: string];
@@ -40,7 +42,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
    */
   private static readonly STATS_ROWS_THRESHOLD = 5_000;
 
-  private readonly differ = new SchemaDiffer();
   readonly optimizer: QueryOptimizer;
 
   /**
@@ -58,6 +59,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   private isPolling = false;
   private queryLoader?: QueryLoader;
+  private schemaLoader?: SchemaLoader;
 
   constructor(
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
@@ -100,7 +102,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       ]);
 
     if (fullSchema.status === "fulfilled") {
-      this.differ.put(source, fullSchema.value);
+      this.schemaLoader?.update(fullSchema.value);
     }
 
     // Second: resolve stats strategy using table list from schema
@@ -147,11 +149,34 @@ export class Remote extends EventEmitter<RemoteEvents> {
     };
   }
 
+  async getStatus() {
+    const queries = this.optimizer.getQueries();
+    const disabledIndexes = this.optimizer.getDisabledIndexes();
+    const [diffs] = await Promise.allSettled([
+      this.schemaLoader?.poll().then(
+        (results) => results.diffs,
+        (error) => {
+          log.error("Failed to poll schema", "remote");
+          console.error(error);
+          throw error;
+        },
+      ) ??
+        [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
+      this.pollQueriesOnce().catch((error) => {
+        log.error("Failed to poll queries", "remote");
+        console.error(error);
+        throw error;
+      }),
+    ]);
+
+    return { queries, diffs, disabledIndexes };
+  }
+
   /**
    * Runs a single poll of pg_stat_statements if
    * there isn't already an in-flight request
    */
-  async pollQueriesOnce() {
+  private async pollQueriesOnce() {
     if (this.queryLoader && !this.isPolling) {
       try {
         this.isPolling = true;
@@ -299,6 +324,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       this.queryLoader.stop();
     }
     this.queryLoader = new QueryLoader(this.sourceManager, source);
+    this.schemaLoader = new SchemaLoader(this.sourceManager, source);
     this.queryLoader.on("pollError", (error) => {
       log.error("Failed to poll queries", "remote");
       console.error(error);
