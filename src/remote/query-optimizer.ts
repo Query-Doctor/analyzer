@@ -6,6 +6,7 @@ import { Sema } from "async-sema";
 import {
   Analyzer,
   dropIndex,
+  IndexedTable,
   IndexOptimizer,
   IndexRecommendation,
   OptimizeResult,
@@ -114,9 +115,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       statsMode,
     );
     const existingIndexes = await statistics.getExistingIndexes();
-    const optimizer = new IndexOptimizer(pg, statistics, existingIndexes, {
-      // we're not running on our pg fork (yet)
-      // so traces have to be disabled
+    const filteredIndexes = this.filterDisabledIndexes(existingIndexes);
+    const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
       trace: false,
     });
     this.target = { optimizer, statistics };
@@ -143,6 +143,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this._allQueries = 0;
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
+    if (this.target) {
+      // update the indexes the optimizer knows about
+      // to exclude the disabled ones
+      this.target.optimizer.transformIndexes((indexes) =>
+        this.filterDisabledIndexes(indexes)
+      );
+    }
     await this.work();
   }
 
@@ -254,6 +261,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } finally {
       this.emit("vacuumEnd");
     }
+  }
+
+  private filterDisabledIndexes(indexes: IndexedTable[]): IndexedTable[] {
+    return indexes.filter((idx) => {
+      const indexName = PgIdentifier.fromString(idx.index_name);
+      return this.disabledIndexes.has(indexName);
+    });
   }
 
   private checkQueryUnsupported(
