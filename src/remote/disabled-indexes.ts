@@ -15,6 +15,10 @@ export class DisabledIndexes {
     return this.disabledIndexNames.delete(indexName.toString());
   }
 
+  has(indexName: PgIdentifier): boolean {
+    return this.disabledIndexNames.has(indexName.toString());
+  }
+
   /**
    * Toggles the visibility of the index
    * @returns did the index get disabled?
