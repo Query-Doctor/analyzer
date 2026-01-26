@@ -6,6 +6,7 @@ import { assertEquals } from "@std/assert/equals";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { assertArrayIncludes } from "@std/assert";
 import { PgIdentifier } from "@query-doctor/core";
+import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 
 const TEST_TARGET_CONTAINER_NAME = "postgres:17";
 const TEST_TARGET_CONTAINER_TIMESCALEDB_NAME =
@@ -420,6 +421,98 @@ Deno.test({
       assertEquals(indexesAfter[0], { indexname: "conditions_time_idx" });
     } finally {
       await Promise.all([source.stop(), target.stop()]);
+    }
+  },
+});
+
+Deno.test({
+  name: "schema loader detects changes after database modification",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              create table testing(a int, b text);
+              insert into testing values (1, 'test');
+              create index "testing_b_idx" on testing(b);
+              select * from testing where a = 1;
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const manager = ConnectionManager.forLocalDatabase();
+      await using remote = new Remote(target, manager);
+
+      const sourcePg = postgres(source.toString());
+
+      await remote.syncFrom(source);
+      await remote.optimizer.finish;
+
+      const initialStatus = await remote.getStatus();
+      const initialDiffsResult = initialStatus.diffs;
+      assertEquals(
+        initialDiffsResult.status,
+        "fulfilled",
+        "Schema poll should succeed",
+      );
+      const initialDiffs = initialDiffsResult.status === "fulfilled"
+        ? initialDiffsResult.value
+        : [];
+      assertEquals(
+        initialDiffs.length,
+        0,
+        "Should have no diffs initially after sync",
+      );
+
+      await sourcePg.unsafe(`
+        alter table testing add column c int;
+        create index "testing_c_idx" on testing(c);
+      `);
+
+      const statusAfterChange = await remote.getStatus();
+      const diffsResult = statusAfterChange.diffs;
+
+      assertEquals(
+        diffsResult.status,
+        "fulfilled",
+        "Schema poll should succeed",
+      );
+      const diffs = diffsResult.status === "fulfilled"
+        ? diffsResult.value
+        : [];
+
+      assertEquals(
+        diffs.length,
+        2,
+        "Should detect 2 schema changes (added column and index)",
+      );
+
+      const addedColumnDiff = diffs.find((diff: Op) =>
+        typeof diff.path === "string" && diff.path.includes("columns")
+      );
+      assertEquals(addedColumnDiff?.op, "add", "Should detect column addition");
+
+      const addedIndexDiff = diffs.find((diff: Op) =>
+        typeof diff.path === "string" && diff.path.includes("indexes")
+      );
+      assertEquals(addedIndexDiff?.op, "add", "Should detect index addition");
+
+      await sourcePg.end();
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
   },
 });
