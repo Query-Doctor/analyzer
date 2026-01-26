@@ -44,7 +44,7 @@ export class RemoteController {
       } else if (request.method === "POST") {
         return await this.onFullSync(request);
       } else if (request.method === "GET") {
-        return this.getStatus();
+        return await this.getStatus();
       }
       return methodNotAllowed();
     }
@@ -102,23 +102,25 @@ export class RemoteController {
     }
   }
 
-  private getStatus(): Response {
+  private async getStatus(): Promise<Response> {
     if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
       return Response.json({ status: this.syncStatus });
     }
     const { schema, meta } = this.syncResponse;
-    const queries = this.remote.optimizer.getQueries();
-    const disabledIndexes = this.remote.optimizer.getDisabledIndexes();
-    this.remote.pollQueriesOnce().catch((error) => {
-      log.error("Failed to poll queries", "remote-controller");
-      console.error(error);
-    });
+    const { queries, diffs, disabledIndexes } = await this.remote.getStatus();
+    let deltas: DeltasResult;
+    if (diffs.status === "fulfilled") {
+      deltas = { type: "ok", value: diffs.value };
+    } else {
+      deltas = { type: "error", value: String(diffs.reason) };
+    }
     return Response.json({
       status: this.syncStatus,
       meta,
       schema,
       queries: { type: "ok", value: queries },
       disabledIndexes: { type: "ok", value: disabledIndexes },
+      deltas,
     });
   }
 
@@ -225,3 +227,14 @@ export class RemoteController {
 function methodNotAllowed(): Response {
   return Response.json("Method not allowed", { status: 405 });
 }
+
+type DeltasResult = {
+  type: "ok";
+  // the type of this is not super important
+  // currently the frontend only cares whether
+  // or not this array is empty
+  value: unknown[];
+} | {
+  type: "error";
+  value: string;
+};
