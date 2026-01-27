@@ -274,7 +274,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   async resetPgStatStatements(source: Connectable): Promise<void> {
     const connector = this.sourceManager.getConnectorFor(source);
     await connector.resetPgStatStatements();
-    this.optimizer.restart();
+    this.optimizer.restart({ clearQueries: true });
   }
 
   /**

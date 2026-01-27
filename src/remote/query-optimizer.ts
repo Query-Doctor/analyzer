@@ -136,9 +136,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this._validQueriesProcessed = 0;
   }
 
-  async restart() {
+  async restart({ clearQueries } = { clearQueries: false }) {
     this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
-    this.resetQueryOptimizationState();
+    if (clearQueries) {
+      this.queries.clear();
+    } else {
+      this.resetQueryOptimizationState();
+    }
     this._finish = Promise.withResolvers();
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
