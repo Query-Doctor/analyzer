@@ -306,6 +306,16 @@ Deno.test({
         ),
         "Expected recommendation for email column after disabling the index",
       );
+
+      // Verify explainPlan doesn't show the disabled index being used
+      const explainPlanAfterToggle =
+        emailQueryAfterToggle.optimization.explainPlan;
+      assert(explainPlanAfterToggle, "Expected explainPlan to be present");
+      const explainStr = JSON.stringify(explainPlanAfterToggle);
+      assert(
+        !explainStr.includes("users_email_idx"),
+        `Expected explainPlan to NOT contain disabled index "users_email_idx" but found it in: ${explainStr}`,
+      );
     } finally {
       await pg.stop();
     }

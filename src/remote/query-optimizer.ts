@@ -412,16 +412,16 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             recent,
             result.baseCost,
             indexesUsed,
-            explainPlan,
+            result.baseExplainPlan,
           );
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
             indexesUsed,
-            explainPlan,
+            explainPlan: result.baseExplainPlan,
           };
         } else {
-          this.onImprovementsAvailable(recent, result, explainPlan);
+          this.onImprovementsAvailable(recent, result, result.baseExplainPlan);
           return {
             state: "improvements_available",
             cost: result.baseCost,
@@ -429,7 +429,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             costReductionPercentage,
             indexRecommendations,
             indexesUsed,
-            explainPlan,
+            explainPlan: result.baseExplainPlan,
             optimizedExplainPlan: result.explainPlan,
           };
         }
