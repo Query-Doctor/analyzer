@@ -131,6 +131,8 @@ RUN sed -i 's|nobody:/|nobody:/home|' /etc/passwd && chown nobody:nobody /home
 
 ENV POSTGRES_URL=postgresql://postgres@localhost/postgres?host=/tmp
 
+EXPOSE 5432
+
 # Development command - starts both PostgreSQL and the analyzer
 CMD ["/bin/bash", "-c", "\
     su-exec postgres initdb -D $PGDATA || true && \
