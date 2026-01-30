@@ -19,7 +19,10 @@ export const LiveQueryOptimization = z.discriminatedUnion("state", [
   z.object({
     state: z.literal("waiting"),
   }),
-  z.object({ state: z.literal("optimizing") }),
+  z.object({
+    state: z.literal("optimizing"),
+    retries: z.number().nonnegative(),
+  }),
   z.object({ state: z.literal("not_supported"), reason: z.string() }),
   z.object({
     state: z.literal("improvements_available"),
@@ -37,7 +40,11 @@ export const LiveQueryOptimization = z.discriminatedUnion("state", [
     indexesUsed: z.array(z.string()),
     explainPlan: z.custom<PostgresExplainStage>(),
   }),
-  z.object({ state: z.literal("timeout") }),
+  z.object({
+    state: z.literal("timeout"),
+    waitedMs: z.number(),
+    retries: z.number().nonnegative(),
+  }),
   z.object({
     state: z.literal("error"),
     error: z.string(),
