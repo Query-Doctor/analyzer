@@ -74,8 +74,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     },
   ) {
     super();
-    this.maxRetries = config?.maxRetries ?? 3;
-    this.queryTimeoutMs = config?.queryTimeoutMs ?? 10_000;
+    this.maxRetries = config?.maxRetries ?? 5;
+    this.queryTimeoutMs = config?.queryTimeoutMs ?? 5_000;
     this.queryTimeoutMaxMs = config?.queryTimeoutMaxMs ?? 120_000;
   }
 
