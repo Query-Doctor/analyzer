@@ -145,6 +145,8 @@ RUN su-exec postgres initdb -D $PGDATA || true && \
 
 USER postgres
 
+EXPOSE 2345
+
 CMD ["/bin/bash", "-c", "\
     pg_ctl -D $PGDATA -l $PGDATA/logfile start || (cat $PGDATA/logfile && exit 1) && \
     until pg_isready -h /tmp; do sleep 0.5; done && \
