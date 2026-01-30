@@ -429,6 +429,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             costReductionPercentage,
             indexRecommendations,
             indexesUsed,
+            consideredIndexes: mapConsideredIndexes(result),
             explainPlan,
             optimizedExplainPlan: result.explainPlan,
           };
@@ -512,6 +513,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       costReductionPercentage,
       indexRecommendations,
       indexesUsed,
+      consideredIndexes: mapConsideredIndexes(result),
       explainPlan,
       optimizedExplainPlan: result.explainPlan,
     };
@@ -580,6 +582,12 @@ function mapIndexRecommandations(
     }
     return index;
   });
+}
+
+function mapConsideredIndexes(
+  result: Extract<OptimizeResult, { kind: "ok" }>,
+): IndexRecommendation[] {
+  return Array.from(result.triedIndexes.values());
 }
 
 type PercentageDifference = number;
