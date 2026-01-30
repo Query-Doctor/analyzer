@@ -23,7 +23,6 @@ import { parse } from "@libpg-query/parser";
 import { DisabledIndexes } from "./disabled-indexes.ts";
 
 const MINIMUM_COST_CHANGE_PERCENTAGE = 5;
-const QUERY_TIMEOUT_MS = 10000;
 
 type EventMap = {
   error: [Error, OptimizedQuery];
@@ -61,13 +60,23 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private queriedSinceVacuum = 0;
   private static readonly vacuumThreshold = 5;
-  static MAX_RETRIES = 3;
+  private readonly maxRetries: number;
+  private readonly queryTimeoutMs: number;
+  private readonly queryTimeoutMaxMs: number;
 
   constructor(
     private readonly manager: ConnectionManager,
     private readonly connectable: Connectable,
+    config?: {
+      maxRetries?: number;
+      queryTimeoutMs?: number;
+      queryTimeoutMaxMs?: number;
+    },
   ) {
     super();
+    this.maxRetries = config?.maxRetries ?? 3;
+    this.queryTimeoutMs = config?.queryTimeoutMs ?? 10_000;
+    this.queryTimeoutMaxMs = config?.queryTimeoutMaxMs ?? 120_000;
   }
 
   get validQueriesProcessed() {
@@ -263,6 +272,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         const optimization = await this.optimizeQuery(
           optimized,
           this.target,
+          { timeoutMs: this.calculateTimeoutRetryDelay(optimized) },
         );
         this.queriedSinceVacuum++;
         if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
@@ -278,15 +288,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } finally {
       this.running = false;
     }
-  }
-
-  private isEligibleForTimeoutRetry(
-    entry: OptimizedQuery,
-  ): boolean {
-    if (entry.optimization.state !== "timeout") {
-      return false;
-    }
-    return entry.optimization.retries < QueryOptimizer.MAX_RETRIES;
   }
 
   /**
@@ -313,6 +314,27 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       );
       return entry;
     }
+  }
+
+  private calculateTimeoutRetryDelay(entry: OptimizedQuery): number {
+    const baseDelay = this.queryTimeoutMs;
+    let delay = baseDelay;
+    if (entry.optimization.state === "timeout") {
+      delay = Math.min(
+        baseDelay * Math.pow(2, entry.optimization.retries),
+        this.queryTimeoutMaxMs,
+      );
+    }
+    return delay;
+  }
+
+  private isEligibleForTimeoutRetry(
+    entry: OptimizedQuery,
+  ): boolean {
+    if (entry.optimization.state !== "timeout") {
+      return false;
+    }
+    return entry.optimization.retries < this.maxRetries;
   }
 
   private async vacuum() {
@@ -357,7 +379,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private async optimizeQuery(
     recent: OptimizedQuery,
     target: Target,
-    timeoutMs = QUERY_TIMEOUT_MS,
+    options: { timeoutMs: number },
   ): Promise<LiveQueryOptimization> {
     const builder = new PostgresQueryBuilder(recent.query);
     let cost: number;
@@ -365,14 +387,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     try {
       const explain = await withTimeout(
         target.optimizer.testQueryWithStats(builder),
-        timeoutMs,
+        options.timeoutMs,
       );
       cost = explain.Plan["Total Cost"];
       explainPlan = explain.Plan;
     } catch (error) {
       console.error("Error with baseline run", error);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, timeoutMs);
+        return this.onTimeout(recent, options.timeoutMs);
       } else if (error instanceof Error) {
         return this.onError(recent, error.message);
       } else {
@@ -394,12 +416,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           indexes,
           (tx) => this.dropDisabledIndexes(tx),
         ),
-        timeoutMs,
+        options.timeoutMs,
       );
     } catch (error) {
       console.error("Error with optimization", error);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, timeoutMs);
+        return this.onTimeout(recent, options.timeoutMs);
       } else if (error instanceof Error) {
         return this.onError(recent, error.message, explainPlan);
       } else {
@@ -573,8 +595,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     waitedMs: number,
   ): LiveQueryOptimization {
     let retries = 0;
-    // increment retries if query was already timed out
-    if (recent.optimization.state === "timeout") {
+    if ("retries" in recent.optimization) {
       retries = recent.optimization.retries + 1;
     }
     this.emit("timeout", recent, waitedMs);
