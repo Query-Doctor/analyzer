@@ -61,6 +61,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private queriedSinceVacuum = 0;
   private static readonly vacuumThreshold = 5;
+  static MAX_RETRIES = 3;
 
   constructor(
     private readonly manager: ConnectionManager,
@@ -241,16 +242,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         let optimized: OptimizedQuery | undefined;
         const token = await this.semaphore.acquire();
         try {
-          for (const [hash, entry] of this.queries.entries()) {
-            if (entry.optimization.state !== "waiting") {
-              continue;
-            }
-            this.queries.set(
-              hash,
-              entry.withOptimization({ state: "optimizing" }),
+          optimized = this.findAndMarkFirstQueryWhere((entry) =>
+            entry.optimization.state === "waiting"
+          );
+          // if nothing is in queue, start working through timed-out queries
+          if (!optimized) {
+            optimized = this.findAndMarkFirstQueryWhere((entry) =>
+              entry.optimization.state === "timeout" &&
+              this.isEligibleForTimeoutRetry(entry)
             );
-            optimized = entry;
-            break;
           }
         } finally {
           this.semaphore.release(token);
@@ -280,11 +280,39 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
   }
 
+  private isEligibleForTimeoutRetry(
+    entry: OptimizedQuery,
+  ): boolean {
+    if (entry.optimization.state !== "timeout") {
+      return false;
+    }
+    return entry.optimization.retries < QueryOptimizer.MAX_RETRIES;
+  }
+
   /**
    * Gets the status of the current queries in the optimizer
    */
   getQueries(): OptimizedQuery[] {
     return Array.from(this.queries.values());
+  }
+
+  private findAndMarkFirstQueryWhere(
+    filter: (query: OptimizedQuery) => boolean,
+  ): OptimizedQuery | undefined {
+    for (const [hash, entry] of this.queries.entries()) {
+      if (!filter(entry)) {
+        continue;
+      }
+      let retries = 0;
+      if (entry.optimization.state === "timeout") {
+        retries = entry.optimization.retries;
+      }
+      this.queries.set(
+        hash,
+        entry.withOptimization({ state: "optimizing", retries }),
+      );
+      return entry;
+    }
   }
 
   private async vacuum() {
@@ -544,8 +572,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     waitedMs: number,
   ): LiveQueryOptimization {
+    let retries = 0;
+    // increment retries if query was already timed out
+    if (recent.optimization.state === "timeout") {
+      retries = recent.optimization.retries + 1;
+    }
     this.emit("timeout", recent, waitedMs);
-    return { state: "timeout" };
+    return { state: "timeout", waitedMs, retries };
   }
 }
 
