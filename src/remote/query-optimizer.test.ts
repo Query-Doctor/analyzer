@@ -4,7 +4,7 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Connectable } from "../sync/connectable.ts";
 import { setTimeout } from "node:timers/promises";
 import { assertArrayIncludes } from "@std/assert/array-includes";
-import { assert, assertGreater } from "@std/assert";
+import { assert, assertEquals, assertGreater } from "@std/assert";
 import { type OptimizedQuery, RecentQuery } from "../sql/recent-query.ts";
 
 Deno.test({
@@ -440,6 +440,104 @@ Deno.test({
             `Query "${q.query}" has ${q.optimization.costReductionPercentage}% cost reduction but no index recommendations`,
           );
         }
+      }
+    } finally {
+      await pg.stop();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "timed out queries are retried with exponential backoff up to maxRetries",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const pg = await new PostgreSqlContainer("postgres:17")
+      .withCopyContentToContainer([
+        {
+          content: `
+            create table slow_table(id int, data text);
+            insert into slow_table (id, data) select i, repeat('x', 1000) from generate_series(1, 100) i;
+            create extension pg_stat_statements;
+            select * from slow_table where id = 1;
+          `,
+          target: "/docker-entrypoint-initdb.d/init.sql",
+        },
+      ])
+      .withCommand([
+        "-c",
+        "shared_preload_libraries=pg_stat_statements",
+        "-c",
+        "autovacuum=off",
+        "-c",
+        "track_counts=off",
+        "-c",
+        "track_io_timing=off",
+        "-c",
+        "track_activities=off",
+      ])
+      .start();
+
+    const maxRetries = 2;
+    const queryTimeoutMs = 1;
+
+    const manager = ConnectionManager.forLocalDatabase();
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn, {
+      maxRetries,
+      queryTimeoutMs,
+      queryTimeoutMaxMs: 100,
+    });
+
+    const timeoutEvents: { query: OptimizedQuery; waitedMs: number }[] = [];
+    optimizer.addListener("timeout", (query, waitedMs) => {
+      timeoutEvents.push({ query, waitedMs });
+    });
+
+    const connector = manager.getConnectorFor(conn);
+    try {
+      const recentQueries = await connector.getRecentQueries();
+      const slowQuery = recentQueries.find((q) =>
+        q.query.includes("slow_table") && q.query.startsWith("select")
+      );
+      assert(slowQuery, "Expected to find slow_table query");
+
+      await optimizer.start([slowQuery], {
+        kind: "fromStatisticsExport",
+        source: { kind: "inline" },
+        stats: [{
+          tableName: "slow_table",
+          schemaName: "public",
+          relpages: 1000,
+          reltuples: 1_000_000,
+          relallvisible: 1,
+          columns: [
+            { columnName: "id", stats: null },
+            { columnName: "data", stats: null },
+          ],
+          indexes: [],
+        }],
+      });
+
+      await optimizer.finish;
+
+      const queries = optimizer.getQueries();
+      const resultQuery = queries.find((q) => q.query.includes("slow_table"));
+      assert(resultQuery, "Expected slow_table query in results");
+
+      assertEquals(
+        resultQuery.optimization.state,
+        "timeout",
+        "Expected query to be in timeout state",
+      );
+
+      if (resultQuery.optimization.state === "timeout") {
+        assertEquals(
+          resultQuery.optimization.retries,
+          maxRetries,
+          `Expected ${maxRetries} retries`,
+        );
       }
     } finally {
       await pg.stop();
