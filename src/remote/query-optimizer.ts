@@ -408,16 +408,19 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           Math.abs(percentageReduction),
         );
         if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
+          const consideredIndexes = mapConsideredIndexes(result);
           this.onNoImprovements(
             recent,
             result.baseCost,
             indexesUsed,
+            consideredIndexes,
             explainPlan,
           );
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
             indexesUsed,
+            consideredIndexes,
             explainPlan,
           };
         } else {
@@ -429,6 +432,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             costReductionPercentage,
             indexRecommendations,
             indexesUsed,
+            consideredIndexes: mapConsideredIndexes(result),
             explainPlan,
             optimizedExplainPlan: result.explainPlan,
           };
@@ -444,6 +448,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     recent: OptimizedQuery,
     cost: number,
     indexesUsed: string[],
+    consideredIndexes: IndexRecommendation[],
     explainPlan: PostgresExplainStage,
   ) {
     this.emit(
@@ -452,6 +457,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         state: "no_improvement_found",
         cost,
         indexesUsed,
+        consideredIndexes,
         explainPlan,
       }),
     );
@@ -512,6 +518,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       costReductionPercentage,
       indexRecommendations,
       indexesUsed,
+      consideredIndexes: mapConsideredIndexes(result),
       explainPlan,
       optimizedExplainPlan: result.explainPlan,
     };
@@ -580,6 +587,12 @@ function mapIndexRecommandations(
     }
     return index;
   });
+}
+
+function mapConsideredIndexes(
+  result: Extract<OptimizeResult, { kind: "ok" }>,
+): IndexRecommendation[] {
+  return Array.from(result.triedIndexes.values());
 }
 
 type PercentageDifference = number;
