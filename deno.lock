@@ -20,7 +20,7 @@
     "npm:@actions/github@^6.0.1": "6.0.1_@octokit+core@5.2.2",
     "npm:@libpg-query/parser@^17.6.3": "17.6.3",
     "npm:@pgsql/types@^17.6.1": "17.6.1",
-    "npm:@query-doctor/core@~0.2.3": "0.2.3",
+    "npm:@query-doctor/core@~0.2.4": "0.2.4",
     "npm:@testcontainers/postgresql@^11.9.0": "11.9.0",
     "npm:@types/node@^24.9.1": "24.10.1",
     "npm:@types/nunjucks@^3.2.6": "3.2.6",
@@ -350,8 +350,8 @@
     "@protobufjs/utf8@1.1.0": {
       "integrity": "sha512-Vvn3zZrhQZkkBE8LSuW3em98c0FwgO4nxzv6OdSxPKJIEKY2bGbHn+mhGIPerzI4twdxaP8/0+06HBpwf345Lw=="
     },
-    "@query-doctor/core@0.2.3": {
-      "integrity": "sha512-t7972x3WUS0KMSkDHXCzd5tw12Dq56E4zHxcFWJ/Fe20LLi6HqZBU+PZJwMT8VMVr0ZmzR/bs0ZWtoUJAKd0aA==",
+    "@query-doctor/core@0.2.4": {
+      "integrity": "sha512-eI364Yd5YKvlGFOmXYmbPBHFFZR7dWwb2J3fNr98o/QX5Z1AENNPH3SK5DZNvlybM9ZgJ4ElbfBqDR1SNb23RQ==",
       "dependencies": [
         "@pgsql/types",
         "colorette",
@@ -1681,7 +1681,7 @@
       "npm:@actions/github@^6.0.1",
       "npm:@libpg-query/parser@^17.6.3",
       "npm:@pgsql/types@^17.6.1",
-      "npm:@query-doctor/core@~0.2.3",
+      "npm:@query-doctor/core@~0.2.4",
       "npm:@testcontainers/postgresql@^11.9.0",
       "npm:@types/node@^24.9.1",
       "npm:@types/nunjucks@^3.2.6",
