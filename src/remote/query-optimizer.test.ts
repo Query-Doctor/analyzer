@@ -554,3 +554,104 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "optimizer does not treat ASC index as duplicate of DESC candidate",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const pg = await new PostgreSqlContainer("postgres:17")
+      .withCopyContentToContainer([
+        {
+          content: `
+            create table orders(id int, created_at timestamp, status text);
+            insert into orders (id, created_at, status)
+              select i, now() - (i || ' days')::interval, 'pending'
+              from generate_series(1, 10000) i;
+            create index orders_multi_asc on orders(created_at asc, status asc);
+            create extension pg_stat_statements;
+            select * from orders order by created_at desc, status asc limit 10;
+          `,
+          target: "/docker-entrypoint-initdb.d/init.sql",
+        },
+      ])
+      .withCommand([
+        "-c",
+        "shared_preload_libraries=pg_stat_statements",
+        "-c",
+        "autovacuum=off",
+        "-c",
+        "track_counts=off",
+        "-c",
+        "track_io_timing=off",
+        "-c",
+        "track_activities=off",
+      ])
+      .start();
+
+    const manager = ConnectionManager.forLocalDatabase();
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn);
+
+    optimizer.addListener("error", (error, query) => {
+      console.error("error when running query", query.query, error);
+    });
+
+    const connector = manager.getConnectorFor(conn);
+    try {
+      const recentQueries = await connector.getRecentQueries();
+      const mixedQuery = recentQueries.find((q) =>
+        q.query.includes("order by created_at desc, status asc")
+      );
+      assert(mixedQuery, "Expected to find mixed sort direction query");
+
+      await optimizer.start([mixedQuery], {
+        kind: "fromStatisticsExport",
+        source: { kind: "inline" },
+        stats: [{
+          tableName: "orders",
+          schemaName: "public",
+          relpages: 100,
+          reltuples: 100_000,
+          relallvisible: 1,
+          columns: [
+            { columnName: "id", stats: null },
+            { columnName: "created_at", stats: null },
+            { columnName: "status", stats: null },
+          ],
+          indexes: [{
+            indexName: "orders_multi_asc",
+            relpages: 50,
+            reltuples: 100_000,
+            relallvisible: 1,
+          }],
+        }],
+      });
+
+      await optimizer.finish;
+
+      const queries = optimizer.getQueries();
+      const result = queries.find((q) =>
+        q.query.includes("order by created_at desc, status asc")
+      );
+      assert(result, "Expected to find query result");
+      assert(
+        result.optimization.state === "improvements_available",
+        `Expected improvements_available (ASC,ASC can't satisfy DESC,ASC via backward scan). ` +
+        `Got: ${result.optimization.state}`,
+      );
+
+      const recommendations = result.optimization.indexRecommendations;
+      const hasMixedRecommendation = recommendations.some((r) =>
+        r.columns.length >= 2 &&
+        r.columns.some((c) => c.column === "created_at" && c.sort?.dir === "SORTBY_DESC")
+      );
+      assert(
+        hasMixedRecommendation,
+        `Expected recommendation with created_at DESC. Got: ${JSON.stringify(recommendations)}`,
+      );
+    } finally {
+      await pg.stop();
+    }
+  },
+});
