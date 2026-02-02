@@ -45,7 +45,7 @@
     "prettier": "npm:prettier@^3",
     "prettier-plugin-sql": "npm:prettier-plugin-sql@^0.19",
     "sql-highlight": "npm:sql-highlight@^6.1.0",
-    "postgresjs": "https://deno.land/x/postgresjs@v3.4.7/mod.js",
+    "postgresjs": "https://deno.land/x/postgresjs@v3.4.3/mod.js",
     "zod": "npm:zod@^4.1.12"
   }
 }
