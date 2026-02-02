@@ -137,6 +137,7 @@ EXPOSE 5432
 CMD ["/bin/bash", "-c", "\
     su-exec postgres initdb -D $PGDATA || true && \
     echo \"shared_preload_libraries = 'timescaledb,pg_stat_statements'\" >> $PGDATA/postgresql.conf && \
+    echo \"max_locks_per_transaction = 256\" >> $PGDATA/postgresql.conf && \
     echo \"listen_addresses = ''\" >> $PGDATA/postgresql.conf && \
     echo \"unix_socket_directories = '/tmp'\" >> $PGDATA/postgresql.conf && \
     su-exec postgres pg_ctl -D $PGDATA -l $PGDATA/logfile start || (cat $PGDATA/logfile && exit 1) && \
