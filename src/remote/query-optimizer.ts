@@ -382,28 +382,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     options: { timeoutMs: number },
   ): Promise<LiveQueryOptimization> {
     const builder = new PostgresQueryBuilder(recent.query);
-    let cost: number;
-    let explainPlan: PostgresExplainStage | undefined;
-    try {
-      const explain = await withTimeout(
-        target.optimizer.testQueryWithStats(builder),
-        options.timeoutMs,
-      );
-      cost = explain.Plan["Total Cost"];
-      explainPlan = explain.Plan;
-    } catch (error) {
-      console.error("Error with baseline run", error);
-      if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, options.timeoutMs);
-      } else if (error instanceof Error) {
-        return this.onError(recent, error.message);
-      } else {
-        return this.onError(recent, "Internal error");
-      }
-    }
-    if (cost === 0) {
-      return this.onZeroCostPlan(recent, explainPlan);
-    }
     const indexes = this.getPotentialIndexCandidates(
       target.statistics,
       recent,
@@ -423,16 +401,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       if (error instanceof TimeoutError) {
         return this.onTimeout(recent, options.timeoutMs);
       } else if (error instanceof Error) {
-        return this.onError(recent, error.message, explainPlan);
+        return this.onError(recent, error.message);
       } else {
-        return this.onError(recent, "Internal error", explainPlan);
+        return this.onError(recent, "Internal error");
       }
     }
 
-    if (!explainPlan) {
-      throw new Error("explainPlan should be defined after baseline run");
-    }
-    return this.onOptimizeReady(result, recent, explainPlan);
+    return this.onOptimizeReady(result, recent);
   }
 
   private async dropDisabledIndexes(tx: PostgresTransaction): Promise<void> {
@@ -444,7 +419,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onOptimizeReady(
     result: OptimizeResult,
     recent: OptimizedQuery,
-    explainPlan: PostgresExplainStage,
   ): LiveQueryOptimization {
     switch (result.kind) {
       case "ok": {
@@ -486,7 +460,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       }
       // unlikely to hit if we've already checked the base plan for zero cost
       case "zero_cost_plan":
-        return this.onZeroCostPlan(recent, explainPlan);
+        return this.onZeroCostPlan(recent, result.explainPlan);
     }
   }
 
@@ -583,11 +557,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onError(
     recent: OptimizedQuery,
     errorMessage: string,
-    explainPlan?: PostgresExplainStage,
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
     this.emit("error", error, recent);
-    return { state: "error", error: error.message, explainPlan };
+    return { state: "error", error: error.message };
   }
 
   private onTimeout(
