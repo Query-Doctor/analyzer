@@ -6,7 +6,6 @@ import * as errors from "../sync/errors.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
 import { ToggleIndexDto } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
-import { PgIdentifier } from "@query-doctor/core";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -107,18 +106,30 @@ export class RemoteController {
       return Response.json({ status: this.syncStatus });
     }
     const { schema, meta } = this.syncResponse;
-    const { queries, diffs, disabledIndexes } = await this.remote.getStatus();
+    const { queries, diffs, disabledIndexes, polledQueries } = await this.remote
+      .getStatus();
     let deltas: DeltasResult;
     if (diffs.status === "fulfilled") {
-      deltas = { type: "ok", value: diffs.value };
+      deltas = {
+        type: "ok",
+        value: diffs.value.data,
+        waitedMs: diffs.value.ms,
+      };
     } else {
       deltas = { type: "error", value: String(diffs.reason) };
+    }
+    let polledQueriesMs: number;
+    if (polledQueries.status === "fulfilled") {
+      polledQueriesMs = polledQueries.value.ms;
+    } else {
+      polledQueriesMs = 0;
     }
     return Response.json({
       status: this.syncStatus,
       meta,
       schema,
       queries: { type: "ok", value: queries },
+      polledQueries: { type: "ok", waitedMs: polledQueriesMs },
       disabledIndexes: { type: "ok", value: disabledIndexes },
       deltas,
     });
@@ -234,6 +245,7 @@ type DeltasResult = {
   // currently the frontend only cares whether
   // or not this array is empty
   value: unknown[];
+  waitedMs: number;
 } | {
   type: "error";
   value: string;

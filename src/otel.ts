@@ -20,3 +20,14 @@ export function withSpan<Args extends unknown[], T>(
     });
   };
 }
+
+export type Timed<T> = { data: T; ms: number };
+
+export async function withTiming<T>(
+  f: () => Promise<T>,
+): Promise<Timed<T>> {
+  const prev = Date.now();
+  const data = await f();
+  const ms = Date.now() - prev;
+  return { data, ms };
+}

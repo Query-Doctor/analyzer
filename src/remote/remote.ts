@@ -17,6 +17,7 @@ import { EventEmitter } from "node:events";
 import { log } from "../log.ts";
 import { QueryLoader } from "./query-loader.ts";
 import { SchemaLoader } from "./schema-loader.ts";
+import { withTiming } from "../otel.ts";
 
 type RemoteEvents = {
   dumpLog: [line: string];
@@ -152,24 +153,35 @@ export class Remote extends EventEmitter<RemoteEvents> {
   async getStatus() {
     const queries = this.optimizer.getQueries();
     const disabledIndexes = this.optimizer.getDisabledIndexes();
-    const [diffs] = await Promise.allSettled([
-      this.schemaLoader?.poll().then(
-        (results) => results.diffs,
-        (error) => {
+    const [diffs, polledQueries] = await Promise.allSettled([
+      withTiming(async () => {
+        if (!this.schemaLoader) {
+          return [];
+        }
+
+        let polled: Op[] = [];
+        try {
+          const results = await this.schemaLoader.poll();
+          polled = results.diffs;
+        } catch (error) {
           log.error("Failed to poll schema", "remote");
           console.error(error);
           throw error;
-        },
-      ) ??
-        [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
-      this.pollQueriesOnce().catch((error) => {
-        log.error("Failed to poll queries", "remote");
-        console.error(error);
-        throw error;
+        }
+        return polled;
+      }),
+      withTiming(async () => {
+        try {
+          return await this.pollQueriesOnce();
+        } catch (error) {
+          log.error("Failed to poll queries", "remote");
+          console.error(error);
+          throw error;
+        }
       }),
     ]);
 
-    return { queries, diffs, disabledIndexes };
+    return { queries, diffs, disabledIndexes, polledQueries };
   }
 
   /**

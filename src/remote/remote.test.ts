@@ -469,7 +469,7 @@ Deno.test({
         "Schema poll should succeed",
       );
       const initialDiffs = initialDiffsResult.status === "fulfilled"
-        ? initialDiffsResult.value
+        ? initialDiffsResult.value.data
         : [];
       assertEquals(
         initialDiffs.length,
@@ -491,7 +491,7 @@ Deno.test({
         "Schema poll should succeed",
       );
       const diffs = diffsResult.status === "fulfilled"
-        ? diffsResult.value
+        ? diffsResult.value.data
         : [];
 
       assertEquals(
