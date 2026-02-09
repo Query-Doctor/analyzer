@@ -175,6 +175,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return disabled;
   }
 
+  async createIndex(sql: string): Promise<void> {
+    const pg = this.manager.getOrCreateConnection(this.connectable);
+    await pg.exec(sql);
+    this.restart();
+  }
+
   /**
    * Insert new queries to be processed. The {@link start} method must
    * have been called previously for this to take effect
