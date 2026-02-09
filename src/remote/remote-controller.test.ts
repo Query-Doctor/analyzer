@@ -99,3 +99,94 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "creating an index via endpoint adds it to the optimizing db",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table testing(a int, b text);
+              insert into testing values (1, 'hello');
+              create extension pg_stat_statements;
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      new PostgreSqlContainer("postgres:17").start(),
+    ]);
+    const controller = new AbortController();
+
+    const target = Connectable.fromString(targetDb.getConnectionUri());
+    const source = Connectable.fromString(sourceDb.getConnectionUri());
+    const sourceOptimizer = ConnectionManager.forLocalDatabase();
+
+    const remote = new RemoteController(
+      new Remote(target, sourceOptimizer),
+    );
+
+    const server = Deno.serve(
+      { port: 0, signal: controller.signal },
+      async (req: Request): Promise<Response> => {
+        const result = await remote.execute(req);
+        if (!result) {
+          return new Response("Not found", { status: 404 });
+        }
+        return result;
+      },
+    );
+
+    try {
+      // First sync the database
+      const syncResponse = await fetch(
+        `http://localhost:${server.addr.port}/postgres`,
+        {
+          method: "POST",
+          body: RemoteSyncRequest.encode({ db: source }),
+        },
+      );
+      assertEquals(syncResponse.status, 200);
+
+      const sql = postgres(
+        target.withDatabaseName(Remote.optimizingDbName).toString(),
+      );
+
+      // Verify no indexes exist initially
+      const indexesBefore =
+        await sql`select * from pg_indexes where schemaname = 'public'`;
+      assertEquals(indexesBefore.count, 0);
+
+      // Create an index via the endpoint
+      const createResponse = await fetch(
+        `http://localhost:${server.addr.port}/postgres/indexes`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            connectionString: sourceDb.getConnectionUri(),
+            table: "testing",
+            columns: [{ name: "a", order: "asc" }],
+          }),
+        },
+      );
+
+      assertEquals(createResponse.status, 200);
+      const body = await createResponse.json();
+      assertEquals(body.success, true);
+
+      // Verify the index was created on the optimizing db
+      const indexesAfter =
+        await sql`select * from pg_indexes where schemaname = 'public'`;
+      assertEquals(indexesAfter.count, 1);
+      assertEquals(indexesAfter[0].tablename, "testing");
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop(), server.shutdown()]);
+    }
+  },
+});

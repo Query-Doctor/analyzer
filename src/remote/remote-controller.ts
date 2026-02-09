@@ -4,7 +4,10 @@ import { RemoteSyncRequest } from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
 import * as errors from "../sync/errors.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
-import { ToggleIndexDto } from "./remote-controller.dto.ts";
+import {
+  CreateIndexDto,
+  ToggleIndexDto,
+} from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
 import { PgIdentifier } from "@query-doctor/core";
 
@@ -62,6 +65,14 @@ export class RemoteController {
       }
       return methodNotAllowed();
     }
+
+    if (url.pathname === "/postgres/indexes") {
+      if (request.method === "POST") {
+        return await this.createIndex(request);
+      }
+      return methodNotAllowed();
+    }
+
   }
 
   private hookUpWebsockets(remote: Remote) {
@@ -177,6 +188,39 @@ export class RemoteController {
       }
       return Response.json({
         error: error instanceof Error ? error.message : "Unknown error",
+      }, { status: 500 });
+    }
+  }
+
+  private async createIndex(request: Request): Promise<Response> {
+    try {
+      const data = await request.json();
+      const body = CreateIndexDto.parse(data);
+
+      const columnDefs = body.columns
+        .map((c) => {
+          const quoted = PgIdentifier.fromString(c.name);
+          return c.order === "desc" ? `${quoted} DESC` : `${quoted}`;
+        })
+        .join(", ");
+
+      const quotedTable = PgIdentifier.fromString(body.table);
+      await this.remote.optimizer.createIndex(
+        `CREATE INDEX ON ${quotedTable}(${columnDefs})`,
+      );
+
+      return Response.json({ success: true });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return Response.json({
+          type: "error",
+          error: "invalid_body",
+          message: error.message,
+        }, { status: 400 });
+      }
+      console.error("Failed to create index:", error);
+      return Response.json({
+        error: error instanceof Error ? error.message : "Failed to create index",
       }, { status: 500 });
     }
   }
