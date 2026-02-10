@@ -9,7 +9,6 @@ import {
   ToggleIndexDto,
 } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
-import { PgIdentifier } from "@query-doctor/core";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -196,19 +195,7 @@ export class RemoteController {
     try {
       const data = await request.json();
       const body = CreateIndexDto.parse(data);
-
-      const columnDefs = body.columns
-        .map((c) => {
-          const quoted = PgIdentifier.fromString(c.name);
-          return c.order === "desc" ? `${quoted} DESC` : `${quoted}`;
-        })
-        .join(", ");
-
-      const quotedTable = PgIdentifier.fromString(body.table);
-      await this.remote.optimizer.createIndex(
-        `CREATE INDEX ON ${quotedTable}(${columnDefs})`,
-      );
-
+      await this.remote.optimizer.createIndex(body.table, body.columns);
       return Response.json({ success: true });
     } catch (error) {
       if (error instanceof ZodError) {
