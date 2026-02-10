@@ -1,0 +1,629 @@
+commit e7dce765a9ea69568d6462676e2487b9a304ef05
+Author: Xetera <contact@xetera.dev>
+Date:   Tue Feb 10 18:20:06 2026 +0300
+
+    feat: add alternative path tracking
+
+diff --git a/.clangd b/.clangd
+new file mode 100644
+index 00000000000..89c58d7b190
+--- /dev/null
++++ b/.clangd
+@@ -0,0 +1,5 @@
++CompileFlags:
++  Add:
++    - "-I/Users/xetera/postgres-new/src/include"
++    - "-I/Users/xetera/postgres-new/src/backend"
++  CompilationDatabase: "."
+diff --git a/src/backend/commands/explain.c b/src/backend/commands/explain.c
+index bc60cae80fc..23c62216e80 100644
+--- a/src/backend/commands/explain.c
++++ b/src/backend/commands/explain.c
+@@ -1131,6 +1131,41 @@ ExplainPreScanNode(PlanState *planstate, Bitmapset **rels_used)
+ 	return planstate_tree_walker(planstate, ExplainPreScanNode, rels_used);
+ }
+ 
++static const char*
++serialize_node_tag(NodeTag tag)
++{
++	switch (tag)
++	{
++		case T_Path:
++			return "Seq Scan";
++		case T_IndexPath:
++			return "Index Scan";
++		case T_BitmapHeapPath:
++			return "Bitmap Heap Scan";
++		default:
++			return psprintf("?(%d)?", (int) tag);
++	}
++}
++
++static void
++cost_breakdown(List *cost_breakdown, ExplainState *es)
++{
++	
++	if (cost_breakdown == NIL)
++		return;
++	ExplainOpenGroup("Cost Breakdown", "Cost Breakdown", false, es);
++	ListCell *lc;
++	foreach(lc, cost_breakdown)
++	{
++		CostReason *item = (CostReason *) lfirst(lc);
++		ExplainOpenGroup("Cost Item", NULL, true, es);
++		ExplainPropertyText("Reason", item->reason, es);
++		ExplainPropertyFloat("Cost", NULL, item->cost, 2, es);
++		ExplainCloseGroup("Cost Item", NULL, true, es);
++	}
++	ExplainCloseGroup("Cost Breakdown", "Cost Breakdown", false, es);
++}
++
+ /*
+  * ExplainNode -
+  *	  Appends a description of a plan tree to es->str
+@@ -1605,6 +1640,27 @@ ExplainNode(PlanState *planstate, List *ancestors,
+ 								 0, es);
+ 			ExplainPropertyInteger("Plan Width", NULL, plan->plan_width,
+ 								   es);
++			ListCell   *lc;
++			
++			if (plan->cost_breakdown != NULL)
++			{
++				cost_breakdown(plan->cost_breakdown, es);
++			}
++			if (plan->alternative_paths != NULL) {
++				ExplainOpenGroup("Alternative Plans", "Alternative Plans", false, es);
++				foreach(lc, plan->alternative_paths)
++				{
++					PrunedPath *item = (PrunedPath *) lfirst(lc);
++					char* node_name = serialize_node_tag(item->type);
++					ExplainOpenGroup("Plan", NULL, true, es);
++					ExplainPropertyText("Node Type", node_name, es);
++					ExplainPropertyText("Prune Reason", item->reason, es);
++					ExplainPropertyFloat("Total Cost", NULL, item->total_cost, 2, es);
++					cost_breakdown(item->path->cost_breakdown, es);
++					ExplainCloseGroup("Plan", NULL, true, es);
++				}
++				ExplainCloseGroup("Alternative Plans", "Alternative Plans", false, es);
++			}
+ 		}
+ 	}
+ 
+diff --git a/src/backend/optimizer/path/costsize.c b/src/backend/optimizer/path/costsize.c
+index 7967f229112..46e5b455541 100644
+--- a/src/backend/optimizer/path/costsize.c
++++ b/src/backend/optimizer/path/costsize.c
+@@ -214,6 +214,15 @@ clamp_row_est(double nrows)
+ 	return nrows;
+ }
+ 
++static void add_cost_breakdown(Path* path, char* reason, Cost cost) {
++	if (cost <= 0)
++		return;
++	CostReason* cost_reason = (CostReason*) palloc(sizeof(CostReason));
++	cost_reason->reason = strdup(reason);
++	cost_reason->cost = cost;
++	path->cost_breakdown = lappend(path->cost_breakdown, cost_reason);
++}
++
+ 
+ /*
+  * cost_seqscan
+@@ -243,8 +252,10 @@ cost_seqscan(Path *path, PlannerInfo *root,
+ 	else
+ 		path->rows = baserel->rows;
+ 
+-	if (!enable_seqscan)
++	if (!enable_seqscan) {
++		add_cost_breakdown(path, "STARTUP:NODE_DISABLED", disable_cost);
+ 		startup_cost += disable_cost;
++	}
+ 
+ 	/* fetch estimated page cost for tablespace containing table */
+ 	get_tablespace_page_costs(baserel->reltablespace,
+@@ -255,21 +266,27 @@ cost_seqscan(Path *path, PlannerInfo *root,
+ 	 * disk costs
+ 	 */
+ 	disk_run_cost = spc_seq_page_cost * baserel->pages;
++	add_cost_breakdown(path, "RUNTIME:DISK_IO", disk_run_cost);
+ 
+ 	/* CPU costs */
+ 	get_restriction_qual_cost(root, baserel, param_info, &qpqual_cost);
+ 
++	add_cost_breakdown(path, "STARTUP:HEAP_FILTER", qpqual_cost.startup);
+ 	startup_cost += qpqual_cost.startup;
+ 	cpu_per_tuple = cpu_tuple_cost + qpqual_cost.per_tuple;
+ 	cpu_run_cost = cpu_per_tuple * baserel->tuples;
++	add_cost_breakdown(path, "RUNTIME:HEAP_FILTER", cpu_run_cost);
+ 	/* tlist eval costs are paid per output row, not per tuple scanned */
+ 	startup_cost += path->pathtarget->cost.startup;
++	add_cost_breakdown(path, "STARTUP:EVALUATION", path->pathtarget->cost.startup);
+ 	cpu_run_cost += path->pathtarget->cost.per_tuple * path->rows;
++	add_cost_breakdown(path, "RUNTIME:EVALUATION", path->pathtarget->cost.per_tuple * path->rows);
+ 
+ 	/* Adjust costing for parallelism, if used. */
+ 	if (path->parallel_workers > 0)
+ 	{
+ 		double		parallel_divisor = get_parallel_divisor(path);
++		add_cost_breakdown(path, "RUNTIME:PARALLEL_WORKERS", cpu_run_cost / parallel_divisor - cpu_run_cost);
+ 
+ 		/* The CPU cost is divided among all the workers. */
+ 		cpu_run_cost /= parallel_divisor;
+@@ -546,7 +563,10 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
+ 	}
+ 
+ 	if (!enable_indexscan)
++	{
+ 		startup_cost += disable_cost;
++		add_cost_breakdown(&path->path, "STARTUP:NODE_DISABLED", disable_cost);
++	}
+ 	/* we don't need to check enable_indexonlyscan; indxpath.c does that */
+ 
+ 	/*
+@@ -572,7 +592,9 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
+ 
+ 	/* all costs for touching index itself included here */
+ 	startup_cost += indexStartupCost;
++	add_cost_breakdown(&path->path, "STARTUP:INDEX_SETUP", indexStartupCost);
+ 	run_cost += indexTotalCost - indexStartupCost;
++	add_cost_breakdown(&path->path, "RUNTIME:INDEX_USAGE", indexTotalCost - indexStartupCost);
+ 
+ 	/* estimate number of main-table tuples fetched */
+ 	tuples_fetched = clamp_row_est(indexSelectivity * baserel->tuples);
+@@ -727,6 +749,7 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
+ 	csquared = indexCorrelation * indexCorrelation;
+ 
+ 	run_cost += max_IO_cost + csquared * (min_IO_cost - max_IO_cost);
++	add_cost_breakdown(&path->path, "RUNTIME:DISK_IO", max_IO_cost + csquared * (min_IO_cost - max_IO_cost));
+ 
+ 	/*
+ 	 * Estimate CPU costs per tuple.
+@@ -737,13 +760,17 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
+ 	cost_qual_eval(&qpqual_cost, qpquals, root);
+ 
+ 	startup_cost += qpqual_cost.startup;
++	add_cost_breakdown(&path->path, "STARTUP:HEAP_FILTER", qpqual_cost.startup);
+ 	cpu_per_tuple = cpu_tuple_cost + qpqual_cost.per_tuple;
+ 
+ 	cpu_run_cost += cpu_per_tuple * tuples_fetched;
++	add_cost_breakdown(&path->path, "RUNTIME:HEAP_FILTER", cpu_per_tuple * tuples_fetched);
+ 
+ 	/* tlist eval costs are paid per output row, not per tuple scanned */
+ 	startup_cost += path->path.pathtarget->cost.startup;
++	add_cost_breakdown(&path->path, "STARTUP:EVALUATION", path->path.pathtarget->cost.startup);
+ 	cpu_run_cost += path->path.pathtarget->cost.per_tuple * path->path.rows;
++	add_cost_breakdown(&path->path, "RUNTIME:EVALUATION", path->path.pathtarget->cost.per_tuple * path->path.rows);
+ 
+ 	/* Adjust costing for parallelism, if used. */
+ 	if (path->path.parallel_workers > 0)
+@@ -752,6 +779,7 @@ cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
+ 
+ 		path->path.rows = clamp_row_est(path->path.rows / parallel_divisor);
+ 
++		add_cost_breakdown(&path->path, "RUNTIME:PARALLEL_WORKERS", cpu_run_cost / parallel_divisor - cpu_run_cost);
+ 		/* The CPU cost is divided among all the workers. */
+ 		cpu_run_cost /= parallel_divisor;
+ 	}
+@@ -981,13 +1009,17 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+ 		path->rows = baserel->rows;
+ 
+ 	if (!enable_bitmapscan)
++	{
+ 		startup_cost += disable_cost;
++		add_cost_breakdown(path, "STARTUP:NODE_DISABLED", disable_cost);
++	}
+ 
+ 	pages_fetched = compute_bitmap_pages(root, baserel, bitmapqual,
+ 										 loop_count, &indexTotalCost,
+ 										 &tuples_fetched);
+ 
+ 	startup_cost += indexTotalCost;
++	add_cost_breakdown(path, "RUNTIME:INDEX_USAGE", indexTotalCost);
+ 	T = (baserel->pages > 1) ? (double) baserel->pages : 1.0;
+ 
+ 	/* Fetch estimated page costs for tablespace containing table. */
+@@ -1010,6 +1042,7 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+ 		cost_per_page = spc_random_page_cost;
+ 
+ 	run_cost += pages_fetched * cost_per_page;
++	add_cost_breakdown(path, "RUNTIME:DISK_IO", pages_fetched * cost_per_page);
+ 
+ 	/*
+ 	 * Estimate CPU costs per tuple.
+@@ -1023,8 +1056,10 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+ 	get_restriction_qual_cost(root, baserel, param_info, &qpqual_cost);
+ 
+ 	startup_cost += qpqual_cost.startup;
++	add_cost_breakdown(path, "STARTUP:HEAP_FILTER", qpqual_cost.startup);
+ 	cpu_per_tuple = cpu_tuple_cost + qpqual_cost.per_tuple;
+ 	cpu_run_cost = cpu_per_tuple * tuples_fetched;
++	add_cost_breakdown(path, "RUNTIME:HEAP_FILTER", cpu_per_tuple * tuples_fetched);
+ 
+ 	/* Adjust costing for parallelism, if used. */
+ 	if (path->parallel_workers > 0)
+@@ -1033,6 +1068,7 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+ 
+ 		/* The CPU cost is divided among all the workers. */
+ 		cpu_run_cost /= parallel_divisor;
++		add_cost_breakdown(path, "RUNTIME:PARALLEL_WORKERS", cpu_run_cost / parallel_divisor - cpu_run_cost);
+ 
+ 		path->rows = clamp_row_est(path->rows / parallel_divisor);
+ 	}
+@@ -1042,7 +1078,9 @@ cost_bitmap_heap_scan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
+ 
+ 	/* tlist eval costs are paid per output row, not per tuple scanned */
+ 	startup_cost += path->pathtarget->cost.startup;
++	add_cost_breakdown(path, "STARTUP:EVALUATION", path->pathtarget->cost.startup);
+ 	run_cost += path->pathtarget->cost.per_tuple * path->rows;
++	add_cost_breakdown(path, "RUNTIME:EVALUATION", path->pathtarget->cost.per_tuple * path->rows);
+ 
+ 	path->startup_cost = startup_cost;
+ 	path->total_cost = startup_cost + run_cost;
+diff --git a/src/backend/optimizer/path/indxpath.c b/src/backend/optimizer/path/indxpath.c
+index 2ba687c3256..c4842303785 100644
+--- a/src/backend/optimizer/path/indxpath.c
++++ b/src/backend/optimizer/path/indxpath.c
+@@ -1609,6 +1609,7 @@ bitmap_scan_cost_est(PlannerInfo *root, RelOptInfo *rel, Path *ipath)
+ 	bpath.path.pathtarget = rel->reltarget;
+ 	bpath.path.param_info = ipath->param_info;
+ 	bpath.path.pathkeys = NIL;
++	bpath.path.cost_breakdown = NIL;
+ 	bpath.bitmapqual = ipath;
+ 
+ 	/*
+diff --git a/src/backend/optimizer/plan/createplan.c b/src/backend/optimizer/plan/createplan.c
+index adfe9e686da..b6e2525e1c4 100644
+--- a/src/backend/optimizer/plan/createplan.c
++++ b/src/backend/optimizer/plan/createplan.c
+@@ -549,6 +549,29 @@ create_plan_recurse(PlannerInfo *root, Path *best_path, int flags)
+ 	return plan;
+ }
+ 
++static void
++set_alternative_paths(Plan* plan, Path* best_path)
++{
++	ListCell* lc;
++	foreach (lc, best_path->parent->pruned_paths)
++	{
++		Path* path = (Path*) lfirst(lc);
++		plan->alternative_paths = lappend(plan->alternative_paths, path);
++	}
++	foreach (lc, best_path->parent->pathlist)
++	{
++		Path* path = (Path*) lfirst(lc);
++		if (path == best_path)
++			continue;
++		PrunedPath* pruned_path = palloc(sizeof(PrunedPath));
++		pruned_path->type = nodeTag(path);
++		pruned_path->path = path;
++		pruned_path->reason = "(HIGHER_COST)";
++		pruned_path->total_cost = path->total_cost;
++		plan->alternative_paths = lappend(plan->alternative_paths, pruned_path);
++	}
++}
++
+ /*
+  * create_scan_plan
+  *	 Create a scan plan for the parent relation of 'best_path'.
+@@ -790,6 +813,13 @@ create_scan_plan(PlannerInfo *root, Path *best_path, int flags)
+ 	 */
+ 	if (gating_clauses)
+ 		plan = create_gating_plan(root, best_path, plan, gating_clauses);
++	
++	set_alternative_paths(plan, best_path);
++	
++	if (best_path->cost_breakdown != NIL)
++		plan->cost_breakdown = best_path->cost_breakdown;
++	else
++		plan->cost_breakdown = NIL;
+ 
+ 	return plan;
+ }
+@@ -5324,6 +5354,7 @@ copy_generic_path_info(Plan *dest, Path *src)
+ 	dest->plan_width = src->pathtarget->width;
+ 	dest->parallel_aware = src->parallel_aware;
+ 	dest->parallel_safe = src->parallel_safe;
++	dest->cost_breakdown = src->cost_breakdown;
+ }
+ 
+ /*
+@@ -5426,6 +5457,7 @@ make_seqscan(List *qptlist,
+ 	plan->qual = qpqual;
+ 	plan->lefttree = NULL;
+ 	plan->righttree = NULL;
++	plan->alternative_paths = NIL;
+ 	node->scanrelid = scanrelid;
+ 
+ 	return node;
+@@ -5469,6 +5501,8 @@ make_indexscan(List *qptlist,
+ 	plan->qual = qpqual;
+ 	plan->lefttree = NULL;
+ 	plan->righttree = NULL;
++	plan->alternative_paths = NIL;
++	plan->cost_breakdown = NIL;
+ 	node->scan.scanrelid = scanrelid;
+ 	node->indexid = indexid;
+ 	node->indexqual = indexqual;
+@@ -5499,6 +5533,8 @@ make_indexonlyscan(List *qptlist,
+ 	plan->qual = qpqual;
+ 	plan->lefttree = NULL;
+ 	plan->righttree = NULL;
++	plan->alternative_paths = NIL;
++	plan->cost_breakdown = NIL;
+ 	node->scan.scanrelid = scanrelid;
+ 	node->indexid = indexid;
+ 	node->indexqual = indexqual;
+@@ -5523,6 +5559,7 @@ make_bitmap_indexscan(Index scanrelid,
+ 	plan->qual = NIL;			/* not used */
+ 	plan->lefttree = NULL;
+ 	plan->righttree = NULL;
++	plan->alternative_paths = NIL;
+ 	node->scan.scanrelid = scanrelid;
+ 	node->indexid = indexid;
+ 	node->indexqual = indexqual;
+diff --git a/src/backend/optimizer/util/pathnode.c b/src/backend/optimizer/util/pathnode.c
+index 33c40f375af..6e193e8d489 100644
+--- a/src/backend/optimizer/util/pathnode.c
++++ b/src/backend/optimizer/util/pathnode.c
+@@ -365,6 +365,15 @@ set_cheapest(RelOptInfo *parent_rel)
+ 	parent_rel->cheapest_parameterized_paths = parameterized_paths;
+ }
+ 
++static void add_pruned_path(RelOptInfo *parent, Path* path, char* reason) {
++	PrunedPath *pruned_path = palloc(sizeof(PrunedPath));
++	pruned_path->type = nodeTag(path);
++	pruned_path->path = path;
++	pruned_path->reason = reason;
++	pruned_path->total_cost = path->total_cost;
++	parent->pruned_paths = lappend(parent->pruned_paths, pruned_path);
++}
++
+ /*
+  * add_path
+  *	  Consider a potential implementation path for the specified parent rel,
+@@ -452,6 +461,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 		PathCostComparison costcmp;
+ 		PathKeysComparison keyscmp;
+ 		BMS_Comparison outercmp;
++		char* reason;
+ 
+ 		/*
+ 		 * Do a fuzzy cost comparison with standard fuzziness limit.
+@@ -491,7 +501,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 								 outercmp == BMS_SUBSET1) &&
+ 								new_path->rows <= old_path->rows &&
+ 								new_path->parallel_safe >= old_path->parallel_safe)
++							{
+ 								remove_old = true;	/* new dominates old */
++								reason = "WORSE_SORT_ORDER";
++							}
+ 						}
+ 						else if (keyscmp == PATHKEYS_BETTER2)
+ 						{
+@@ -499,7 +512,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 								 outercmp == BMS_SUBSET2) &&
+ 								new_path->rows >= old_path->rows &&
+ 								new_path->parallel_safe <= old_path->parallel_safe)
++							{
+ 								accept_new = false; /* old dominates new */
++								reason = "WORSE_SORT_ORDER";
++							}
+ 						}
+ 						else	/* keyscmp == PATHKEYS_EQUAL */
+ 						{
+@@ -522,18 +538,30 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 								 */
+ 								if (new_path->parallel_safe >
+ 									old_path->parallel_safe)
++								{
+ 									remove_old = true;	/* new dominates old */
++									reason = "WORSE_PARALLEL_SAFETY";
++								}
+ 								else if (new_path->parallel_safe <
+ 										 old_path->parallel_safe)
++								{
+ 									accept_new = false; /* old dominates new */
++									reason = "WORSE_PARALLEL_SAFETY";
++								}
+ 								else if (new_path->rows < old_path->rows)
++								{
+ 									remove_old = true;	/* new dominates old */
++									reason = "MORE_TUPLES_SCANNED";
++								}
+ 								else if (new_path->rows > old_path->rows)
+ 									accept_new = false; /* old dominates new */
+ 								else if (compare_path_costs_fuzzily(new_path,
+ 																	old_path,
+ 																	1.0000000001) == COSTS_BETTER1)
++								{
+ 									remove_old = true;	/* new dominates old */
++									reason = "SLIGHTLY_MORE_EXPENSIVE";
++								}
+ 								else
+ 									accept_new = false; /* old equals or
+ 														 * dominates new */
+@@ -541,11 +569,17 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 							else if (outercmp == BMS_SUBSET1 &&
+ 									 new_path->rows <= old_path->rows &&
+ 									 new_path->parallel_safe >= old_path->parallel_safe)
++							{
+ 								remove_old = true;	/* new dominates old */
++								reason = "MORE_TUPLES_SCANNED_AND_PARALLEL_SAFETY";
++							}
+ 							else if (outercmp == BMS_SUBSET2 &&
+ 									 new_path->rows >= old_path->rows &&
+ 									 new_path->parallel_safe <= old_path->parallel_safe)
++							{
+ 								accept_new = false; /* old dominates new */
++								reason = "MORE_TUPLES_SCANNED_AND_PARALLEL_SAFETY";
++							}
+ 							/* else different parameterizations, keep both */
+ 						}
+ 						break;
+@@ -558,7 +592,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 								 outercmp == BMS_SUBSET1) &&
+ 								new_path->rows <= old_path->rows &&
+ 								new_path->parallel_safe >= old_path->parallel_safe)
++							{
+ 								remove_old = true;	/* new dominates old */
++								reason = "HIGHER_COST";
++							}
+ 						}
+ 						break;
+ 					case COSTS_BETTER2:
+@@ -570,7 +607,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 								 outercmp == BMS_SUBSET2) &&
+ 								new_path->rows >= old_path->rows &&
+ 								new_path->parallel_safe <= old_path->parallel_safe)
++							{
+ 								accept_new = false; /* old dominates new */
++								reason = "HIGHER_COST";
++							}
+ 						}
+ 						break;
+ 					case COSTS_DIFFERENT:
+@@ -589,14 +629,15 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 		 */
+ 		if (remove_old)
+ 		{
++			add_pruned_path(parent_rel, old_path, reason);
+ 			parent_rel->pathlist = foreach_delete_current(parent_rel->pathlist,
+ 														  p1);
+ 
+-			/*
+-			 * Delete the data pointed-to by the deleted cell, if possible
+-			 */
+-			if (!IsA(old_path, IndexPath))
+-				pfree(old_path);
++			// /*
++			//  * Delete the data pointed-to by the deleted cell, if possible
++			//  */
++			// if (!IsA(old_path, IndexPath))
++			// 	pfree(old_path);
+ 		}
+ 		else
+ 		{
+@@ -611,7 +652,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 		 * new_path cannot dominate any other elements of the pathlist.
+ 		 */
+ 		if (!accept_new)
++		{
++			add_pruned_path(parent_rel, new_path, reason);
+ 			break;
++		}
+ 	}
+ 
+ 	if (accept_new)
+@@ -622,9 +666,9 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
+ 	}
+ 	else
+ 	{
+-		/* Reject and recycle the new path */
+-		if (!IsA(new_path, IndexPath))
+-			pfree(new_path);
++		// /* Reject and recycle the new path */
++		// if (!IsA(new_path, IndexPath))
++		// 	pfree(new_path);
+ 	}
+ }
+ 
+@@ -945,6 +989,7 @@ create_seqscan_path(PlannerInfo *root, RelOptInfo *rel,
+ 	pathnode->parallel_safe = rel->consider_parallel;
+ 	pathnode->parallel_workers = parallel_workers;
+ 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
++	pathnode->cost_breakdown = NIL;
+ 
+ 	cost_seqscan(pathnode, root, rel, pathnode->param_info);
+ 
+@@ -1023,6 +1068,7 @@ create_index_path(PlannerInfo *root,
+ 	pathnode->path.parallel_safe = rel->consider_parallel;
+ 	pathnode->path.parallel_workers = 0;
+ 	pathnode->path.pathkeys = pathkeys;
++	pathnode->path.cost_breakdown = NIL;
+ 
+ 	pathnode->indexinfo = index;
+ 	pathnode->indexclauses = indexclauses;
+@@ -1066,6 +1112,7 @@ create_bitmap_heap_path(PlannerInfo *root,
+ 	pathnode->path.parallel_safe = rel->consider_parallel;
+ 	pathnode->path.parallel_workers = parallel_degree;
+ 	pathnode->path.pathkeys = NIL;	/* always unordered */
++	pathnode->path.cost_breakdown = NIL;
+ 
+ 	pathnode->bitmapqual = bitmapqual;
+ 
+@@ -1119,6 +1166,7 @@ create_bitmap_and_path(PlannerInfo *root,
+ 	pathnode->path.parallel_workers = 0;
+ 
+ 	pathnode->path.pathkeys = NIL;	/* always unordered */
++	pathnode->path.cost_breakdown = NIL;
+ 
+ 	pathnode->bitmapquals = bitmapquals;
+ 
+diff --git a/src/include/nodes/pathnodes.h b/src/include/nodes/pathnodes.h
+index 2a8977c9722..c326bdfc06e 100644
+--- a/src/include/nodes/pathnodes.h
++++ b/src/include/nodes/pathnodes.h
+@@ -670,6 +670,13 @@ typedef enum RelOptKind
+ 	((rel)->reloptkind == RELOPT_OTHER_MEMBER_REL || \
+ 	 (rel)->reloptkind == RELOPT_OTHER_JOINREL || \
+ 	 (rel)->reloptkind == RELOPT_OTHER_UPPER_REL)
++	
++typedef struct PrunedPath {
++	NodeTag type;
++	char* reason;
++	struct Path* path;
++	Cost total_cost;
++} PrunedPath;
+ 
+ typedef struct RelOptInfo
+ {
+@@ -770,6 +777,7 @@ typedef struct RelOptInfo
+ 	Relids		all_partrels;	/* Relids set of all partition relids */
+ 	List	  **partexprs;		/* Non-nullable partition key expressions */
+ 	List	  **nullable_partexprs; /* Nullable partition key expressions */
++	List       *pruned_paths;
+ } RelOptInfo;
+ 
+ /*
+@@ -1141,6 +1149,10 @@ typedef struct ParamPathInfo
+ 	List	   *ppi_clauses;	/* join clauses available from outer rels */
+ } ParamPathInfo;
+ 
++typedef struct CostReason {
++  char *reason;
++  Cost cost;
++} CostReason;
+ 
+ /*
+  * Type "Path" is used as-is for sequential-scan paths, as well as some other
+@@ -1148,7 +1160,7 @@ typedef struct ParamPathInfo
+  * For other path types it is the first component of a larger struct.
+  *
+  * "pathtype" is the NodeTag of the Plan node we could build from this Path.
+- * It is partially redundant with the Path's NodeTag, but allows us to use
++ // * It is partially redundant with the Path's NodeTag, but allows us to use
+  * the same Path type for multiple Plan types when there is no need to
+  * distinguish the Plan type during path processing.
+  *
+@@ -1193,6 +1205,8 @@ typedef struct Path
+ 
+ 	List	   *pathkeys;		/* sort ordering of path's output */
+ 	/* pathkeys is a List of PathKey nodes; see above */
++	List       *cost_breakdown;
++	List       *pruned_paths;
+ } Path;
+ 
+ /* Macro for extracting a path's parameterization relids; beware double eval */
+diff --git a/src/include/nodes/plannodes.h b/src/include/nodes/plannodes.h
+index 1c9357f6a77..69b84e38625 100644
+--- a/src/include/nodes/plannodes.h
++++ b/src/include/nodes/plannodes.h
+@@ -158,6 +158,8 @@ typedef struct Plan
+ 	 */
+ 	Bitmapset  *extParam;
+ 	Bitmapset  *allParam;
++	List       *cost_breakdown;
++	List       *alternative_paths;
+ } Plan;
+ 
+ /* ----------------
