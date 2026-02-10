@@ -8,6 +8,7 @@ import {
 import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
+import { ExtensionNotInstalledError } from "../sync/errors.ts";
 import { type RecentQuery } from "../sql/recent-query.ts";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { type FullSchema } from "../sync/schema_differ.ts";
@@ -82,6 +83,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     {
       meta: { version?: string; inferredStatsStrategy?: InferredStatsStrategy };
       schema: RemoteSyncFullSchemaResponse;
+      recentQueriesError?: { type: "extension_not_installed"; extensionName: string };
     }
   > {
     await this.resetDatabase();
@@ -120,8 +122,14 @@ export class Remote extends EventEmitter<RemoteEvents> {
     );
 
     let queries: RecentQuery[] = [];
+    let recentQueriesError: { type: "extension_not_installed"; extensionName: string } | undefined;
     if (recentQueries.status === "fulfilled") {
       queries = recentQueries.value;
+    } else if (recentQueries.reason instanceof ExtensionNotInstalledError) {
+      recentQueriesError = {
+        type: "extension_not_installed",
+        extensionName: recentQueries.reason.extension,
+      };
     }
 
     await this.onSuccessfulSync(
@@ -146,6 +154,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
             ? fullSchema.reason.message
             : "Unknown error",
         },
+      recentQueriesError,
     };
   }
 

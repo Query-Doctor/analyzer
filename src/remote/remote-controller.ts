@@ -27,6 +27,7 @@ export class RemoteController {
   private socket?: WebSocket;
   private syncResponse?: Awaited<ReturnType<Remote["syncFrom"]>>;
   private syncStatus: SyncStatus = SyncStatus.NOT_STARTED;
+  private recentQueriesError?: { type: "extension_not_installed"; extensionName: string };
 
   constructor(
     private readonly remote: Remote,
@@ -128,7 +129,9 @@ export class RemoteController {
       status: this.syncStatus,
       meta,
       schema,
-      queries: { type: "ok", value: queries },
+      queries: this.recentQueriesError
+        ? { type: "error", error: "extension_not_installed" }
+        : { type: "ok", value: queries },
       disabledIndexes: { type: "ok", value: disabledIndexes },
       deltas,
     });
@@ -147,13 +150,16 @@ export class RemoteController {
         type: "pullFromSource",
       });
       this.syncStatus = SyncStatus.COMPLETED;
+      this.recentQueriesError = this.syncResponse.recentQueriesError;
       const { schema, meta } = this.syncResponse;
       const queries = this.remote.optimizer.getQueries();
 
       return Response.json({
         meta,
         schema,
-        queries: { type: "ok", value: queries },
+        queries: this.recentQueriesError
+          ? { type: "error", error: "extension_not_installed" }
+          : { type: "ok", value: queries },
       });
     } catch (error) {
       this.syncStatus = SyncStatus.FAILED;
