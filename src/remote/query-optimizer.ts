@@ -175,9 +175,19 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return disabled;
   }
 
-  async createIndex(sql: string): Promise<void> {
+  async createIndex(
+    table: string,
+    columns: { name: string; order: "asc" | "desc" }[],
+  ): Promise<void> {
+    const columnDefs = columns
+      .map((c) => {
+        const quoted = PgIdentifier.fromString(c.name);
+        return c.order === "desc" ? `${quoted} DESC` : `${quoted}`;
+      })
+      .join(", ");
+    const quotedTable = PgIdentifier.fromString(table);
     const pg = this.manager.getOrCreateConnection(this.connectable);
-    await pg.exec(sql);
+    await pg.exec(`CREATE INDEX ON ${quotedTable}(${columnDefs})`);
     this.restart();
   }
 
