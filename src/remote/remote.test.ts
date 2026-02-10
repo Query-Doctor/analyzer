@@ -514,3 +514,54 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "returns extension error when pg_stat_statements is not installed",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table testing(a int, b text);
+              insert into testing values (1);
+              create index "testing_idx" on testing(b);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      await using remote = new Remote(
+        target,
+        ConnectionManager.forLocalDatabase(),
+      );
+
+      const result = await remote.syncFrom(source);
+
+      // Schema should still sync successfully
+      assertOk(result.schema);
+
+      const tableNames = result.schema.value.tables.map((table) =>
+        table.tableName.toString()
+      );
+      assertArrayIncludes(tableNames, ["testing"]);
+
+      // Should return the extension error for recent queries
+      assertEquals(result.recentQueriesError, {
+        type: "extension_not_installed",
+        extensionName: "pg_stat_statements",
+      });
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+  },
+});
