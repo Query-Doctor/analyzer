@@ -190,3 +190,76 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "controller returns extension error when pg_stat_statements is not installed",
+  sanitizeOps: false,
+  sanitizeResources: false,
+  fn: async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table testing(a int, b text);
+              insert into testing values (1);
+              create index on testing(b);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .start(),
+      new PostgreSqlContainer("postgres:17").start(),
+    ]);
+    const controller = new AbortController();
+
+    const target = Connectable.fromString(
+      targetDb.getConnectionUri(),
+    );
+    const source = Connectable.fromString(
+      sourceDb.getConnectionUri(),
+    );
+
+    const sourceOptimizer = ConnectionManager.forLocalDatabase();
+
+    const remoteInstance = new Remote(target, sourceOptimizer);
+    const remote = new RemoteController(remoteInstance);
+
+    const server = Deno.serve(
+      { port: 0, signal: controller.signal },
+      async (req: Request): Promise<Response> => {
+        const result = await remote.execute(req);
+        if (!result) {
+          throw new Error();
+        }
+        return result;
+      },
+    );
+    try {
+      const response = await fetch(
+        new Request(
+          `http://localhost:${server.addr.port}/postgres`,
+          {
+            method: "POST",
+            body: RemoteSyncRequest.encode({
+              db: source,
+            }),
+          },
+        ),
+      );
+
+      assertEquals(response.status, 200);
+      const data = await response.json();
+
+      // Schema should still sync successfully
+      assertEquals(data.schema.type, "ok");
+
+      // Queries should return the extension_not_installed error
+      assertEquals(data.queries.type, "error");
+      assertEquals(data.queries.error, "extension_not_installed");
+    } finally {
+      await remoteInstance.cleanup();
+      await Promise.all([sourceDb.stop(), targetDb.stop(), server.shutdown()]);
+    }
+  },
+});
