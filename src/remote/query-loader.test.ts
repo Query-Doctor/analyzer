@@ -11,6 +11,7 @@ import { Connectable } from "../sync/connectable.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { QueryLoader } from "./query-loader.ts";
 import { PostgresConnector } from "../sync/pg-connector.ts";
+import { PostgresError } from "../sync/errors.ts";
 
 function createMockRecentQuery(query: string): RecentQuery {
   return {
@@ -72,7 +73,7 @@ Deno.test({
 Deno.test({
   name: "QueryLoader - poll handles errors and emits pollError",
   fn: async () => {
-    const testError = new Error("Database connection failed");
+    const testError = new PostgresError("Database connection failed");
 
     const manager = ConnectionManager.forLocalDatabase();
     const connectable = Connectable.fromString(
@@ -264,7 +265,7 @@ Deno.test({
 
     using _ = stub(manager, "getConnectorFor", () => ({
       getRecentQueries: (): Promise<RecentQuery[]> => {
-        throw "String error";
+        throw new PostgresError("String error");
       },
     } as PostgresConnector));
 
@@ -296,7 +297,7 @@ Deno.test({
     using _ = stub(manager, "getConnectorFor", () => ({
       getRecentQueries: (): Promise<RecentQuery[]> => {
         if (shouldFail) {
-          throw new Error("Unexpected error");
+          throw new PostgresError("String error");
         }
         return Promise.resolve([createMockRecentQuery("SELECT 1")]);
       },

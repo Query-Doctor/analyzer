@@ -61,6 +61,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private isPolling = false;
   private queryLoader?: QueryLoader;
   private schemaLoader?: SchemaLoader;
+  private pgStatStatementsStatus: PgStatStatementsStatus =
+    PgStatStatementsStatus.Unknown;
 
   constructor(
     /** This has to be a local url. Very bad things will happen if this is a remote URL */
@@ -83,7 +85,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
     {
       meta: { version?: string; inferredStatsStrategy?: InferredStatsStrategy };
       schema: RemoteSyncFullSchemaResponse;
-      recentQueriesError?: { type: "extension_not_installed"; extensionName: string };
+      recentQueriesError?: {
+        type: "extension_not_installed";
+        extensionName: string;
+      };
     }
   > {
     await this.resetDatabase();
@@ -122,7 +127,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
     );
 
     let queries: RecentQuery[] = [];
-    let recentQueriesError: { type: "extension_not_installed"; extensionName: string } | undefined;
+    let recentQueriesError: {
+      type: "extension_not_installed";
+      extensionName: string;
+    } | undefined;
     if (recentQueries.status === "fulfilled") {
       queries = recentQueries.value;
     } else if (recentQueries.reason instanceof ExtensionNotInstalledError) {
@@ -178,7 +186,13 @@ export class Remote extends EventEmitter<RemoteEvents> {
       }),
     ]);
 
-    return { queries, diffs, disabledIndexes };
+    return {
+      queries,
+      diffs,
+      disabledIndexes,
+      pgStatStatementsNotInstalled:
+        this.pgStatStatementsStatus === PgStatStatementsStatus.NotInstalled,
+    };
   }
 
   /**
@@ -346,6 +360,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
         );
         console.error(error);
       });
+      this.pgStatStatementsStatus = PgStatStatementsStatus.Installed;
+    }).on("pgStatStatementsNotInstalled", () => {
+      this.pgStatStatementsStatus = PgStatStatementsStatus.NotInstalled;
     });
     this.queryLoader.on("exit", () => {
       log.error("Query loader exited", "remote");
@@ -381,3 +398,12 @@ type StatsResult = {
   mode: StatisticsMode;
   strategy: InferredStatsStrategy;
 };
+
+const PgStatStatementsStatus = {
+  Installed: "Installed",
+  NotInstalled: "Not Installed",
+  Unknown: "Unknown",
+} as const;
+
+type PgStatStatementsStatus =
+  typeof PgStatStatementsStatus[keyof typeof PgStatStatementsStatus];

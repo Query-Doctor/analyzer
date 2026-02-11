@@ -2,10 +2,12 @@ import { EventEmitter } from "node:events";
 import { Connectable } from "../sync/connectable.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RecentQuery } from "../sql/recent-query.ts";
+import { ExtensionNotInstalledError } from "../sync/errors.ts";
 
 export type QueryLoaderEvents = {
   poll: [RecentQuery[]];
   pollError: [unknown];
+  pgStatStatementsNotInstalled: [];
   exit: [];
 };
 
@@ -34,10 +36,17 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
       await this.runPoll();
       this.consecutiveErrors = 0;
     } catch (error) {
-      if (error instanceof Error) {
-        this.emit("pollError", error);
+      if (
+        error instanceof ExtensionNotInstalledError &&
+        error.extension === "pg_stat_statements"
+      ) {
+        this.emit("pgStatStatementsNotInstalled");
+        // we don't want to increment our consecutive errors
+        // handler for this one because the user might install it
+      } else if (error instanceof Error) {
+        this.consecutiveErrors++;
       }
-      this.consecutiveErrors++;
+      this.emit("pollError", error);
     }
     if (this.consecutiveErrors > this.maxErrors) {
       this.emit("exit");
@@ -79,6 +88,10 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
     }, this.interval);
   }
 
+  /**
+   * @throws {ExtensionNotInstalledError} - pg_stat_statements is not installed
+   * @throws {PostgresError} - Not regular Error
+   */
   private async runPoll() {
     const connector = this.sourceManager.getConnectorFor(this.connectable);
     const queries = await connector.getRecentQueries();
