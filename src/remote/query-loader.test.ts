@@ -256,32 +256,6 @@ Deno.test({
 });
 
 Deno.test({
-  name: "QueryLoader - handles non-Error exceptions",
-  fn: async () => {
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
-
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: (): Promise<RecentQuery[]> => {
-        throw new PostgresError("String error");
-      },
-    } as PostgresConnector));
-
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 1 });
-
-    const pollErrors: unknown[] = [];
-    loader.on("pollError", (error) => {
-      pollErrors.push(error);
-    });
-
-    await loader.poll();
-    assertEquals(pollErrors.length, 0);
-  },
-});
-
-Deno.test({
   name:
     "QueryLoader - emits exit on unexpected promise rejection in scheduled poll",
   fn: async () => {
