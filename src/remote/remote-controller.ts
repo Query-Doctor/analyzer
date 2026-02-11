@@ -27,7 +27,6 @@ export class RemoteController {
   private socket?: WebSocket;
   private syncResponse?: Awaited<ReturnType<Remote["syncFrom"]>>;
   private syncStatus: SyncStatus = SyncStatus.NOT_STARTED;
-  private recentQueriesError?: { type: "extension_not_installed"; extensionName: string };
 
   constructor(
     private readonly remote: Remote,
@@ -118,7 +117,9 @@ export class RemoteController {
       return Response.json({ status: this.syncStatus });
     }
     const { schema, meta } = this.syncResponse;
-    const { queries, diffs, disabledIndexes } = await this.remote.getStatus();
+    const { queries, diffs, disabledIndexes, pgStatStatementsNotInstalled } =
+      await this.remote.getStatus();
+
     let deltas: DeltasResult;
     if (diffs.status === "fulfilled") {
       deltas = { type: "ok", value: diffs.value };
@@ -129,12 +130,20 @@ export class RemoteController {
       status: this.syncStatus,
       meta,
       schema,
-      queries: this.recentQueriesError
-        ? { type: "error", error: "extension_not_installed" }
+      queries: pgStatStatementsNotInstalled
+        ? this.pgStatStatementsNotInstalledError()
         : { type: "ok", value: queries },
       disabledIndexes: { type: "ok", value: disabledIndexes },
       deltas,
     });
+  }
+
+  private pgStatStatementsNotInstalledError() {
+    return {
+      type: "error",
+      error: "extension_not_installed",
+      extensionName: "pg_stat_statements",
+    } as const;
   }
 
   private async onFullSync(request: Request): Promise<Response> {
@@ -150,15 +159,15 @@ export class RemoteController {
         type: "pullFromSource",
       });
       this.syncStatus = SyncStatus.COMPLETED;
-      this.recentQueriesError = this.syncResponse.recentQueriesError;
       const { schema, meta } = this.syncResponse;
-      const queries = this.remote.optimizer.getQueries();
+      const { queries, pgStatStatementsNotInstalled } = await this.remote
+        .getStatus();
 
       return Response.json({
         meta,
         schema,
-        queries: this.recentQueriesError
-          ? { type: "error", error: "extension_not_installed" }
+        queries: pgStatStatementsNotInstalled
+          ? this.pgStatStatementsNotInstalledError()
           : { type: "ok", value: queries },
       });
     } catch (error) {
