@@ -51,11 +51,11 @@ Deno.test({
     const conn = Connectable.fromString(pg.getConnectionUri());
     const optimizer = new QueryOptimizer(manager, conn);
 
-    const expectedImprovements = ["select * from testing where a = $1"];
+    const expectedImprovements = ["select * from testing where a = $1;"];
     const expectedNoImprovements = [
-      "select * from testing where b = $1",
-      "select * from testing where b > $1",
-      "select * from testing where b < $1",
+      "select * from testing where b = $1;",
+      "select * from testing where b > $1;",
+      "select * from testing where b < $1;",
     ];
 
     let improvements: string[] = [];
@@ -121,9 +121,9 @@ Deno.test({
         new RecentQuery(
           {
             calls: "0",
-            formattedQuery: "select * from testing where a >= $1",
+            formattedQuery: "select * from testing where a >= $1;",
             meanTime: 100,
-            query: "select * from testing where a >= $1",
+            query: "select * from testing where a >= $1;",
             rows: "1",
             topLevel: true,
             username: "test",
@@ -143,7 +143,7 @@ Deno.test({
         ),
       ]);
       assertArrayIncludes(
-        [...expectedImprovements, "select * from testing where a >= $1"],
+        [...expectedImprovements, "select * from testing where a >= $1;"],
         improvements,
       );
       assertArrayIncludes(expectedNoImprovements, noImprovements);

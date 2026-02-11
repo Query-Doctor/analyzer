@@ -78,8 +78,8 @@ Deno.test({
 
       const queries = optimizedQueries.map((f) => f.query);
       assertArrayIncludes(queries, [
-        "create table testing(a int, b text)",
-        "select * from testing where a = $1",
+        "create table testing(a int, b text);",
+        "select * from testing where a = $1;",
       ]);
 
       assertOk(result.schema);
@@ -407,10 +407,10 @@ Deno.test({
       const queryStrings = queries.map((q) => q.query);
 
       assertArrayIncludes(queryStrings, [
-        "select * from conditions where time < now()",
+        "select * from conditions where time < now();",
       ]);
       const indexesAfter = await t.exec(
-        "select indexname from pg_indexes where schemaname = 'public'",
+        "select indexname from pg_indexes where schemaname = 'public';",
       );
       assertEquals(
         indexesAfter.length,
@@ -490,9 +490,7 @@ Deno.test({
         "fulfilled",
         "Schema poll should succeed",
       );
-      const diffs = diffsResult.status === "fulfilled"
-        ? diffsResult.value
-        : [];
+      const diffs = diffsResult.status === "fulfilled" ? diffsResult.value : [];
 
       assertEquals(
         diffs.length,
