@@ -6,6 +6,7 @@ import {
   Analyzer,
   DiscoveredColumnReference,
   Nudge,
+  PostgresQueryBuilder,
   PssRewriter,
   SQLCommenterTag,
   type TableReference,
@@ -19,6 +20,7 @@ import type { LiveQueryOptimization } from "../remote/optimization.ts";
  * and supplying the date the query was last seen
  */
 export class RecentQuery {
+  private static HARDCODED_LIMIT = 50;
   private static rewriter = new PssRewriter();
 
   readonly formattedQuery: string;
@@ -70,8 +72,8 @@ export class RecentQuery {
     seenAt: number,
   ) {
     const analyzer = new Analyzer(parse);
-    const rewrittenQuery = RecentQuery.rewriter.rewrite(data.query);
-    const analysis = await analyzer.analyze(rewrittenQuery);
+    const query = this.rewriteQuery(data.query);
+    const analysis = await analyzer.analyze(query);
     const formattedQuery = await RecentQuery.formatQuery(
       analysis.queryWithoutTags,
     );
@@ -84,6 +86,13 @@ export class RecentQuery {
       hash,
       seenAt,
     );
+  }
+
+  private static rewriteQuery(rawQuery: string): string {
+    const query = new PostgresQueryBuilder(rawQuery).replaceLimit(
+      RecentQuery.HARDCODED_LIMIT,
+    ).build();
+    return RecentQuery.rewriter.rewrite(query);
   }
 
   private static async formatQuery(query: string): Promise<string> {
