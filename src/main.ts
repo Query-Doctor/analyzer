@@ -3,8 +3,8 @@ import { Runner } from "./runner.ts";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
-import { shutdown } from "./shutdown.ts";
 import { Connectable } from "./sync/connectable.ts";
+import { shutdownController } from "./shutdown.ts";
 
 async function runInCI(
   postgresUrl: Connectable,
@@ -22,31 +22,42 @@ async function runInCI(
   await runner.run();
 }
 
-function runOutsideCI() {
-  const os = Deno.build.os;
-  const arch = Deno.build.arch;
+async function runOutsideCI() {
+  const os = process.platform;
+  const arch = process.arch;
   log.info(
     `Starting server (${os}-${arch}) on ${env.HOST}:${env.PORT}`,
     "main",
   );
   if (!env.POSTGRES_URL) {
     core.setFailed("POSTGRES_URL environment variable is not set");
-    Deno.exit(1);
+    process.exit(1);
   }
-  createServer(env.HOST, env.PORT, Connectable.fromString(env.POSTGRES_URL));
+  const server = await createServer(
+    env.HOST,
+    env.PORT,
+    Connectable.fromString(env.POSTGRES_URL),
+  );
+
+  const shutdown = async () => {
+    shutdownController.abort();
+    await server.close();
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }
 
 async function main() {
-  Deno.addSignalListener("SIGTERM", shutdown);
-  Deno.addSignalListener("SIGINT", shutdown);
   if (env.CI) {
     if (!env.POSTGRES_URL) {
       core.setFailed("POSTGRES_URL environment variable is not set");
-      Deno.exit(1);
+      process.exit(1);
     }
     if (!env.LOG_PATH) {
       core.setFailed("LOG_PATH environment variable is not set");
-      Deno.exit(1);
+      process.exit(1);
     }
     await runInCI(
       Connectable.fromString(env.POSTGRES_URL),
@@ -54,12 +65,10 @@ async function main() {
       env.STATISTICS_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,
     );
-    Deno.exit();
+    process.exit();
   } else {
-    runOutsideCI();
+    await runOutsideCI();
   }
 }
 
-if (import.meta.main) {
-  await main();
-}
+await main();

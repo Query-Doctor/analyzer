@@ -1,4 +1,6 @@
-import schemaDumpSql from "./schema_dump.sql" with { type: "text" };
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -21,8 +23,12 @@ import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
-// deno-lint-ignore no-unused-vars
+import { toPgTextArray } from "../sql/postgresjs.ts";
 import { ConnectionManager } from "./connection-manager.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const schemaDumpSql = readFileSync(join(__dirname, "schema_dump.sql"), "utf-8");
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -85,6 +91,7 @@ export type ResetPgStatStatementsResult =
 export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
+  private pssSchema: PgIdentifier | null = null;
   /**
    * The minimum size for a table to be considered for sampling.
    * Otherwise we use the `order by random()` instead.
@@ -94,6 +101,25 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
     private readonly db: Postgres,
     private readonly segmentedQueryCache: SegmentedQueryCache,
   ) {}
+
+  /**
+   * Resolve the schema where pg_stat_statements is installed.
+   * Caches the result for the lifetime of this connector.
+   */
+  private async getPssSchema(): Promise<PgIdentifier> {
+    if (this.pssSchema) return this.pssSchema;
+    const rows = await this.db.exec<{ nspname: string }>(
+      `SELECT n.nspname
+       FROM pg_extension e
+       JOIN pg_namespace n ON n.oid = e.extnamespace
+       WHERE e.extname = 'pg_stat_statements'`,
+    );
+    if (rows.length === 0) {
+      throw new ExtensionNotInstalledError("pg_stat_statements");
+    }
+    this.pssSchema = PgIdentifier.fromString(rows[0].nspname);
+    return this.pssSchema;
+  }
 
   async onStartAnalyze(): Promise<void> {
     const results = await this.db.exec<{ table: string; count: number }>(
@@ -179,7 +205,7 @@ ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
           [
-            options.excludedSchemas,
+            toPgTextArray(options.excludedSchemas),
           ],
         ),
     )();
@@ -436,7 +462,7 @@ ORDER BY
        JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
          ON n.nspname = t.schema_name AND c.relname = t.table_name
        WHERE c.relkind IN ('r', 'm')`,
-      [schemaNames, tableNames],
+      [toPgTextArray(schemaNames), toPgTextArray(tableNames)],
     );
     return Number(results[0]?.total_rows ?? 0);
   }
@@ -470,6 +496,7 @@ ORDER BY
    */
   public async getRecentQueries(): Promise<RecentQuery[]> {
     try {
+      const pssSchema = await this.getPssSchema();
       const results = await this.db.exec<RawRecentQuery>(`
       SELECT
         'unknown_user' as "username",
@@ -478,7 +505,7 @@ ORDER BY
         calls,
         rows,
         toplevel as "topLevel"
-      FROM pg_stat_statements
+      FROM ${pssSchema}.pg_stat_statements
       WHERE query not like '%pg_stat_statements%'
         -- and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
@@ -490,6 +517,9 @@ ORDER BY
         results,
       );
     } catch (err) {
+      if (err instanceof ExtensionNotInstalledError) {
+        throw err;
+      }
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')
@@ -507,8 +537,9 @@ ORDER BY
    */
   public async resetPgStatStatements(): Promise<void> {
     try {
+      const pssSchema = await this.getPssSchema();
       await this.db.exec(`
-          SELECT pg_stat_statements_reset(); -- @qd_introspection
+          SELECT ${pssSchema}.pg_stat_statements_reset(); -- @qd_introspection
       `);
 
       this.segmentedQueryCache.reset(this.db);

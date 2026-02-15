@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { mapValues } from "@std/collections";
 
 const envSchema = z.object({
   CI: z.stringbool().default(false),
@@ -21,5 +20,7 @@ const envSchema = z.object({
 
 // we want to avoid asking for ALL env permissions if possible
 export const env = envSchema.parse(
-  mapValues(envSchema.shape, (_, key) => Deno.env.get(key)),
+  Object.fromEntries(
+    Object.keys(envSchema.shape).map((key) => [key, process.env[key]]),
+  ),
 );

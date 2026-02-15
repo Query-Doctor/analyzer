@@ -1,4 +1,5 @@
-import postgres from "postgresjs";
+import { Pool, type PoolConfig, type PoolClient } from "pg";
+import Cursor from "pg-cursor";
 import {
   type Postgres,
   type PostgresTransaction,
@@ -7,42 +8,38 @@ import {
 import { Connectable } from "../sync/connectable.ts";
 import { log } from "../log.ts";
 
-type PgConnectionOptions = postgres.Options<
-  Record<string, postgres.PostgresType>
->;
-
 const DEFAULT_ITEMS_PER_PAGE = 20;
 // we want to set a very low idle timeout to prevent
 // clogging up connections
-const DEFAULT_IDLE_TIMEOUT_SECONDS = 15;
+const DEFAULT_IDLE_TIMEOUT_MS = 15_000;
 // it's ok to recycle connections frequently if needed
-const DEFAULT_MAX_LIFETIME_SECONDS = 60 * 5;
+const DEFAULT_MAX_LIFETIME_MS = 60 * 5 * 1000;
 
 /**
  * Connecting to the local optimizer
  */
 export function connectToOptimizer(connectable: Connectable) {
   const hostname = connectable.url.searchParams.get("host");
-  const baseConnectionOptions: PgConnectionOptions = {
+  const baseConfig: PoolConfig = {
     max: 100,
   };
 
   if (hostname) {
     const database = connectable.url.pathname.slice(1);
-    const connectionOptions: PgConnectionOptions = {
-      ...baseConnectionOptions,
-      username: "postgres",
+    const config: PoolConfig = {
+      ...baseConfig,
+      user: "postgres",
       database,
-      hostname,
+      host: hostname,
     };
-    const pg = postgres(connectionOptions);
-    return wrapGenericPostgresInterface(pg);
+    const pool = new Pool(config);
+    return wrapPgPool(pool);
   } else {
     log.info(
       `Connecting to optimizing db ${connectable} using custom POSTGRES_URL`,
       "postgres",
     );
-    return connect(connectable, baseConnectionOptions);
+    return connect(connectable, baseConfig);
   }
 }
 
@@ -55,57 +52,126 @@ export function connectToOptimizer(connectable: Connectable) {
 export function connectToSource(
   connectable: Connectable,
 ) {
-  const connectionOptions: PgConnectionOptions = {
+  const config: PoolConfig = {
     max: 20,
-    max_lifetime: DEFAULT_MAX_LIFETIME_SECONDS,
-    idle_timeout: DEFAULT_IDLE_TIMEOUT_SECONDS,
+    idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
   };
 
-  return connect(connectable, connectionOptions);
+  return connect(connectable, config);
 }
 
-function connect(connectable: Connectable, options: PgConnectionOptions) {
-  const pg = postgres(connectable.toString(), options);
-  return wrapGenericPostgresInterface(pg);
+function connect(connectable: Connectable, config: PoolConfig) {
+  const pool = new Pool({
+    ...config,
+    connectionString: connectable.toString(),
+  });
+  return wrapPgPool(pool);
 }
 
-export function wrapGenericPostgresInterface(pg: postgres.Sql): Postgres {
+/**
+ * Pre-serialize array/object params as JSON strings.
+ * pg serializes arrays as PostgreSQL array literals ({...}),
+ * but the Postgres interface expects postgres.js semantics
+ * where complex types are sent as JSON strings ([...]).
+ */
+function serializeParams(params?: unknown[]): unknown[] | undefined {
+  if (!params) return params;
+  return params.map((p) => {
+    if (p === null || p === undefined) return p;
+    if (Array.isArray(p)) return JSON.stringify(p);
+    if (typeof p === "object" && !(p instanceof Buffer)) return JSON.stringify(p);
+    return p;
+  });
+}
+
+/**
+ * Format a string array as a PostgreSQL array literal.
+ * Use this for params that target ::text[] casts instead of ::jsonb,
+ * so they bypass JSON serialization in serializeParams.
+ */
+export function toPgTextArray(arr: string[]): string {
+  if (arr.length === 0) return "{}";
+  return "{" + arr.map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"').join(",") + "}";
+}
+
+export function wrapPgPool(pool: Pool): Postgres {
+  // Handle idle client errors to prevent process crashes.
+  // Expected during DROP DATABASE ... WITH (FORCE) which terminates
+  // all connections to the target database.
+  pool.on("error", (err) => {
+    log.warn(`Pool idle client error: ${err.message}`, "postgres");
+  });
+
   return {
-    exec: (query, params) => {
-      return pg.unsafe(query, params as postgres.ParameterOrJSON<never>[]);
+    exec: async (query, params) => {
+      const result = await pool.query(query, serializeParams(params) as any[]);
+      return result.rows;
     },
-    serverNum: async () =>
-      PostgresVersion.parse(
-        (await pg.unsafe(`show server_version_num`))[0].server_version_num,
-      ),
+    serverNum: async () => {
+      const result = await pool.query("show server_version_num");
+      return PostgresVersion.parse(result.rows[0].server_version_num);
+    },
     transaction: async <T>(
       callback: (tx: PostgresTransaction) => Promise<T>,
     ) => {
-      const result = await pg.begin<T>((tx) => {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        let savepointCounter = 0;
+        // Serialize exec calls to prevent savepoint interleaving
+        // when callers use Promise.all (matches postgres.js behavior)
+        let queue: Promise<void> = Promise.resolve();
         const transaction: PostgresTransaction = {
-          exec: tx.unsafe,
+          exec: (query, params) => {
+            const doExec = async () => {
+              const sp = "sp_" + savepointCounter++;
+              await client.query("SAVEPOINT " + sp);
+              try {
+                const result = await client.query(query, serializeParams(params) as any[]);
+                await client.query("RELEASE SAVEPOINT " + sp);
+                return result.rows;
+              } catch (error) {
+                await client.query("ROLLBACK TO SAVEPOINT " + sp);
+                throw error;
+              }
+            };
+            const result = queue.then(doExec, doExec);
+            queue = result.then(() => {}, () => {});
+            return result;
+          },
         };
-        return callback(transaction);
-      });
-      // TODO: is this safe?
-      return result as Promise<T>;
+        const result = await callback(transaction);
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async *cursor<T>(
       query: string,
       params?: unknown[],
       options?: { size?: number },
     ) {
-      const result = pg
-        .unsafe(query, params as postgres.ParameterOrJSON<never>[])
-        .cursor(options?.size ?? DEFAULT_ITEMS_PER_PAGE);
-      for await (const row of result) {
-        // TODO: is this safe?
-        yield* row as T[];
+      const client = await pool.connect();
+      try {
+        const cursor = client.query(new Cursor(query, serializeParams(params) as any[]));
+        const batchSize = options?.size ?? DEFAULT_ITEMS_PER_PAGE;
+        let rows = await cursor.read(batchSize);
+        while (rows.length > 0) {
+          yield* rows as T[];
+          rows = await cursor.read(batchSize);
+        }
+        await cursor.close();
+      } finally {
+        client.release();
       }
     },
     // @ts-expect-error | this will be added to the pg interface later
     close() {
-      return pg.end();
+      return pool.end();
     },
   };
 }
