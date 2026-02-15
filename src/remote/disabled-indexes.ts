@@ -32,9 +32,9 @@ export class DisabledIndexes {
     return false;
   }
 
-  [Symbol.iterator](): Iterator<PgIdentifier> {
-    return this.disabledIndexNames.values().map((indexName) =>
-      PgIdentifier.fromString(indexName)
-    );
+  *[Symbol.iterator](): Iterator<PgIdentifier> {
+    for (const indexName of this.disabledIndexNames) {
+      yield PgIdentifier.fromString(indexName);
+    }
   }
 }

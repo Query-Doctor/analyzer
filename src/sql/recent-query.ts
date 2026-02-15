@@ -1,6 +1,5 @@
 import * as prettier from "prettier";
 import prettierPluginSql from "prettier-plugin-sql";
-// deno-lint-ignore no-unused-vars
 import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
   Analyzer,

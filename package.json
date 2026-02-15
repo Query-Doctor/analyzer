@@ -1,0 +1,50 @@
+{
+  "name": "@query-doctor/analyzer",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --import tsx src/main.ts",
+    "start:dev": "node --import tsx --watch src/main.ts",
+    "dev": "node --env-file=.env --import tsx --watch src/main.ts",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs --packages=external && cp src/reporters/github/success.md.j2 src/sync/schema_dump.sql dist/"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@actions/github": "^6.0.1",
+    "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/websocket": "^11.2.0",
+    "@libpg-query/parser": "^17.6.3",
+    "@opentelemetry/api": "^1.9.0",
+    "@pgsql/types": "^17.6.1",
+    "@query-doctor/core": "^0.4.0",
+    "async-sema": "^3.1.1",
+    "dedent": "^1.6.0",
+    "fast-csv": "^5.0.5",
+    "fastify": "^5.3.3",
+    "jsondiffpatch": "^0.7.3",
+    "nunjucks": "^3.2.4",
+    "pg": "^8.16.0",
+    "pg-cursor": "^2.12.3",
+    "pgsql-deparser": "^17.11.1",
+    "prettier": "^3",
+    "prettier-plugin-sql": "^0.19",
+    "sql-highlight": "^6.1.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "^11.9.0",
+    "@types/node": "^24.9.1",
+    "@types/nunjucks": "^3.2.6",
+    "@types/pg": "^8.15.4",
+    "@types/pg-cursor": "^2.7.2",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.27.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.4"
+  }
+}

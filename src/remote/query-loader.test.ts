@@ -1,7 +1,4 @@
-import { assertEquals } from "@std/assert/equals";
-import { assertGreater } from "@std/assert/greater";
-import { stub } from "@std/testing/mock";
-import { FakeTime } from "@std/testing/time";
+import { test, expect, vi, afterEach } from "vitest";
 import type {
   OptimizedQuery,
   QueryHash,
@@ -12,6 +9,11 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { QueryLoader } from "./query-loader.ts";
 import { PostgresConnector } from "../sync/pg-connector.ts";
 import { PostgresError } from "../sync/errors.ts";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 function createMockRecentQuery(query: string): RecentQuery {
   return {
@@ -38,259 +40,249 @@ function createMockRecentQuery(query: string): RecentQuery {
   } as RecentQuery;
 }
 
-Deno.test({
-  name: "QueryLoader - poll emits poll event with queries",
-  fn: async () => {
-    const mockQueries = [
-      createMockRecentQuery("SELECT * FROM users"),
-      createMockRecentQuery("SELECT * FROM posts"),
-    ];
+function stubConnector(manager: ConnectionManager, impl: Partial<PostgresConnector>) {
+  vi.spyOn(manager, "getConnectorFor").mockReturnValue(impl as PostgresConnector);
+}
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+test("QueryLoader - poll emits poll event with queries", async () => {
+  const mockQueries = [
+    createMockRecentQuery("SELECT * FROM users"),
+    createMockRecentQuery("SELECT * FROM posts"),
+  ];
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: () => Promise.resolve(mockQueries),
-    } as PostgresConnector));
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 3 });
+  stubConnector(manager, {
+    getRecentQueries: () => Promise.resolve(mockQueries),
+  });
 
-    const pollEvents: RecentQuery[][] = [];
-    loader.on("poll", (queries) => {
-      pollEvents.push(queries);
-    });
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 3 });
 
-    const shouldContinue = await loader.poll();
+  const pollEvents: RecentQuery[][] = [];
+  loader.on("poll", (queries) => {
+    pollEvents.push(queries);
+  });
 
-    assertEquals(shouldContinue, true);
-    assertEquals(pollEvents.length, 1);
-    assertEquals(pollEvents[0], mockQueries);
-  },
+  const shouldContinue = await loader.poll();
+
+  expect(shouldContinue).toEqual(true);
+  expect(pollEvents.length).toEqual(1);
+  expect(pollEvents[0]).toEqual(mockQueries);
 });
 
-Deno.test({
-  name: "QueryLoader - poll handles errors and emits pollError",
-  fn: async () => {
-    const testError = new PostgresError("Database connection failed");
+test("QueryLoader - poll handles errors and emits pollError", async () => {
+  const testError = new PostgresError("Database connection failed");
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: (): Promise<RecentQuery[]> => {
-        throw testError;
-      },
-    } as PostgresConnector));
+  stubConnector(manager, {
+    getRecentQueries: (): Promise<RecentQuery[]> => {
+      throw testError;
+    },
+  });
 
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 3 });
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 3 });
 
-    const pollErrors: unknown[] = [];
-    loader.on("pollError", (error) => {
-      pollErrors.push(error);
-    });
+  const pollErrors: unknown[] = [];
+  loader.on("pollError", (error) => {
+    pollErrors.push(error);
+  });
 
-    const shouldContinue1 = await loader.poll();
-    assertEquals(shouldContinue1, true);
-    assertEquals(pollErrors.length, 1);
-    assertEquals(pollErrors[0], testError);
+  const shouldContinue1 = await loader.poll();
+  expect(shouldContinue1).toEqual(true);
+  expect(pollErrors.length).toEqual(1);
+  expect(pollErrors[0]).toEqual(testError);
 
-    const shouldContinue2 = await loader.poll();
-    assertEquals(shouldContinue2, true);
-    assertEquals(pollErrors.length, 2);
+  const shouldContinue2 = await loader.poll();
+  expect(shouldContinue2).toEqual(true);
+  expect(pollErrors.length).toEqual(2);
 
-    const shouldContinue3 = await loader.poll();
-    assertEquals(shouldContinue3, true);
-    assertEquals(pollErrors.length, 3);
-  },
+  const shouldContinue3 = await loader.poll();
+  expect(shouldContinue3).toEqual(true);
+  expect(pollErrors.length).toEqual(3);
 });
 
-Deno.test({
-  name: "QueryLoader - exits after maxErrors consecutive errors",
-  fn: async () => {
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+test("QueryLoader - exits after maxErrors consecutive errors", async () => {
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: (): Promise<RecentQuery[]> => {
-        throw new Error("Connection error");
-      },
-    } as PostgresConnector));
+  stubConnector(manager, {
+    getRecentQueries: (): Promise<RecentQuery[]> => {
+      throw new Error("Connection error");
+    },
+  });
 
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 2 });
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 2 });
 
-    const exitEvents: number[] = [];
-    loader.on("exit", () => {
-      exitEvents.push(Date.now());
-    });
+  const exitEvents: number[] = [];
+  loader.on("exit", () => {
+    exitEvents.push(Date.now());
+  });
 
-    const shouldContinue1 = await loader.poll();
-    assertEquals(shouldContinue1, true);
-    assertEquals(exitEvents.length, 0);
+  const shouldContinue1 = await loader.poll();
+  expect(shouldContinue1).toEqual(true);
+  expect(exitEvents.length).toEqual(0);
 
-    const shouldContinue2 = await loader.poll();
-    assertEquals(shouldContinue2, true);
-    assertEquals(exitEvents.length, 0);
+  const shouldContinue2 = await loader.poll();
+  expect(shouldContinue2).toEqual(true);
+  expect(exitEvents.length).toEqual(0);
 
-    const shouldContinue3 = await loader.poll();
-    assertEquals(shouldContinue3, false);
-    assertEquals(exitEvents.length, 1);
-  },
+  const shouldContinue3 = await loader.poll();
+  expect(shouldContinue3).toEqual(false);
+  expect(exitEvents.length).toEqual(1);
 });
 
-Deno.test({
-  name: "QueryLoader - error counter resets on successful poll",
-  fn: async () => {
-    let callCount = 0;
+test("QueryLoader - error counter resets on successful poll", async () => {
+  let callCount = 0;
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: (): Promise<RecentQuery[]> => {
-        callCount++;
-        if (callCount !== 3) {
-          throw new Error("Temporary error");
-        }
-        return Promise.resolve([createMockRecentQuery("SELECT 1")]);
-      },
-    } as PostgresConnector));
+  stubConnector(manager, {
+    getRecentQueries: (): Promise<RecentQuery[]> => {
+      callCount++;
+      if (callCount !== 3) {
+        throw new Error("Temporary error");
+      }
+      return Promise.resolve([createMockRecentQuery("SELECT 1")]);
+    },
+  });
 
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 2 });
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 2 });
 
-    const pollErrors: unknown[] = [];
-    const pollEvents: RecentQuery[][] = [];
-    loader.on("pollError", (error) => pollErrors.push(error));
-    loader.on("poll", (queries) => pollEvents.push(queries));
+  const pollErrors: unknown[] = [];
+  const pollEvents: RecentQuery[][] = [];
+  loader.on("pollError", (error) => pollErrors.push(error));
+  loader.on("poll", (queries) => pollEvents.push(queries));
 
-    await loader.poll();
-    assertEquals(pollErrors.length, 1);
-    assertEquals(pollEvents.length, 0);
+  await loader.poll();
+  expect(pollErrors.length).toEqual(1);
+  expect(pollEvents.length).toEqual(0);
 
-    await loader.poll();
-    assertEquals(pollErrors.length, 2);
-    assertEquals(pollEvents.length, 0);
+  await loader.poll();
+  expect(pollErrors.length).toEqual(2);
+  expect(pollEvents.length).toEqual(0);
 
-    const shouldContinue = await loader.poll();
-    assertEquals(shouldContinue, true);
-    assertEquals(pollErrors.length, 2);
-    assertEquals(pollEvents.length, 1);
+  const shouldContinue = await loader.poll();
+  expect(shouldContinue).toEqual(true);
+  expect(pollErrors.length).toEqual(2);
+  expect(pollEvents.length).toEqual(1);
 
-    await loader.poll();
-    await loader.poll();
-    const finalResult = await loader.poll();
-    assertEquals(finalResult, false);
-  },
+  await loader.poll();
+  await loader.poll();
+  const finalResult = await loader.poll();
+  expect(finalResult).toEqual(false);
 });
 
-Deno.test({
-  name: "QueryLoader - stop prevents further polling",
-  fn: async () => {
-    using time = new FakeTime();
+test("QueryLoader - stop prevents further polling", async () => {
+  vi.useFakeTimers();
 
-    const mockQueries = [createMockRecentQuery("SELECT 1")];
+  const mockQueries = [createMockRecentQuery("SELECT 1")];
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: () => Promise.resolve(mockQueries),
-    } as PostgresConnector));
+  stubConnector(manager, {
+    getRecentQueries: () => Promise.resolve(mockQueries),
+  });
 
-    const loader = new QueryLoader(manager, connectable);
+  const loader = new QueryLoader(manager, connectable);
 
-    let pollCount = 0;
-    loader.on("poll", () => {
-      pollCount++;
-    });
+  let pollCount = 0;
+  loader.on("poll", () => {
+    pollCount++;
+  });
 
-    loader.start();
-    loader.stop();
+  loader.start();
+  loader.stop();
 
-    await time.tickAsync(10000);
+  await vi.advanceTimersByTimeAsync(10000);
 
-    assertEquals(pollCount, 0);
-  },
+  expect(pollCount).toEqual(0);
 });
 
-Deno.test({
-  name: "QueryLoader - start schedules polls with default interval",
-  fn: async () => {
-    using time = new FakeTime();
+test("QueryLoader - start schedules polls with default interval", async () => {
+  vi.useFakeTimers();
 
-    const mockQueries = [createMockRecentQuery("SELECT 1")];
+  const mockQueries = [createMockRecentQuery("SELECT 1")];
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: () => Promise.resolve(mockQueries),
-    } as PostgresConnector));
+  stubConnector(manager, {
+    getRecentQueries: () => Promise.resolve(mockQueries),
+  });
 
-    const loader = new QueryLoader(manager, connectable);
+  const loader = new QueryLoader(manager, connectable);
 
-    let pollCount = 0;
-    loader.on("poll", () => {
-      pollCount++;
-    });
+  let pollCount = 0;
+  loader.on("poll", () => {
+    pollCount++;
+  });
 
-    loader.start();
+  loader.start();
 
-    await time.tickAsync(10000);
+  await vi.advanceTimersByTimeAsync(10000);
 
-    assertGreater(pollCount, 0);
+  expect(pollCount).toBeGreaterThan(0);
 
-    loader.stop();
-  },
+  loader.stop();
 });
 
-Deno.test({
-  name:
-    "QueryLoader - emits exit on unexpected promise rejection in scheduled poll",
-  fn: async () => {
-    using time = new FakeTime();
+test("QueryLoader - handles non-Error exceptions", async () => {
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    let shouldFail = false;
+  stubConnector(manager, {
+    getRecentQueries: (): Promise<RecentQuery[]> => {
+      throw "String error";
+    },
+  });
 
-    const manager = ConnectionManager.forLocalDatabase();
-    const connectable = Connectable.fromString(
-      "postgres://localhost:5432/test",
-    );
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 1 });
 
-    using _ = stub(manager, "getConnectorFor", () => ({
-      getRecentQueries: (): Promise<RecentQuery[]> => {
-        if (shouldFail) {
-          throw new PostgresError("String error");
-        }
-        return Promise.resolve([createMockRecentQuery("SELECT 1")]);
-      },
-    } as PostgresConnector));
+  const pollErrors: unknown[] = [];
+  loader.on("pollError", (error) => {
+    pollErrors.push(error);
+  });
 
-    const loader = new QueryLoader(manager, connectable, { maxErrors: 0 });
+  const shouldContinue = await loader.poll();
+  expect(shouldContinue).toEqual(true);
+  expect(pollErrors.length).toEqual(1);
+});
 
-    const exitEvents: number[] = [];
-    loader.on("exit", () => {
-      exitEvents.push(Date.now());
-    });
+test("QueryLoader - emits exit on unexpected promise rejection in scheduled poll", async () => {
+  vi.useFakeTimers();
 
-    shouldFail = true;
-    loader.start();
+  let shouldFail = false;
 
-    await time.tickAsync(10000);
-    await time.runMicrotasks();
+  const manager = ConnectionManager.forLocalDatabase();
+  const connectable = Connectable.fromString("postgres://localhost:5432/test");
 
-    assertGreater(exitEvents.length, 0);
-    loader.stop();
-  },
+  stubConnector(manager, {
+    getRecentQueries: (): Promise<RecentQuery[]> => {
+      if (shouldFail) {
+        throw new PostgresError("Unexpected error");
+      }
+      return Promise.resolve([createMockRecentQuery("SELECT 1")]);
+    },
+  });
+
+  const loader = new QueryLoader(manager, connectable, { maxErrors: 0 });
+
+  const exitEvents: number[] = [];
+  loader.on("exit", () => {
+    exitEvents.push(Date.now());
+  });
+
+  shouldFail = true;
+  loader.start();
+
+  await vi.advanceTimersByTimeAsync(10000);
+  await vi.advanceTimersByTimeAsync(0);
+
+  expect(exitEvents.length).toBeGreaterThan(0);
+  loader.stop();
 });
