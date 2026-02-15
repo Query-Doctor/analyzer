@@ -40,9 +40,9 @@ jobs:
           key: ${{ runner.os }}-buildx-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-buildx-
-      - name: Set sync_version from deno.json
+      - name: Set sync_version from package.json
         run: |
-          sync_version=$(jq -r '.version' deno.json)
+          sync_version=$(jq -r '.version' package.json)
           echo "sync_version=${sync_version}" >> $GITHUB_ENV
       - name: Build and push @query-doctor/analyzer
         id: build

@@ -11,12 +11,15 @@ branding:
 runs:
   using: "composite"
   steps:
-    # Setup Deno environment
-    - name: Install Deno
-      uses: denoland/setup-deno@v2
+    - name: Install Node.js
+      uses: actions/setup-node@v6
       with:
-        cache: true
-        deno-version: v2.x
+        node-version: 24
+        cache: npm
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
 
     # Cache pgBadger build
     - name: Cache pgBadger
@@ -48,10 +51,10 @@ runs:
         sudo make install # Use sudo to install globally
         cd ${{ github.action_path }} # Return to action directory
 
-    # Run the compiled application
+    # Run the application
     - name: Run Analyzer
       shell: bash
-      run: deno run start
+      run: npm run start
       env:
         PG_DUMP_BINARY: /usr/bin/pg_dump
         CI: "true"
