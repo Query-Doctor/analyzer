@@ -51,7 +51,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private target?: Target;
   private semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
-  private _finish = Promise.withResolvers();
+  private _finish = Promise.withResolvers<void>();
 
   private _validQueriesProcessed = 0;
   private _invalidQueries = 0;
@@ -140,7 +140,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this.semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
     this.queries.clear();
     this.target = undefined;
-    this._finish = Promise.withResolvers();
+    this._finish = Promise.withResolvers<void>();
     this._allQueries = 0;
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
@@ -153,7 +153,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     } else {
       this.resetQueryOptimizationState();
     }
-    this._finish = Promise.withResolvers();
+    this._finish = Promise.withResolvers<void>();
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
     if (this.target) {
@@ -281,7 +281,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           this.semaphore.release(token);
         }
         if (!optimized) {
-          this._finish.resolve(0);
+          this._finish.resolve();
           break;
         }
         this._validQueriesProcessed++;

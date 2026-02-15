@@ -1,13 +1,14 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
+import websocket from "@fastify/websocket";
 import { PostgresSyncer } from "../sync/syncer.ts";
 import { log } from "../log.ts";
-import * as limiter from "./rate-limit.ts";
 import { LiveQueryRequest, SyncRequest } from "./sync.dto.ts";
 import { ZodError } from "zod";
-import { shutdownController } from "../shutdown.ts";
 import { env } from "../env.ts";
 import { SyncResult } from "../sync/syncer.ts";
-import type { RateLimitResult } from "@rabbit-company/rate-limiter";
 import * as errors from "../sync/errors.ts";
 import { RemoteController } from "../remote/remote-controller.ts";
 import { Connectable } from "../sync/connectable.ts";
@@ -18,38 +19,33 @@ const sourceConnectionManager = ConnectionManager.forRemoteDatabase();
 
 const syncer = new PostgresSyncer(sourceConnectionManager);
 
-async function onSync(req: Request) {
+async function onSync(body: unknown) {
   const startTime = Date.now();
-  const url = new URL(req.url);
 
-  if (!req.body) {
-    return new Response("Missing body", { status: 400 });
-  }
-  let body: SyncRequest;
-  const bodyString = await req.text();
+  let parsed: SyncRequest;
   try {
-    body = SyncRequest.parse(JSON.parse(bodyString));
+    parsed = SyncRequest.parse(body);
   } catch (e: unknown) {
     if (e instanceof ZodError) {
-      return Response.json(
-        {
+      return {
+        status: 400,
+        body: {
           kind: "error",
           type: "invalid_body",
           error: e.issues.map((issue) => issue.message).join("\n"),
         },
-        { status: 400 },
-      );
+      };
     }
-    return Response.json(
-      {
+    return {
+      status: 400,
+      body: {
         kind: "error",
         type: "unexpected_error",
         error: String(e),
       },
-      { status: 400 },
-    );
+    };
   }
-  const { seed, requiredRows, maxRows } = body;
+  const { seed, requiredRows, maxRows } = parsed;
   const span = trace.getActiveSpan();
   if (requiredRows > maxRows) {
     log.warn(
@@ -64,192 +60,180 @@ async function onSync(req: Request) {
     );
   }
   span?.setAttribute("requiredRows", requiredRows);
-  span?.setAttribute("db.host", url.hostname);
   let result: SyncResult;
   try {
-    result = await syncer.syncDDL(body.db, {
+    result = await syncer.syncDDL(parsed.db, {
       requiredRows,
       maxRows,
       seed,
     });
   } catch (error) {
     if (error instanceof errors.ExtensionNotInstalledError) {
-      return error.toResponse();
+      return { status: error.statusCode ?? 500, body: error.toJSON() };
     } else if (error instanceof errors.MaxTableIterationsReached) {
-      return error.toResponse();
+      return { status: error.statusCode ?? 500, body: error.toJSON() };
     }
-    return makeUnexpectedErrorResponse(error);
+    return makeUnexpectedErrorResult(error);
   }
   span?.setStatus({ code: SpanStatusCode.OK });
   log.info(`Sent sync response in ${Date.now() - startTime}ms`, "http:sync");
-  return Response.json(
-    {
-      kind: "ok",
-      ...result,
-    },
-    { status: 200 },
-  );
+  return {
+    status: 200,
+    body: { kind: "ok", ...result },
+  };
 }
 
-async function onSyncLiveQuery(req: Request) {
-  let body: LiveQueryRequest;
+async function onSyncLiveQuery(body: unknown) {
+  let parsed: LiveQueryRequest;
   try {
-    body = LiveQueryRequest.parse(await req.json());
+    parsed = LiveQueryRequest.parse(body);
   } catch (e: unknown) {
     if (e instanceof ZodError) {
-      return Response.json(
-        {
+      return {
+        status: 400,
+        body: {
           kind: "error",
           type: "invalid_body",
           error: e.issues.map((issue) => issue.message).join("\n"),
         },
-        { status: 400 },
-      );
+      };
     }
     throw e;
   }
   try {
-    const { queries, deltas } = await syncer.liveQuery(body.db);
-    return Response.json({ kind: "ok", queries, deltas }, { status: 200 });
+    const { queries, deltas } = await syncer.liveQuery(parsed.db);
+    return { status: 200, body: { kind: "ok", queries, deltas } };
   } catch (error) {
     if (error instanceof errors.ExtensionNotInstalledError) {
-      return error.toResponse();
+      return { status: error.statusCode ?? 500, body: error.toJSON() };
     } else if (error instanceof errors.PostgresError) {
-      return error.toResponse();
+      return { status: error.statusCode ?? 500, body: error.toJSON() };
     }
-    return makeUnexpectedErrorResponse(error);
+    return makeUnexpectedErrorResult(error);
   }
 }
 
-export function createServer(
+export async function createServer(
   hostname: string,
   port: number,
   targetDb?: Connectable,
-) {
+): Promise<FastifyInstance> {
+  const fastify = Fastify({ logger: false });
+
+  await fastify.register(cors, {
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+    exposedHeaders: [
+      "Content-Type",
+      "X-RateLimit-Limit",
+      "X-RateLimit-Remaining",
+      "X-RateLimit-Reset",
+    ],
+    maxAge: 86400,
+  });
+
+  if (env.HOSTED) {
+    await fastify.register(rateLimit, {
+      max: 100,
+      timeWindow: "15 minutes",
+    });
+  }
+
+  await fastify.register(websocket);
+
   const optimizingDbConnectionManager = ConnectionManager.forLocalDatabase();
 
   const remoteController = targetDb
     ? new RemoteController(
-      new Remote(targetDb, optimizingDbConnectionManager),
-    )
+        new Remote(targetDb, optimizingDbConnectionManager),
+      )
     : undefined;
-  return Deno.serve(
-    { hostname, port, signal: shutdownController.signal },
-    async (req, info) => {
-      const url = new URL(req.url);
-      log.http(req);
 
-      if (req.method === "OPTIONS") {
-        return transformResponse(
-          new Response("OK", {
-            status: 200,
-            headers: corsHeaders,
-          }),
-        );
-      }
-      if (url.pathname === "/") {
-        return Response.redirect(
-          "https://github.com/Query-Doctor/analyzer",
-          307,
-        );
-      }
-      if (url.pathname === "/health") {
-        return transformResponse(
-          new Response(JSON.stringify({ status: "ok" }), {
-            status: 200,
-            headers: {
-              "Content-Type": "application/json",
-              ...corsHeaders,
-            },
-          }),
-        );
-      }
-      let limit: RateLimitResult | undefined;
-      if (env.HOSTED) {
-        limit = limiter.sync.check(url.pathname, info.remoteAddr.hostname);
-        if (limit.limited) {
-          return limiter.appendHeaders(
-            new Response("Rate limit exceeded", { status: 429 }),
-            limit,
-          );
-        }
-      }
-      try {
-        if (url.pathname === "/postgres/all") {
-          if (req.method !== "POST") {
-            return new Response("Method not allowed", { status: 405 });
-          }
-          const res = await onSync(req);
-          return transformResponse(res, limit);
-        } else if (url.pathname === "/postgres/live") {
-          if (req.method !== "POST") {
-            return new Response("Method not allowed", { status: 405 });
-          }
-          const res = await onSyncLiveQuery(req);
-          return transformResponse(res, limit);
-        }
-        const remoteResponse = await remoteController?.execute(req);
-        if (remoteResponse) {
-          // WebSocket upgrade responses have immutable headers, skip transform
-          if (req.headers.get("upgrade") === "websocket") {
-            return remoteResponse;
-          }
-          return transformResponse(remoteResponse, limit);
-        }
-        return new Response("Not found", { status: 404 });
-      } catch (error) {
-        return transformResponse(
-          new Response(
-            JSON.stringify({
-              error: error instanceof Error
-                ? error.message
-                : "Internal server error",
-            }),
-            {
-              status: 500,
-            },
-          ),
-          limit,
-        );
-      }
-    },
-  );
+  fastify.get("/", async (_request, reply) => {
+    return reply.redirect("https://github.com/Query-Doctor/analyzer", 307);
+  });
+
+  fastify.get("/health", async (_request, reply) => {
+    return reply.send({ status: "ok" });
+  });
+
+  fastify.post("/postgres/all", async (request, reply) => {
+    log.info(`[POST] /postgres/all`, "http");
+    const result = await onSync(request.body);
+    return reply.status(result.status).send(result.body);
+  });
+
+  fastify.post("/postgres/live", async (request, reply) => {
+    log.info(`[POST] /postgres/live`, "http");
+    const result = await onSyncLiveQuery(request.body);
+    return reply.status(result.status).send(result.body);
+  });
+
+  if (remoteController) {
+    fastify.post("/postgres", async (request, reply) => {
+      log.info(`[POST] /postgres`, "http");
+      const result = await remoteController.onFullSync(
+        JSON.stringify(request.body),
+      );
+      return reply.status(result.status).send(result.body);
+    });
+
+    fastify.get("/postgres", async (request, reply) => {
+      log.info(`[GET] /postgres`, "http");
+      const result = await remoteController.getStatus();
+      return reply.send(result);
+    });
+
+    fastify.register(async function (app) {
+      app.get(
+        "/postgres/ws",
+        { websocket: true },
+        (socket, _request) => {
+          remoteController.onWebsocketConnection(socket);
+        },
+      );
+    });
+
+    fastify.post("/postgres/indexes", async (request, reply) => {
+      log.info(`[POST] /postgres/indexes`, "http");
+      const result = await remoteController.createIndex(request.body);
+      return reply.status(result.status).send(result.body);
+    });
+
+    fastify.post("/postgres/indexes/toggle", async (request, reply) => {
+      log.info(`[POST] /postgres/indexes/toggle`, "http");
+      const result = await remoteController.toggleIndex(request.body);
+      return reply.status(result.status).send(result.body);
+    });
+
+    fastify.post("/postgres/reset", async (request, reply) => {
+      log.info(`[POST] /postgres/reset`, "http");
+      const result = await remoteController.onReset(
+        JSON.stringify(request.body),
+      );
+      return reply.status(result.status).send(result.body);
+    });
+  }
+
+  await fastify.listen({ host: hostname, port });
+  return fastify;
 }
 
-function transformResponse(res: Response, limit?: RateLimitResult): Response {
-  for (const [key, value] of Object.entries(corsHeaders)) {
-    res.headers.set(key, value);
-  }
-  if (limit) {
-    limiter.appendHeaders(res, limit);
-  }
-  return res;
-}
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  // cache the preflight requests for 1 day
-  "Access-Control-Max-Age": "86400",
-  "Access-Control-Allow-Methods": "POST",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Expose-Headers":
-    "Content-Type, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
-};
-
-export function makeUnexpectedErrorResponse(error: unknown): Response {
+function makeUnexpectedErrorResult(error: unknown) {
   if (error instanceof Error && !env.HOSTED) {
-    return Response.json(
-      { kind: "error", type: "unexpected_error", error: error.message },
-      { status: 500 },
-    );
+    return {
+      status: 500,
+      body: { kind: "error", type: "unexpected_error", error: error.message },
+    };
   }
   console.error(error);
-  return Response.json(
-    {
+  return {
+    status: 500,
+    body: {
       kind: "error",
       type: "unexpected_error",
       error: "Internal Server Error",
     },
-    { status: 500 },
-  );
+  };
 }

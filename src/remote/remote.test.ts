@@ -1,10 +1,11 @@
+import { test, expect, vi, afterEach } from "vitest";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Connectable } from "../sync/connectable.ts";
 import { Remote } from "./remote.ts";
-import postgres from "postgresjs";
-import { assertEquals } from "@std/assert/equals";
+import { Pool } from "pg";
+
 import { ConnectionManager } from "../sync/connection-manager.ts";
-import { assertArrayIncludes } from "@std/assert";
+
 import { PgIdentifier } from "@query-doctor/core";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 
@@ -34,15 +35,10 @@ export function testSpawnTarget(
 function assertOk<T>(
   result: { type: string; value?: T },
 ): asserts result is { type: "ok"; value: T } {
-  assertEquals(result.type, "ok");
+  expect(result.type).toEqual("ok");
 }
 
-Deno.test({
-  name: "syncs correctly",
-  sanitizeOps: false,
-  // deno is weird... the sync seems like it might be leaking resources?
-  sanitizeResources: false,
-  fn: async () => {
+test("syncs correctly", async () => {
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
         .withCopyContentToContainer([
@@ -77,10 +73,10 @@ Deno.test({
       const optimizedQueries = remote.optimizer.getQueries();
 
       const queries = optimizedQueries.map((f) => f.query);
-      assertArrayIncludes(queries, [
+      expect(queries).toEqual(expect.arrayContaining([
         "create table testing(a int, b text);",
         "select * from testing where a = $1;",
-      ]);
+      ]));
 
       assertOk(result.schema);
 
@@ -89,58 +85,41 @@ Deno.test({
       );
       console.log("tablenames", tableNames);
 
-      assertArrayIncludes(tableNames, ["testing"]);
+      expect(tableNames).toEqual(expect.arrayContaining(["testing"]));
 
       const indexNames = result.schema.value.indexes.map((index) =>
         index.indexName.toString()
       );
-      assertArrayIncludes(indexNames, ["testing_1234"]);
+      expect(indexNames).toEqual(expect.arrayContaining(["testing_1234"]));
 
-      const sql = postgres(
-        target.withDatabaseName(Remote.optimizingDbName).toString(),
-      );
+      const pool = new Pool({
+        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+      });
 
       const indexesAfter =
-        await sql`select indexname from pg_indexes where schemaname = 'public'`;
-      assertEquals(
-        indexesAfter.count,
-        1,
-        "Indexes were not copied over correctly from the source db",
-      );
+        await pool.query("select indexname from pg_indexes where schemaname = 'public'");
+      expect(indexesAfter.rowCount).toEqual(1);
 
-      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
+      expect(indexesAfter.rows[0]).toEqual({ indexname: "testing_1234" });
 
       const tablesAfter =
-        await sql`select tablename from pg_tables where schemaname = 'public'`;
-      assertEquals(
-        tablesAfter.count,
-        1,
-        "Tables were not copied over correctly from the source db",
-      );
-      assertEquals(
-        tablesAfter[0],
-        { tablename: "testing" },
-        "Table name mismatch",
-      );
-      const rows = await sql`select * from testing`;
+        await pool.query("select tablename from pg_tables where schemaname = 'public'");
+      expect(tablesAfter.rowCount).toEqual(1);
+      expect(tablesAfter.rows[0]).toEqual({ tablename: "testing" });
+      const rows = await pool.query("select * from testing");
       // expect no rows to have been synced
-      assertEquals(rows.length, 0, "Table in target db not empty");
+      expect(rows.rowCount, "Table in target db not empty").toEqual(0);
 
-      await sql.end();
+      await pool.end();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });
 
 // Users who upgraded from Postgres 13/14 may have a leftover bit_xor aggregate.
 // It became built-in in Postgres 15, but custom versions from older installs remain.
 // This test ensures sync handles this gracefully.
-Deno.test({
-  name: "syncs database with custom bit_xor aggregate",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("syncs database with custom bit_xor aggregate", async () => {
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
         .withCopyContentToContainer([
@@ -181,23 +160,18 @@ Deno.test({
       const tableNames = result.schema.value.tables.map((table) =>
         table.tableName.toString()
       );
-      assertArrayIncludes(tableNames, ["testing"]);
+      expect(tableNames).toEqual(expect.arrayContaining(["testing"]));
 
       const indexNames = result.schema.value.indexes.map((index) =>
         index.indexName.toString()
       );
-      assertArrayIncludes(indexNames, ["testing_idx"]);
+      expect(indexNames).toEqual(expect.arrayContaining(["testing_idx"]));
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "raw timescaledb syncs correctly",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("raw timescaledb syncs correctly", async () => {
     const [source, target] = await Promise.all([
       new PostgreSqlContainer(
         "timescale/timescaledb:latest-pg17",
@@ -235,24 +209,15 @@ Deno.test({
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public'",
       );
-      assertEquals(
-        indexesAfter.length,
-        1,
-        "Indexes were not copied over correctly from the source db",
-      );
+      expect(indexesAfter.length).toEqual(1);
 
-      assertEquals(indexesAfter[0], { indexname: "testing_1234" });
+      expect(indexesAfter[0]).toEqual({ indexname: "testing_1234" });
     } finally {
       await Promise.all([source.stop(), target.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "infers '10k' stats strategy when row count is below threshold",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("infers '10k' stats strategy when row count is below threshold", async () => {
     // Create source with very few rows (below 5000 threshold)
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
@@ -284,22 +249,14 @@ Deno.test({
       const result = await remote.syncFrom(source);
       await remote.optimizer.finish;
 
-      assertEquals(
-        result.meta.inferredStatsStrategy,
-        "10k",
-        "Should infer '10k' strategy for small databases",
-      );
+      expect(result.meta.inferredStatsStrategy).toEqual("10k");
+      await remote.cleanup();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "infers 'fromSource' stats strategy when row count is above threshold",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("infers 'fromSource' stats strategy when row count is above threshold", async () => {
     // Create source with many rows (above 5000 threshold)
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
@@ -331,22 +288,14 @@ Deno.test({
       const result = await remote.syncFrom(source);
       await remote.optimizer.finish;
 
-      assertEquals(
-        result.meta.inferredStatsStrategy,
-        "fromSource",
-        "Should infer 'fromSource' strategy for large databases",
-      );
+      expect(result.meta.inferredStatsStrategy).toEqual("fromSource");
+      await remote.cleanup();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "timescaledb with continuous aggregates sync correctly",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("timescaledb with continuous aggregates sync correctly", async () => {
     const [source, target] = await Promise.all([
       new PostgreSqlContainer(
         "timescale/timescaledb:latest-pg17",
@@ -406,30 +355,21 @@ Deno.test({
       const queries = remote.optimizer.getQueries();
       const queryStrings = queries.map((q) => q.query);
 
-      assertArrayIncludes(queryStrings, [
+      expect(queryStrings).toEqual(expect.arrayContaining([
         "select * from conditions where time < now();",
-      ]);
+      ]));
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public';",
       );
-      assertEquals(
-        indexesAfter.length,
-        1,
-        "Indexes were not copied over correctly from the source db",
-      );
+      expect(indexesAfter.length).toEqual(1);
 
-      assertEquals(indexesAfter[0], { indexname: "conditions_time_idx" });
+      expect(indexesAfter[0]).toEqual({ indexname: "conditions_time_idx" });
     } finally {
       await Promise.all([source.stop(), target.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "schema loader detects changes after database modification",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("schema loader detects changes after database modification", async () => {
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
         .withCopyContentToContainer([
@@ -456,28 +396,20 @@ Deno.test({
       const manager = ConnectionManager.forLocalDatabase();
       await using remote = new Remote(target, manager);
 
-      const sourcePg = postgres(source.toString());
+      const sourcePg = new Pool({ connectionString: source.toString() });
 
       await remote.syncFrom(source);
       await remote.optimizer.finish;
 
       const initialStatus = await remote.getStatus();
       const initialDiffsResult = initialStatus.diffs;
-      assertEquals(
-        initialDiffsResult.status,
-        "fulfilled",
-        "Schema poll should succeed",
-      );
+      expect(initialDiffsResult.status, "Schema poll should succeed").toEqual("fulfilled");
       const initialDiffs = initialDiffsResult.status === "fulfilled"
         ? initialDiffsResult.value
         : [];
-      assertEquals(
-        initialDiffs.length,
-        0,
-        "Should have no diffs initially after sync",
-      );
+      expect(initialDiffs.length, "Should have no diffs initially after sync").toEqual(0);
 
-      await sourcePg.unsafe(`
+      await sourcePg.query(`
         alter table testing add column c int;
         create index "testing_c_idx" on testing(c);
       `);
@@ -485,41 +417,28 @@ Deno.test({
       const statusAfterChange = await remote.getStatus();
       const diffsResult = statusAfterChange.diffs;
 
-      assertEquals(
-        diffsResult.status,
-        "fulfilled",
-        "Schema poll should succeed",
-      );
+      expect(diffsResult.status, "Schema poll should succeed").toEqual("fulfilled");
       const diffs = diffsResult.status === "fulfilled" ? diffsResult.value : [];
 
-      assertEquals(
-        diffs.length,
-        2,
-        "Should detect 2 schema changes (added column and index)",
-      );
+      expect(diffs.length, "Should detect 2 schema changes (added column and index)").toEqual(2);
 
       const addedColumnDiff = diffs.find((diff: Op) =>
         typeof diff.path === "string" && diff.path.includes("columns")
       );
-      assertEquals(addedColumnDiff?.op, "add", "Should detect column addition");
+      expect(addedColumnDiff?.op, "Should detect column addition").toEqual("add");
 
       const addedIndexDiff = diffs.find((diff: Op) =>
         typeof diff.path === "string" && diff.path.includes("indexes")
       );
-      assertEquals(addedIndexDiff?.op, "add", "Should detect index addition");
+      expect(addedIndexDiff?.op, "Should detect index addition").toEqual("add");
 
       await sourcePg.end();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });
 
-Deno.test({
-  name: "returns extension error when pg_stat_statements is not installed",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("returns extension error when pg_stat_statements is not installed", async () => {
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")
         .withCopyContentToContainer([
@@ -540,28 +459,31 @@ Deno.test({
       const target = Connectable.fromString(targetDb.getConnectionUri());
       const source = Connectable.fromString(sourceDb.getConnectionUri());
 
-      await using remote = new Remote(
+      const remote = new Remote(
         target,
         ConnectionManager.forLocalDatabase(),
       );
 
-      const result = await remote.syncFrom(source);
+      try {
+        const result = await remote.syncFrom(source);
 
-      // Schema should still sync successfully
-      assertOk(result.schema);
+        // Schema should still sync successfully
+        assertOk(result.schema);
 
-      const tableNames = result.schema.value.tables.map((table) =>
-        table.tableName.toString()
-      );
-      assertArrayIncludes(tableNames, ["testing"]);
+        const tableNames = result.schema.value.tables.map((table) =>
+          table.tableName.toString()
+        );
+        expect(tableNames).toContain("testing");
 
-      // Should return the extension error for recent queries
-      assertEquals(result.recentQueriesError, {
-        type: "extension_not_installed",
-        extensionName: "pg_stat_statements",
-      });
+        // Should return the extension error for recent queries
+        expect(result.recentQueriesError).toEqual({
+          type: "extension_not_installed",
+          extensionName: "pg_stat_statements",
+        });
+      } finally {
+        await remote.cleanup();
+      }
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
     }
-  },
 });

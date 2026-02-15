@@ -1,4 +1,4 @@
-FROM denoland/deno:alpine
+FROM node:24-alpine
 
 # Install pgbadger dependencies
 RUN apk add --no-cache \
@@ -18,14 +18,12 @@ RUN wget https://github.com/darold/pgbadger/archive/v${PGBADGER_VERSION}.tar.gz 
     make install && \
     rm -rf /tmp/pgbadger*
 
-# RUN curl -L https://github.com/supabase-community/postgres-language-server/releases/download/<version>/postgrestools_aarch64-apple-darwin -o postgrestools
-# RUN chmod +x postgrestools
-
 WORKDIR /app
 
 # Copy dependency files
-COPY deno.json deno.lock* ./
+COPY package.json package-lock.json ./
 
-RUN deno install --frozen-lockfile
+RUN npm ci
+
 # Development command
-CMD ["deno", "run", "dev"]
+CMD ["npm", "run", "start:dev"]

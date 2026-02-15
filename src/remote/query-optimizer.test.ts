@@ -1,17 +1,14 @@
+import { test, expect, vi, afterEach } from "vitest";
+import { assertDefined } from "./test-utils.ts";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Connectable } from "../sync/connectable.ts";
 import { setTimeout } from "node:timers/promises";
-import { assertArrayIncludes } from "@std/assert/array-includes";
-import { assert, assertEquals, assertGreater } from "@std/assert";
+
 import { type OptimizedQuery, RecentQuery } from "../sql/recent-query.ts";
 
-Deno.test({
-  name: "controller syncs correctly",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("controller syncs correctly", async () => {
     const pg = await new PostgreSqlContainer("postgres:17")
       .withCopyContentToContainer([
         {
@@ -100,21 +97,21 @@ Deno.test({
         }],
       });
       // should ignore the query with
-      assert(
+      expect(
         includedQueries.every((q) =>
           !q.query.startsWith("select * from pg_class where relname > $1")
         ),
         "Optimizer did not ignore a query with @qd_introspection",
-      );
-      assert(
+      ).toBeTruthy();
+      expect(
         includedQueries.every((q) =>
           !q.query.startsWith("select * from pg_index where $1 = $2")
         ),
         "Optimizer did not ignore a system query",
-      );
+      ).toBeTruthy();
       await setTimeout(1_000);
-      assertArrayIncludes(expectedImprovements, improvements);
-      assertArrayIncludes(expectedNoImprovements, noImprovements);
+      expect(expectedImprovements).toEqual(expect.arrayContaining(improvements));
+      expect(expectedNoImprovements).toEqual(expect.arrayContaining(noImprovements));
       improvements = [];
       noImprovements = [];
       await optimizer.addQueries([
@@ -142,11 +139,10 @@ Deno.test({
           1,
         ),
       ]);
-      assertArrayIncludes(
+      expect(
         [...expectedImprovements, "select * from testing where a >= $1;"],
-        improvements,
-      );
-      assertArrayIncludes(expectedNoImprovements, noImprovements);
+      ).toEqual(expect.arrayContaining(improvements));
+      expect(expectedNoImprovements).toEqual(expect.arrayContaining(noImprovements));
       console.log("improvements 1", improvements);
       console.log("no improvements 1", noImprovements);
       await optimizer.start(recentQueries, {
@@ -177,16 +173,13 @@ Deno.test({
       console.log("improvements", improvements);
       console.log("no improvements", noImprovements);
     } finally {
+      optimizer.stop();
+      await manager.closeAll();
       await pg.stop();
     }
-  },
 });
 
-Deno.test({
-  name: "disabling an index removes it from indexesUsed and recommends it",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("disabling an index removes it from indexesUsed and recommends it", async () => {
     const pg = await new PostgreSqlContainer("postgres:17")
       .withCopyContentToContainer([
         {
@@ -247,7 +240,7 @@ Deno.test({
       const emailQuery = recentQueries.find((q) =>
         q.query.includes("email") && q.query.includes("users")
       );
-      assert(emailQuery, "Expected to find email query in recent queries");
+      assertDefined(emailQuery, "Expected to find email query in recent queries");
 
       await optimizer.start([emailQuery], statsMode);
       await optimizer.finish;
@@ -256,24 +249,21 @@ Deno.test({
       const emailQueryResult = queriesAfterFirstRun.find((q) =>
         q.query.includes("email")
       );
-      assert(emailQueryResult, "Expected email query in results");
-      assert(
-        emailQueryResult.optimization.state === "no_improvement_found",
+      assertDefined(emailQueryResult, "Expected email query in results");
+      expect(
+        emailQueryResult.optimization.state,
         `Expected no_improvement_found but got ${emailQueryResult.optimization.state}`,
-      );
-      assertArrayIncludes(
-        emailQueryResult.optimization.indexesUsed,
-        ["users_email_idx"],
-      );
-      const costWithIndex = emailQueryResult.optimization.cost;
+      ).toEqual("no_improvement_found");
+      expect((emailQueryResult.optimization as any).indexesUsed).toEqual(expect.arrayContaining(["users_email_idx"]));
+      const costWithIndex = (emailQueryResult.optimization as any).cost;
 
       const { PgIdentifier } = await import("@query-doctor/core");
       optimizer.toggleIndex(PgIdentifier.fromString("users_email_idx"));
       const disabledIndexes = optimizer.getDisabledIndexes();
-      assert(
+      expect(
         disabledIndexes.some((i) => i.toString() === "users_email_idx"),
-        `Expected users_email_idx to be disabled`,
-      );
+        "Expected users_email_idx to be disabled",
+      ).toBeTruthy();
 
       await optimizer.addQueries([emailQuery]);
       await optimizer.finish;
@@ -282,51 +272,36 @@ Deno.test({
       const emailQueryAfterToggle = queriesAfterToggle.find((q) =>
         q.query.includes("email")
       );
-      assert(emailQueryAfterToggle, "Expected email query after toggle");
-      assert(
-        emailQueryAfterToggle.optimization.state === "improvements_available",
+      assertDefined(emailQueryAfterToggle, "Expected email query after toggle");
+      expect(
+        emailQueryAfterToggle.optimization.state,
         `Expected improvements_available after toggle but got ${emailQueryAfterToggle.optimization.state}`,
-      );
-      assert(
-        !emailQueryAfterToggle.optimization.indexesUsed.includes(
-          "users_email_idx",
-        ),
-        "Expected users_email_idx to NOT be in indexesUsed after disabling",
-      );
-      assertGreater(
-        emailQueryAfterToggle.optimization.cost,
-        costWithIndex,
-        "Expected cost without index to be higher than cost with index",
-      );
+      ).toEqual("improvements_available");
+      expect((emailQueryAfterToggle.optimization as any).indexesUsed).not.toContain("users_email_idx");
+      expect((emailQueryAfterToggle.optimization as any).cost).toBeGreaterThan(costWithIndex);
       const recommendations =
-        emailQueryAfterToggle.optimization.indexRecommendations;
-      assert(
-        recommendations.some((r) =>
-          r.columns.some((c) => c.column === "email")
+        (emailQueryAfterToggle.optimization as any).indexRecommendations;
+      expect(
+        recommendations.some((r: any) =>
+          r.columns.some((c: any) => c.column === "email")
         ),
         "Expected recommendation for email column after disabling the index",
-      );
+      ).toBeTruthy();
 
       // Verify explainPlan doesn't show the disabled index being used
       const explainPlanAfterToggle =
-        emailQueryAfterToggle.optimization.explainPlan;
-      assert(explainPlanAfterToggle, "Expected explainPlan to be present");
+        (emailQueryAfterToggle.optimization as any).explainPlan;
+      assertDefined(explainPlanAfterToggle, "Expected explainPlan to be present");
       const explainStr = JSON.stringify(explainPlanAfterToggle);
-      assert(
-        !explainStr.includes("users_email_idx"),
-        `Expected explainPlan to NOT contain disabled index "users_email_idx" but found it in: ${explainStr}`,
-      );
+      expect(explainStr).not.toContain("users_email_idx");
     } finally {
+      optimizer.stop();
+      await manager.closeAll();
       await pg.stop();
     }
-  },
 });
 
-Deno.test({
-  name: "hypertable optimization includes index recommendations",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("hypertable optimization includes index recommendations", async () => {
     const pg = await new PostgreSqlContainer(
       "timescale/timescaledb:latest-pg16",
     )
@@ -444,25 +419,17 @@ Deno.test({
       // The bug: when improvements_available, indexRecommendations should not be empty
       for (const q of improvementsWithRecommendations) {
         if (q.optimization.state === "improvements_available") {
-          assertGreater(
-            q.optimization.indexRecommendations.length,
-            0,
-            `Query "${q.query}" has ${q.optimization.costReductionPercentage}% cost reduction but no index recommendations`,
-          );
+          expect(q.optimization.indexRecommendations.length).toBeGreaterThan(0);
         }
       }
     } finally {
+      optimizer.stop();
+      await manager.closeAll();
       await pg.stop();
     }
-  },
 });
 
-Deno.test({
-  name:
-    "timed out queries are retried with exponential backoff up to maxRetries",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("timed out queries are retried with exponential backoff up to maxRetries", async () => {
     const pg = await new PostgreSqlContainer("postgres:17")
       .withCopyContentToContainer([
         {
@@ -511,7 +478,7 @@ Deno.test({
       const slowQuery = recentQueries.find((q) =>
         q.query.includes("slow_table") && q.query.startsWith("select")
       );
-      assert(slowQuery, "Expected to find slow_table query");
+      assertDefined(slowQuery, "Expected to find slow_table query");
 
       await optimizer.start([slowQuery], {
         kind: "fromStatisticsExport",
@@ -534,32 +501,27 @@ Deno.test({
 
       const queries = optimizer.getQueries();
       const resultQuery = queries.find((q) => q.query.includes("slow_table"));
-      assert(resultQuery, "Expected slow_table query in results");
+      assertDefined(resultQuery, "Expected slow_table query in results");
 
-      assertEquals(
+      expect(
         resultQuery.optimization.state,
-        "timeout",
         "Expected query to be in timeout state",
-      );
+      ).toEqual("timeout");
 
       if (resultQuery.optimization.state === "timeout") {
-        assertEquals(
+        expect(
           resultQuery.optimization.retries,
-          maxRetries,
           `Expected ${maxRetries} retries`,
-        );
+        ).toEqual(maxRetries);
       }
     } finally {
+      optimizer.stop();
+      await manager.closeAll();
       await pg.stop();
     }
-  },
 });
 
-Deno.test({
-  name: "optimizer does not treat ASC index as duplicate of DESC candidate",
-  sanitizeOps: false,
-  sanitizeResources: false,
-  fn: async () => {
+test("optimizer does not treat ASC index as duplicate of DESC candidate", async () => {
     const pg = await new PostgreSqlContainer("postgres:17")
       .withCopyContentToContainer([
         {
@@ -603,7 +565,7 @@ Deno.test({
       const mixedQuery = recentQueries.find((q) =>
         q.query.includes("order by created_at desc, status asc")
       );
-      assert(mixedQuery, "Expected to find mixed sort direction query");
+      assertDefined(mixedQuery, "Expected to find mixed sort direction query");
 
       await optimizer.start([mixedQuery], {
         kind: "fromStatisticsExport",
@@ -634,24 +596,24 @@ Deno.test({
       const result = queries.find((q) =>
         q.query.includes("order by created_at desc, status asc")
       );
-      assert(result, "Expected to find query result");
-      assert(
-        result.optimization.state === "improvements_available",
-        `Expected improvements_available (ASC,ASC can't satisfy DESC,ASC via backward scan). ` +
-        `Got: ${result.optimization.state}`,
-      );
+      assertDefined(result, "Expected to find query result");
+      expect(
+        result.optimization.state,
+        `Expected improvements_available (ASC,ASC can't satisfy DESC,ASC via backward scan). Got: ${result.optimization.state}`,
+      ).toEqual("improvements_available");
 
-      const recommendations = result.optimization.indexRecommendations;
-      const hasMixedRecommendation = recommendations.some((r) =>
+      const recommendations = (result.optimization as any).indexRecommendations;
+      const hasMixedRecommendation = recommendations.some((r: any) =>
         r.columns.length >= 2 &&
-        r.columns.some((c) => c.column === "created_at" && c.sort?.dir === "SORTBY_DESC")
+        r.columns.some((c: any) => c.column === "created_at" && c.sort?.dir === "SORTBY_DESC")
       );
-      assert(
+      expect(
         hasMixedRecommendation,
         `Expected recommendation with created_at DESC. Got: ${JSON.stringify(recommendations)}`,
-      );
+      ).toBeTruthy();
     } finally {
+      optimizer.stop();
+      await manager.closeAll();
       await pg.stop();
     }
-  },
 });
