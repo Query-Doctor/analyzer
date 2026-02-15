@@ -1,4 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
+import { assertDefined } from "./test-utils.ts";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
@@ -96,10 +97,10 @@ test("GIN: basic @> containment recommends GIN with jsonb_path_ops", async () =>
       const match = improvements.find((q) =>
         q.query.includes("@>") || q.query.includes("products")
       );
-      expect(match, "Expected improvements for @> containment query").toBeTruthy();
-      expect(hasGinRecommendation(match!), "Expected a GIN index recommendation").toBeTruthy();
+      assertDefined(match, "Expected improvements for @> containment query");
+      expect(hasGinRecommendation(match), "Expected a GIN index recommendation").toBeTruthy();
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       expect(
         ginRecs.some((r) => r.definition.toLowerCase().includes("jsonb_path_ops")),
         `Expected jsonb_path_ops, got: ${ginRecs.map((r) => r.definition)}`,
@@ -181,10 +182,10 @@ test("GIN: key existence (?) recommends GIN with default jsonb_ops", async () =>
       const match = improvements.find((q) =>
         q.query.includes("?") || q.query.includes("payload")
       );
-      expect(match, "Expected improvements for ? key existence query").toBeTruthy();
-      expect(hasGinRecommendation(match!), "Expected a GIN index recommendation").toBeTruthy();
+      assertDefined(match, "Expected improvements for ? key existence query");
+      expect(hasGinRecommendation(match), "Expected a GIN index recommendation").toBeTruthy();
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       // ? requires jsonb_ops — must NOT have jsonb_path_ops
       expect(
         ginRecs.every((r) => !r.definition.toLowerCase().includes("jsonb_path_ops")),
@@ -268,10 +269,10 @@ test("GIN: any-key existence (?|) recommends GIN with default jsonb_ops", async 
       const match = improvements.find((q) =>
         q.query.includes("?|") || q.query.includes("payload")
       );
-      expect(match, "Expected improvements for ?| any-key existence query").toBeTruthy();
-      expect(hasGinRecommendation(match!), "Expected a GIN index recommendation").toBeTruthy();
+      assertDefined(match, "Expected improvements for ?| any-key existence query");
+      expect(hasGinRecommendation(match), "Expected a GIN index recommendation").toBeTruthy();
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       expect(
         ginRecs.every((r) => !r.definition.toLowerCase().includes("jsonb_path_ops")),
         `Expected default jsonb_ops for ?| operator, got: ${ginRecs.map((r) => r.definition)}`,
@@ -352,10 +353,10 @@ test("GIN: all-keys existence (?&) recommends GIN with default jsonb_ops", async
       const match = improvements.find((q) =>
         q.query.includes("?&") || q.query.includes("payload")
       );
-      expect(match, "Expected improvements for ?& all-keys existence query").toBeTruthy();
-      expect(hasGinRecommendation(match!), "Expected a GIN index recommendation").toBeTruthy();
+      assertDefined(match, "Expected improvements for ?& all-keys existence query");
+      expect(hasGinRecommendation(match), "Expected a GIN index recommendation").toBeTruthy();
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       expect(
         ginRecs.every((r) => !r.definition.toLowerCase().includes("jsonb_path_ops")),
         `Expected default jsonb_ops for ?& operator, got: ${ginRecs.map((r) => r.definition)}`,
@@ -439,19 +440,19 @@ test("GIN: mixed JSONB and regular column produces both GIN and B-tree", async (
       const match = improvements.find((q) =>
         q.query.includes("products")
       );
-      expect(match, "Expected improvements for mixed JSONB + regular query").toBeTruthy();
+      assertDefined(match, "Expected improvements for mixed JSONB + regular query");
       expect(
-        match!.optimization.state,
-        `Expected improvements_available but got ${match!.optimization.state}`,
+        match.optimization.state,
+        `Expected improvements_available but got ${match.optimization.state}`,
       ).toEqual("improvements_available");
 
-      const ginRecs = getGinRecommendations(match!);
-      const btreeRecs = getBtreeRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
+      const btreeRecs = getBtreeRecommendations(match);
 
       // Should have a GIN recommendation for the JSONB column
       expect(
         ginRecs.length,
-        `Expected GIN recommendation for data column, got: ${JSON.stringify(match!.optimization.state === "improvements_available" ? match!.optimization.indexRecommendations.map((r) => r.definition) : [])}`,
+        `Expected GIN recommendation for data column, got: ${JSON.stringify(match.optimization.state === "improvements_available" ? match.optimization.indexRecommendations.map((r) => r.definition) : [])}`,
       ).toBeGreaterThan(0);
       // The two index types should not interfere — GIN for data, B-tree for price
       // The optimizer may or may not also produce a B-tree for price depending on
@@ -546,9 +547,9 @@ test("GIN: mixed @> and ? on same column escalates to jsonb_ops", async () => {
       const match = improvements.find((q) =>
         q.query.includes("products")
       );
-      expect(match, "Expected improvements for mixed @> and ? query").toBeTruthy();
+      assertDefined(match, "Expected improvements for mixed @> and ? query");
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
 
       // Should produce exactly ONE GIN index, not two
       expect(
@@ -636,10 +637,10 @@ test("GIN: table alias resolves to correct table for GIN recommendation", async 
       const match = improvements.find((q) =>
         q.query.includes("products")
       );
-      expect(match, "Expected improvements for aliased JSONB query").toBeTruthy();
-      expect(hasGinRecommendation(match!), "Expected a GIN index recommendation").toBeTruthy();
+      assertDefined(match, "Expected improvements for aliased JSONB query");
+      expect(hasGinRecommendation(match), "Expected a GIN index recommendation").toBeTruthy();
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       // Should target the real table "products", not the alias "p"
       expect(
         ginRecs.some((r) => r.table === "products"),
@@ -718,15 +719,15 @@ test("GIN: non-JSONB query produces B-tree only, no GIN", async () => {
       await optimizer.finish;
 
       const match = improvements.find((q) => q.query.includes("users"));
-      expect(match, "Expected improvements for non-JSONB equality query").toBeTruthy();
+      assertDefined(match, "Expected improvements for non-JSONB equality query");
 
-      const ginRecs = getGinRecommendations(match!);
+      const ginRecs = getGinRecommendations(match);
       expect(
         ginRecs.length,
         `Expected no GIN recommendations for non-JSONB query, got: ${ginRecs.map((r) => r.definition)}`,
       ).toEqual(0);
 
-      const btreeRecs = getBtreeRecommendations(match!);
+      const btreeRecs = getBtreeRecommendations(match);
       expect(
         btreeRecs.length,
         "Expected B-tree recommendation for text equality query",
