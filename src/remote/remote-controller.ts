@@ -1,3 +1,4 @@
+import type { WebSocket } from "ws";
 import { env } from "../env.ts";
 import { log } from "../log.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
@@ -19,6 +20,11 @@ const SyncStatus = {
 
 type SyncStatus = typeof SyncStatus[keyof typeof SyncStatus];
 
+type HandlerResult = {
+  status: number;
+  body: unknown;
+};
+
 export class RemoteController {
   /**
    * Only a single socket can be active at the same time.
@@ -34,46 +40,6 @@ export class RemoteController {
     this.hookUpWebsockets(remote);
   }
 
-  async execute(
-    request: Request,
-  ): Promise<Response | undefined> {
-    const url = new URL(request.url);
-
-    if (url.pathname === "/postgres") {
-      const isWebsocket = request.headers.get("upgrade") === "websocket";
-      if (isWebsocket) {
-        return this.onWebsocketRequest(request);
-      } else if (request.method === "POST") {
-        return await this.onFullSync(request);
-      } else if (request.method === "GET") {
-        return await this.getStatus();
-      }
-      return methodNotAllowed();
-    }
-
-    if (url.pathname === "/postgres/indexes/toggle") {
-      if (request.method === "POST") {
-        return await this.toggleIndex(request);
-      }
-      return methodNotAllowed();
-    }
-
-    if (url.pathname === "/postgres/reset") {
-      if (request.method === "POST") {
-        return await this.onReset(request);
-      }
-      return methodNotAllowed();
-    }
-
-    if (url.pathname === "/postgres/indexes") {
-      if (request.method === "POST") {
-        return await this.createIndex(request);
-      }
-      return methodNotAllowed();
-    }
-
-  }
-
   private hookUpWebsockets(remote: Remote) {
     const onQueryProcessed = this.eventOnQueryProcessed.bind(this);
     const onError = this.eventError.bind(this);
@@ -86,35 +52,36 @@ export class RemoteController {
     remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
   }
 
-  private async toggleIndex(request: Request): Promise<Response> {
+  async toggleIndex(body: unknown): Promise<HandlerResult> {
     try {
-      const data = await request.json();
-      const index = ToggleIndexDto.decode(data);
+      const index = ToggleIndexDto.parse(body);
       const isDisabled = this.remote.optimizer.toggleIndex(index.indexName);
-      return Response.json({ isDisabled });
+      return { status: 200, body: { isDisabled } };
     } catch (error) {
       if (error instanceof ZodError) {
-        return Response.json({
-          type: "error",
-          error: "invalid_body",
-          message: error.message,
-        }, {
+        return {
           status: 400,
-        });
+          body: {
+            type: "error",
+            error: "invalid_body",
+            message: error.message,
+          },
+        };
       }
-      return Response.json({
-        type: "error",
-        error: env.HOSTED ? "Internal Server Error" : error,
-        message: "Failed to sync database",
-      }, {
+      return {
         status: 500,
-      });
+        body: {
+          type: "error",
+          error: env.HOSTED ? "Internal Server Error" : error,
+          message: "Failed to sync database",
+        },
+      };
     }
   }
 
-  private async getStatus(): Promise<Response> {
+  async getStatus(): Promise<unknown> {
     if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
-      return Response.json({ status: this.syncStatus });
+      return { status: this.syncStatus };
     }
     const { schema, meta } = this.syncResponse;
     const { queries, diffs, disabledIndexes, pgStatStatementsNotInstalled } =
@@ -126,7 +93,7 @@ export class RemoteController {
     } else {
       deltas = { type: "error", value: String(diffs.reason) };
     }
-    return Response.json({
+    return {
       status: this.syncStatus,
       meta,
       schema,
@@ -135,7 +102,7 @@ export class RemoteController {
         : { type: "ok", value: queries },
       disabledIndexes: { type: "ok", value: disabledIndexes },
       deltas,
-    });
+    };
   }
 
   private pgStatStatementsNotInstalledError() {
@@ -146,10 +113,10 @@ export class RemoteController {
     } as const;
   }
 
-  private async onFullSync(request: Request): Promise<Response> {
-    const body = RemoteSyncRequest.safeDecode(await request.text());
+  async onFullSync(rawBody: string): Promise<HandlerResult> {
+    const body = RemoteSyncRequest.safeDecode(rawBody);
     if (!body.success) {
-      return new Response(JSON.stringify(body.error), { status: 400 });
+      return { status: 400, body: body.error };
     }
 
     const { db } = body.data;
@@ -163,115 +130,125 @@ export class RemoteController {
       const { queries, pgStatStatementsNotInstalled } = await this.remote
         .getStatus();
 
-      return Response.json({
-        meta,
-        schema,
-        queries: pgStatStatementsNotInstalled
-          ? this.pgStatStatementsNotInstalledError()
-          : { type: "ok", value: queries },
-      });
+      return {
+        status: 200,
+        body: {
+          meta,
+          schema,
+          queries: pgStatStatementsNotInstalled
+            ? this.pgStatStatementsNotInstalledError()
+            : { type: "ok", value: queries },
+        },
+      };
     } catch (error) {
       this.syncStatus = SyncStatus.FAILED;
       console.error(error);
-      return Response.json({
-        type: "error",
-        error: env.HOSTED ? "Internal Server Error" : error,
-        message: "Failed to sync database",
-      }, {
+      return {
         status: 500,
-      });
+        body: {
+          type: "error",
+          error: env.HOSTED ? "Internal Server Error" : error,
+          message: "Failed to sync database",
+        },
+      };
     }
   }
 
-  private async onReset(request: Request): Promise<Response> {
-    const body = RemoteSyncRequest.safeDecode(await request.text());
+  async onReset(rawBody: string): Promise<HandlerResult> {
+    const body = RemoteSyncRequest.safeDecode(rawBody);
     if (!body.success) {
-      return new Response(JSON.stringify(body.error), { status: 400 });
+      return { status: 400, body: body.error };
     }
 
     try {
       await this.remote.resetPgStatStatements(body.data.db);
-      return Response.json({ success: true });
+      return { status: 200, body: { success: true } };
     } catch (error) {
       console.error(error);
       if (error instanceof errors.PostgresError) {
-        return error.toResponse();
+        return { status: error.statusCode, body: error.toJSON() };
       }
       if (error instanceof errors.ExtensionNotInstalledError) {
-        return error.toResponse();
+        return { status: error.statusCode, body: error.toJSON() };
       }
-      return Response.json({
-        error: error instanceof Error ? error.message : "Unknown error",
-      }, { status: 500 });
+      return {
+        status: 500,
+        body: {
+          error: error instanceof Error ? error.message : "Unknown error",
+        },
+      };
     }
   }
 
-  private async createIndex(request: Request): Promise<Response> {
+  async createIndex(body: unknown): Promise<HandlerResult> {
     try {
-      const data = await request.json();
-      const body = CreateIndexDto.parse(data);
-      await this.remote.optimizer.createIndex(body.table, body.columns);
-      return Response.json({ success: true });
+      const parsed = CreateIndexDto.parse(body);
+      await this.remote.optimizer.createIndex(parsed.table, parsed.columns);
+      return { status: 200, body: { success: true } };
     } catch (error) {
       if (error instanceof ZodError) {
-        return Response.json({
-          type: "error",
-          error: "invalid_body",
-          message: error.message,
-        }, { status: 400 });
+        return {
+          status: 400,
+          body: {
+            type: "error",
+            error: "invalid_body",
+            message: error.message,
+          },
+        };
       }
       console.error("Failed to create index:", error);
-      return Response.json({
-        error: error instanceof Error ? error.message : "Failed to create index",
-      }, { status: 500 });
+      return {
+        status: 500,
+        body: {
+          error:
+            error instanceof Error ? error.message : "Failed to create index",
+        },
+      };
     }
   }
 
-  private onWebsocketRequest(request: Request): Response {
-    const { socket, response } = Deno.upgradeWebSocket(request);
+  onWebsocketConnection(socket: WebSocket): void {
     this.socket = socket;
     log.debug("Websocket connection established", "remote-controller");
 
-    socket.addEventListener("close", () => {
+    socket.on("close", () => {
       log.debug("Websocket connection closed", "remote-controller");
-    }, { once: true });
-
-    return response;
+    });
   }
 
   private makeLoggingHandler(process: "pg_restore" | "pg_dump") {
-    return (log: string) => {
-      console.log(log);
-      this.socket?.send(JSON.stringify({
+    return (logLine: string) => {
+      console.log(logLine);
+      this.sendToSocket({
         type: "log",
         process,
-        log,
-      }));
+        log: logLine,
+      });
     };
   }
 
   private eventOnQueryProcessed(query: OptimizedQuery) {
-    this.socket?.send(JSON.stringify({
+    this.sendToSocket({
       type: "queryProcessed",
       query,
-    }));
+    });
   }
 
   private eventError(error: Error, query: OptimizedQuery) {
     console.error(error);
     this.eventOnQueryProcessed(query);
-    this.socket?.send(
-      JSON.stringify({
-        type: "error",
-        query,
-        error: error.message,
-      }),
-    );
+    this.sendToSocket({
+      type: "error",
+      query,
+      error: error.message,
+    });
   }
-}
 
-function methodNotAllowed(): Response {
-  return Response.json("Method not allowed", { status: 405 });
+  private sendToSocket(data: unknown) {
+    if (this.socket?.readyState === 1 /* OPEN */) {
+      this.socket.send(JSON.stringify(data));
+    }
+  }
 }
 
 type DeltasResult = {

@@ -3,6 +3,8 @@ import * as prettier from "prettier";
 import prettierPluginSql from "prettier-plugin-sql";
 import csv from "fast-csv";
 import { Readable } from "node:stream";
+import { statSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { fingerprint } from "@libpg-query/parser";
 import { preprocessEncodedJson } from "./sql/json.ts";
 import {
@@ -24,7 +26,9 @@ import {
   type ReportQueryCostWarning,
   type ReportStatistics,
 } from "./reporters/reporter.ts";
-import { bgBrightMagenta, blue, yellow } from "@std/fmt/colors";
+const bgBrightMagenta = (s: string) => `\x1b[105m${s}\x1b[0m`;
+const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+const blue = (s: string) => `\x1b[34m${s}\x1b[0m`;
 import { env } from "./env.ts";
 import { connectToSource } from "./sql/postgresjs.ts";
 import { parse } from "@libpg-query/parser";
@@ -68,7 +72,7 @@ export class Runner {
 
   async run() {
     const startDate = new Date();
-    const logSize = Deno.statSync(this.logPath).size;
+    const logSize = statSync(this.logPath).size;
     console.log(`logPath=${this.logPath},fileSize=${logSize}`);
     const args = [
       "--dump-raw-csv",
@@ -77,17 +81,12 @@ export class Runner {
       "stderr",
       this.logPath,
     ];
-    const command = new Deno.Command("pgbadger", {
-      stdout: "piped",
-      stderr: "piped",
-      args,
-    });
     console.log(`pgbadger ${args.join(" ")}`);
-    const output = command.spawn();
-    output.stderr.pipeTo(Deno.stderr.writable);
+    const child = spawn("pgbadger", args, { stdio: ["ignore", "pipe", "pipe"] });
+    child.stderr!.pipe(process.stderr);
     let error: Error | undefined;
     const stream = csv
-      .parseStream(Readable.from(output.stdout), {
+      .parseStream(child.stdout!, {
         headers: false,
       })
       .on("error", (err) => {
@@ -149,7 +148,7 @@ export class Runner {
           break;
       }
     }
-    await output.status;
+    await new Promise<void>((resolve) => child.on("close", () => resolve()));
     console.log(
       `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
     );
@@ -362,7 +361,7 @@ export class Runner {
     }
   }
   private static readStatisticsFile(path: string): ExportedStats[] {
-    const data = Deno.readFileSync(path);
+    const data = readFileSync(path);
     const json = JSON.parse(new TextDecoder().decode(data));
     return ExportedStats.array().parse(json);
   }

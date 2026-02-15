@@ -1,4 +1,6 @@
-import schemaDumpSql from "./schema_dump.sql" with { type: "text" };
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -21,8 +23,12 @@ import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
-// deno-lint-ignore no-unused-vars
+import { toPgTextArray } from "../sql/postgresjs.ts";
 import { ConnectionManager } from "./connection-manager.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const schemaDumpSql = readFileSync(join(__dirname, "schema_dump.sql"), "utf-8");
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -179,7 +185,7 @@ ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
           [
-            options.excludedSchemas,
+            toPgTextArray(options.excludedSchemas),
           ],
         ),
     )();
@@ -439,7 +445,7 @@ ORDER BY
        JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
          ON n.nspname = t.schema_name AND c.relname = t.table_name
        WHERE c.relkind IN ('r', 'm')`,
-      [schemaNames, tableNames],
+      [toPgTextArray(schemaNames), toPgTextArray(tableNames)],
     );
     return Number(results[0]?.total_rows ?? 0);
   }
@@ -493,6 +499,9 @@ ORDER BY
         results,
       );
     } catch (err) {
+      if (err instanceof ExtensionNotInstalledError) {
+        throw err;
+      }
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')

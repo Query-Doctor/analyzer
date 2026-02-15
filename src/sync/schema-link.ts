@@ -1,4 +1,5 @@
 import { SpanStatusCode, trace } from "@opentelemetry/api";
+import { spawn, type ChildProcess } from "node:child_process";
 import { log } from "../log.ts";
 import { shutdownController } from "../shutdown.ts";
 import { withSpan } from "../otel.ts";
@@ -11,6 +12,11 @@ export type TableStats = {
 };
 
 export type DumpTargetType = "pglite" | "native-postgres";
+
+export type CommandStatus = {
+  code: number | null;
+  success: boolean;
+};
 
 export class PostgresSchemaLink {
   constructor(
@@ -84,7 +90,7 @@ export class DumpCommand
 
   // we don't want to allow callers to construct an instance
   // with any arbitrary child process. Use the static method instead
-  private constructor(private readonly process: Deno.ChildProcess) {
+  private constructor(private readonly childProcess: ChildProcess) {
     super();
   }
 
@@ -124,96 +130,86 @@ export class DumpCommand
       ...DumpCommand.extraFlags(connectable),
       connectable.toString(),
     ];
-    const command = new Deno.Command(DumpCommand.binaryPath, {
-      args,
-      stdin: "null",
-      stdout: "piped",
-      stderr: "piped",
+
+    const childProcess = spawn(DumpCommand.binaryPath, args, {
+      stdio: ["ignore", "pipe", "pipe"],
       signal: shutdownController.signal,
     });
 
-    const process = command.spawn();
-
-    return new DumpCommand(process);
+    return new DumpCommand(childProcess);
   }
 
-  async collectOutput(): Promise<DumpCommandOutput> {
+  collectOutput(): Promise<DumpCommandOutput> {
     const span = trace.getActiveSpan();
-    const decoder = new TextDecoder();
-    const output = await this.process.output();
-    span?.setAttribute("outputBytes", output.stdout.byteLength);
-    return withSpan("decodeResponse", () => {
-      const stderr = output.stderr.byteLength > 0
-        ? decoder.decode(output.stderr)
-        : undefined;
-      if (stderr) {
-        console.warn(stderr);
-      }
-      if (output.code !== 0) {
-        span?.setStatus({ code: SpanStatusCode.ERROR, message: stderr });
-        log.error(`Error: ${stderr}`, "schema:sync");
-        throw new Error(stderr);
-      }
-      log.info(
-        `Dumped schema. bytes=${output.stdout.byteLength}`,
-        "schema:sync",
-      );
-      const stdout = decoder.decode(output.stdout);
-      return { stdout, stderr };
-    })();
+
+    return new Promise<DumpCommandOutput>((resolve, reject) => {
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+
+      this.childProcess.stdout!.on("data", (chunk: Buffer) => {
+        stdoutChunks.push(chunk);
+      });
+
+      this.childProcess.stderr!.on("data", (chunk: Buffer) => {
+        stderrChunks.push(chunk);
+      });
+
+      this.childProcess.on("close", (code) => {
+        const stdoutBuf = Buffer.concat(stdoutChunks);
+        const stderrBuf = Buffer.concat(stderrChunks);
+
+        span?.setAttribute("outputBytes", stdoutBuf.byteLength);
+
+        withSpan("decodeResponse", () => {
+          const stderr = stderrBuf.byteLength > 0
+            ? stderrBuf.toString()
+            : undefined;
+          if (stderr) {
+            console.warn(stderr);
+          }
+          if (code !== 0) {
+            span?.setStatus({ code: SpanStatusCode.ERROR, message: stderr });
+            log.error(`Error: ${stderr}`, "schema:sync");
+            reject(new Error(stderr));
+            return { stdout: "", stderr };
+          }
+          log.info(
+            `Dumped schema. bytes=${stdoutBuf.byteLength}`,
+            "schema:sync",
+          );
+          const stdout = stdoutBuf.toString();
+          resolve({ stdout, stderr });
+          return { stdout, stderr };
+        })();
+      });
+
+      this.childProcess.on("error", reject);
+    });
   }
 
   async pipeTo(restore: RestoreCommand): Promise<RestoreCommandResult> {
-    // Start consuming stderr in the background to prevent resource leaks
-    // const stderrPromise = this.process.stderr.text();
+    this.childProcess.stderr!.on("data", (chunk: Buffer) => {
+      this.emit("dump", chunk.toString());
+    });
 
-    const decoder = new TextDecoder();
-    this.process.stderr.pipeTo(
-      new WritableStream({
-        write: (chunk) => {
-          this.emit("dump", decoder.decode(chunk));
-        },
-      }),
-    );
+    restore.stderr.on("data", (chunk: Buffer) => {
+      this.emit("restore", chunk.toString());
+    });
+    restore.stdout.on("data", (chunk: Buffer) => {
+      this.emit("restore", chunk.toString());
+    });
 
-    restore.stderr.pipeTo(
-      new WritableStream({
-        write: (chunk) => {
-          this.emit("restore", decoder.decode(chunk));
-        },
-      }),
-    );
-    restore.stdout.pipeTo(
-      new WritableStream({
-        write: (chunk) => {
-          this.emit("restore", decoder.decode(chunk));
-        },
-      }),
-    );
+    this.childProcess.stdout!.pipe(restore.stdin);
 
-    try {
-      await this.process.stdout.pipeTo(restore.stdin);
-    } catch (_error) {
-      return {
-        dump: {
-          status: await this.process.status,
-        },
-      };
-    }
+    const [dumpStatus, restoreStatus] = await Promise.all([
+      waitForExit(this.childProcess),
+      waitForExit(restore.childProcess),
+    ]);
 
-    const dumpStatus = await this.process.status;
-    // this only fails if the command is non-zero
-    const restoreStatus = await restore.status;
-    const out = {
-      dump: {
-        status: dumpStatus,
-      },
-      restore: {
-        status: restoreStatus,
-      },
+    return {
+      dump: { status: dumpStatus },
+      restore: { status: restoreStatus },
     };
-    await restore.cleanup();
-    return out;
   }
 
   /**
@@ -269,7 +265,11 @@ export type DumpCommandOutput = {
  */
 export class RestoreCommand {
   public static readonly binaryPath = findPgRestoreBinary("17.2");
-  private constructor(private process: Deno.ChildProcess) {}
+  readonly childProcess: ChildProcess;
+
+  private constructor(childProcess: ChildProcess) {
+    this.childProcess = childProcess;
+  }
 
   static spawn(connectable: Connectable): RestoreCommand {
     const args = [
@@ -282,42 +282,33 @@ export class RestoreCommand {
       connectable.toString(),
     ];
 
-    const command = new Deno.Command(RestoreCommand.binaryPath, {
-      args,
-      stdin: "piped",
-      stdout: "piped",
-      stderr: "piped",
+    const childProcess = spawn(RestoreCommand.binaryPath, args, {
+      stdio: ["pipe", "pipe", "pipe"],
       signal: shutdownController.signal,
     });
 
-    const process = command.spawn();
-
-    return new RestoreCommand(process);
+    return new RestoreCommand(childProcess);
   }
 
   get stdin() {
-    return this.process.stdin;
+    return this.childProcess.stdin!;
   }
 
   get stdout() {
-    return this.process.stdout;
+    return this.childProcess.stdout!;
   }
 
   get stderr() {
-    return this.process.stderr;
+    return this.childProcess.stderr!;
   }
 
-  get status() {
-    return this.process.status;
+  get status(): Promise<CommandStatus> {
+    return waitForExit(this.childProcess);
   }
 
   async cleanup() {
-    if (!this.process.stdout.locked) {
-      await this.process.stdout.cancel();
-    }
-    if (!this.process.stderr.locked) {
-      await this.process.stderr.cancel();
-    }
+    this.childProcess.stdout?.destroy();
+    this.childProcess.stderr?.destroy();
   }
 
   private static formatFlags(): string[] {
@@ -327,9 +318,21 @@ export class RestoreCommand {
 
 export type RestoreCommandResult = {
   dump: {
-    status: Deno.CommandStatus;
+    status: CommandStatus;
   };
   restore?: {
-    status: Deno.CommandStatus;
+    status: CommandStatus;
   };
 };
+
+function waitForExit(child: ChildProcess): Promise<CommandStatus> {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null) {
+      resolve({ code: child.exitCode, success: child.exitCode === 0 });
+      return;
+    }
+    child.on("close", (code) => {
+      resolve({ code, success: code === 0 });
+    });
+  });
+}

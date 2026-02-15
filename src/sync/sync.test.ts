@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { test, expect } from "vitest";
 import {
   DatabaseConnector,
   DependencyAnalyzer,
@@ -59,7 +59,7 @@ function testDb(): DatabaseConnector<{
   };
 }
 
-Deno.test(async function addTest() {
+test("addTest", async () => {
   const dbSimple = testDb();
   const da = new DependencyAnalyzer(dbSimple, {
     requiredRows: 2,
@@ -70,7 +70,7 @@ Deno.test(async function addTest() {
     await dbSimple.dependencies({ excludedSchemas: [] }),
   );
   const result = await da.findAllDependencies(graph);
-  assertEquals(result.items, {
+  expect(result.items).toEqual({
     "public.posts": [
       { id: 3, poster_id: 0 },
       { id: 4, poster_id: 1 },
