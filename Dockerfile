@@ -1,15 +1,11 @@
 ARG ALPINE_VERSION=3.22
-ARG DENO_VERSION=2.4.5
-ARG PG_IMAGE=ghcr.io/query-doctor/postgres:pg14-timescale-2.16
-
-FROM denoland/deno:alpine-${DENO_VERSION} AS deno
+ARG PG_IMAGE=pg14-timescale-2.16
+FROM alpine:${ALPINE_VERSION} AS pgbadger-builder
 
 RUN apk add --no-cache \
     perl \
     curl \
-    make \
-    postgresql-client \
-    git
+    make
 
 ARG PGBADGER_VERSION=13.2
 WORKDIR /tmp
@@ -22,34 +18,20 @@ RUN curl -L https://github.com/darold/pgbadger/archive/v${PGBADGER_VERSION}.tar.
     make install && \
     rm -rf /tmp/pgbadger*
 
-FROM gcr.io/distroless/cc-debian12:latest AS cc
+# Build the application
+FROM node:24-alpine AS build
 
-FROM alpine:${ALPINE_VERSION} AS sym
-
-COPY --from=cc --chmod=755 --chown=root:root /lib/*-linux-gnu/ld-linux-* /usr/local/lib/
-RUN mkdir -p -m 755 /tmp/lib
-RUN ln -s /usr/local/lib/ld-linux-* /tmp/lib/
-
-FROM denoland/deno:alpine-${DENO_VERSION} AS build
-
-COPY deno.json deno.lock* ./
-RUN deno install --frozen-lockfile
-
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
+RUN npm run build
+RUN npm ci --omit=dev
 
-RUN deno compile \
-  --allow-run \
-  --allow-read \
-  --allow-write \
-  --allow-env \
-  --allow-net \
-  --allow-sys \
-  -o /app/analyzer \
-  src/main.ts
-
-FROM alpine:${ALPINE_VERSION}
+# Final image
 ARG PG_IMAGE
 ENV LD_LIBRARY_PATH="/usr/local/lib"
+FROM node:24-alpine
 
 RUN apk add -uU --no-cache \
     readline \
@@ -57,17 +39,20 @@ RUN apk add -uU --no-cache \
     bash \
     su-exec \
     openssl \
-    ossp-uuid \
+    krb5 \
     postgresql-client \
-    krb5
+    perl
 
-COPY --from=build --chmod=755 --chown=root:root /app/analyzer /app/analyzer
-COPY --from=cc --chmod=755 --chown=root:root /lib/*-linux-gnu/* /usr/local/lib/
-COPY --from=sym --chmod=755 --chown=root:root /tmp/lib /lib
-COPY --from=sym --chmod=755 --chown=root:root /tmp/lib /lib64
+# Copy pgBadger
+COPY --from=pgbadger-builder /usr/local/bin/pgbadger /usr/local/bin/pgbadger
 
 COPY --from=ghcr.io/query-doctor/postgres:pg14-timescale-2.16 /usr/local/pgsql /usr/local/pgsql
 
+# Copy application
+COPY --from=build /app/dist /app/dist
+COPY --from=build /app/node_modules /app/node_modules
+
+# Setup postgres user and directories
 RUN mkdir -p /var/lib/postgresql/data \
     && chown -R postgres:postgres /var/lib/postgresql \
     && chown -R postgres:postgres /usr/local/pgsql \
@@ -75,8 +60,8 @@ RUN mkdir -p /var/lib/postgresql/data \
 
 WORKDIR /app
 # making sure we use the binaries from the installed postgresql17 client
-ENV PG_DUMP_BINARY=/usr/bin/pg_dump
-ENV PG_RESTORE_BINARY=/usr/bin/pg_restore
+ENV PG_DUMP_BINARY=/usr/local/pgsql/bin/pg_dump
+ENV PG_RESTORE_BINARY=/usr/local/pgsql/bin/pg_restore
 ENV PATH="/usr/local/pgsql/bin:$PATH"
 ENV PGDATA=/var/lib/postgresql/data
 
@@ -85,7 +70,7 @@ RUN sed -i 's|nobody:/|nobody:/home|' /etc/passwd && chown nobody:nobody /home
 ENV POSTGRES_URL=postgresql://postgres@localhost/postgres?host=/tmp
 
 RUN su-exec postgres initdb -D $PGDATA || true && \
-    echo "shared_preload_libraries = 'timescaledb,pg_stat_statements'" >> $PGDATA/postgresql.conf && \
+    # echo "shared_preload_libraries = 'timescaledb,pg_stat_statements'" >> $PGDATA/postgresql.conf && \
     echo "listen_addresses = ''" >> $PGDATA/postgresql.conf && \
     echo "unix_socket_directories = '/tmp'" >> $PGDATA/postgresql.conf
 
@@ -96,4 +81,4 @@ EXPOSE 2345
 CMD ["/bin/bash", "-c", "\
     pg_ctl -D $PGDATA -l $PGDATA/logfile start || (cat $PGDATA/logfile && exit 1) && \
     until pg_isready -h /tmp; do sleep 0.5; done && \
-    /app/analyzer"]
+    node /app/dist/main.mjs"]
