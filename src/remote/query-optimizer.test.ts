@@ -1,4 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
+import { assert, assertDefined } from "./test-utils.ts";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
@@ -239,22 +240,22 @@ test("disabling an index removes it from indexesUsed and recommends it", async (
       const emailQuery = recentQueries.find((q) =>
         q.query.includes("email") && q.query.includes("users")
       );
-      expect(emailQuery, "Expected to find email query in recent queries").toBeTruthy();
+      assertDefined(emailQuery, "Expected to find email query in recent queries");
 
-      await optimizer.start([emailQuery!], statsMode);
+      await optimizer.start([emailQuery], statsMode);
       await optimizer.finish;
 
       const queriesAfterFirstRun = optimizer.getQueries();
       const emailQueryResult = queriesAfterFirstRun.find((q) =>
         q.query.includes("email")
       );
-      expect(emailQueryResult, "Expected email query in results").toBeTruthy();
-      expect(
-        emailQueryResult!.optimization.state,
-        `Expected no_improvement_found but got ${emailQueryResult!.optimization.state}`,
-      ).toEqual("no_improvement_found");
-      expect((emailQueryResult!.optimization as any).indexesUsed).toEqual(expect.arrayContaining(["users_email_idx"]));
-      const costWithIndex = (emailQueryResult!.optimization as any).cost;
+      assertDefined(emailQueryResult, "Expected email query in results");
+      assert(
+        emailQueryResult.optimization.state === "no_improvement_found",
+        `Expected no_improvement_found but got ${emailQueryResult.optimization.state}`,
+      );
+      expect(emailQueryResult.optimization.indexesUsed).toEqual(expect.arrayContaining(["users_email_idx"]));
+      const costWithIndex = emailQueryResult.optimization.cost;
 
       const { PgIdentifier } = await import("@query-doctor/core");
       optimizer.toggleIndex(PgIdentifier.fromString("users_email_idx"));
@@ -264,33 +265,33 @@ test("disabling an index removes it from indexesUsed and recommends it", async (
         "Expected users_email_idx to be disabled",
       ).toBeTruthy();
 
-      await optimizer.addQueries([emailQuery!]);
+      await optimizer.addQueries([emailQuery]);
       await optimizer.finish;
 
       const queriesAfterToggle = optimizer.getQueries();
       const emailQueryAfterToggle = queriesAfterToggle.find((q) =>
         q.query.includes("email")
       );
-      expect(emailQueryAfterToggle, "Expected email query after toggle").toBeTruthy();
-      expect(
-        emailQueryAfterToggle!.optimization.state,
-        `Expected improvements_available after toggle but got ${emailQueryAfterToggle!.optimization.state}`,
-      ).toEqual("improvements_available");
-      expect((emailQueryAfterToggle!.optimization as any).indexesUsed).not.toContain("users_email_idx");
-      expect((emailQueryAfterToggle!.optimization as any).cost).toBeGreaterThan(costWithIndex);
+      assertDefined(emailQueryAfterToggle, "Expected email query after toggle");
+      assert(
+        emailQueryAfterToggle.optimization.state === "improvements_available",
+        `Expected improvements_available after toggle but got ${emailQueryAfterToggle.optimization.state}`,
+      );
+      expect(emailQueryAfterToggle.optimization.indexesUsed).not.toContain("users_email_idx");
+      expect(emailQueryAfterToggle.optimization.cost).toBeGreaterThan(costWithIndex);
       const recommendations =
-        (emailQueryAfterToggle!.optimization as any).indexRecommendations;
+        emailQueryAfterToggle.optimization.indexRecommendations;
       expect(
-        recommendations.some((r: any) =>
-          r.columns.some((c: any) => c.column === "email")
+        recommendations.some((r) =>
+          r.columns.some((c) => c.column === "email")
         ),
         "Expected recommendation for email column after disabling the index",
       ).toBeTruthy();
 
       // Verify explainPlan doesn't show the disabled index being used
       const explainPlanAfterToggle =
-        (emailQueryAfterToggle!.optimization as any).explainPlan;
-      expect(explainPlanAfterToggle, "Expected explainPlan to be present").toBeTruthy();
+        emailQueryAfterToggle.optimization.explainPlan;
+      assertDefined(explainPlanAfterToggle, "Expected explainPlan to be present");
       const explainStr = JSON.stringify(explainPlanAfterToggle);
       expect(explainStr).not.toContain("users_email_idx");
     } finally {
@@ -477,9 +478,9 @@ test("timed out queries are retried with exponential backoff up to maxRetries", 
       const slowQuery = recentQueries.find((q) =>
         q.query.includes("slow_table") && q.query.startsWith("select")
       );
-      expect(slowQuery, "Expected to find slow_table query").toBeTruthy();
+      assertDefined(slowQuery, "Expected to find slow_table query");
 
-      await optimizer.start([slowQuery!], {
+      await optimizer.start([slowQuery], {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
         stats: [{
@@ -500,16 +501,16 @@ test("timed out queries are retried with exponential backoff up to maxRetries", 
 
       const queries = optimizer.getQueries();
       const resultQuery = queries.find((q) => q.query.includes("slow_table"));
-      expect(resultQuery, "Expected slow_table query in results").toBeTruthy();
+      assertDefined(resultQuery, "Expected slow_table query in results");
 
       expect(
-        resultQuery!.optimization.state,
+        resultQuery.optimization.state,
         "Expected query to be in timeout state",
       ).toEqual("timeout");
 
-      if (resultQuery!.optimization.state === "timeout") {
+      if (resultQuery.optimization.state === "timeout") {
         expect(
-          resultQuery!.optimization.retries,
+          resultQuery.optimization.retries,
           `Expected ${maxRetries} retries`,
         ).toEqual(maxRetries);
       }
@@ -564,9 +565,9 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
       const mixedQuery = recentQueries.find((q) =>
         q.query.includes("order by created_at desc, status asc")
       );
-      expect(mixedQuery, "Expected to find mixed sort direction query").toBeTruthy();
+      assertDefined(mixedQuery, "Expected to find mixed sort direction query");
 
-      await optimizer.start([mixedQuery!], {
+      await optimizer.start([mixedQuery], {
         kind: "fromStatisticsExport",
         source: { kind: "inline" },
         stats: [{
@@ -595,16 +596,16 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
       const result = queries.find((q) =>
         q.query.includes("order by created_at desc, status asc")
       );
-      expect(result, "Expected to find query result").toBeTruthy();
-      expect(
-        result!.optimization.state,
-        `Expected improvements_available (ASC,ASC can't satisfy DESC,ASC via backward scan). Got: ${result!.optimization.state}`,
-      ).toEqual("improvements_available");
+      assertDefined(result, "Expected to find query result");
+      assert(
+        result.optimization.state === "improvements_available",
+        `Expected improvements_available (ASC,ASC can't satisfy DESC,ASC via backward scan). Got: ${result.optimization.state}`,
+      );
 
-      const recommendations = (result!.optimization as any).indexRecommendations;
-      const hasMixedRecommendation = recommendations.some((r: any) =>
+      const recommendations = result.optimization.indexRecommendations;
+      const hasMixedRecommendation = recommendations.some((r) =>
         r.columns.length >= 2 &&
-        r.columns.some((c: any) => c.column === "created_at" && c.sort?.dir === "SORTBY_DESC")
+        r.columns.some((c) => c.column === "created_at" && c.sort?.dir === "SORTBY_DESC")
       );
       expect(
         hasMixedRecommendation,
