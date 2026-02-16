@@ -192,7 +192,10 @@ ORDER BY
     values: Record<string, unknown>,
   ) {
     const columnsText = Object.keys(values)
-      .map((key, i) => `${doubleQuote(key)} = $${i + 1}`)
+      .map((rawKey, i) => {
+        const key = PgIdentifier.fromString(rawKey);
+        return `${key} = $${i + 1}`;
+      })
       .join(" AND ");
     // TODO: pass the schema along
     const sqlString =
@@ -553,11 +556,4 @@ ORDER BY
   }
 }
 
-const PROBABLY_NO_QUOTE_NEEDED = /^[a-z0-9_]+$/;
-function doubleQuote(value: string) {
-  if (PROBABLY_NO_QUOTE_NEEDED.test(value)) {
-    return value;
-  }
-  return `"${value}"`;
-}
 type TableName = string;
