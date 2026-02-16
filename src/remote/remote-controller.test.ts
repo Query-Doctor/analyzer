@@ -111,6 +111,7 @@ test("creating an index via endpoint adds it to the optimizing db", async () => 
       });
 
       expect(createResult.status).toEqual(200);
+      // as any: HandlerResult.body is unknown — will be typed (Site#2402)
       expect((createResult.body as any).success).toEqual(true);
 
       // Verify the index was created on the optimizing db
@@ -157,6 +158,7 @@ test("controller returns extension error when pg_stat_statements is not installe
 
       expect(syncResult.status).toEqual(200);
 
+      // as any: HandlerResult.body is unknown — will be typed (Site#2402)
       const body = syncResult.body as any;
       // Schema should still sync successfully
       expect(body.schema.type).toEqual("ok");

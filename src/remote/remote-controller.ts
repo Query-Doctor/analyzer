@@ -22,6 +22,7 @@ type SyncStatus = typeof SyncStatus[keyof typeof SyncStatus];
 
 type HandlerResult = {
   status: number;
+  // TODO: type body per route (Site#2402)
   body: unknown;
 };
 
@@ -52,6 +53,7 @@ export class RemoteController {
     remote.on("restoreLog", this.makeLoggingHandler("pg_restore").bind(this));
   }
 
+  // TODO: type body param (Site#2402)
   async toggleIndex(body: unknown): Promise<HandlerResult> {
     try {
       const index = ToggleIndexDto.parse(body);
@@ -79,6 +81,7 @@ export class RemoteController {
     }
   }
 
+  // TODO: type return (Site#2402)
   async getStatus(): Promise<unknown> {
     if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
       return { status: this.syncStatus };
