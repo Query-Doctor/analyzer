@@ -507,7 +507,6 @@ ORDER BY
       ) {
         throw new ExtensionNotInstalledError("pg_stat_statements");
       }
-      console.error(err);
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
   }

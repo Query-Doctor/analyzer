@@ -103,6 +103,9 @@ export function wrapPgPool(pool: Pool): Postgres {
   // Handle idle client errors to prevent process crashes.
   // Expected during DROP DATABASE ... WITH (FORCE) which terminates
   // all connections to the target database.
+  pool.on("connect", (client) => {
+    client.on("notice", () => {});
+  });
   pool.on("error", (err) => {
     log.warn(`Pool idle client error: ${err.message}`, "postgres");
   });

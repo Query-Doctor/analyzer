@@ -174,14 +174,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
         (results) => results.diffs,
         (error) => {
           log.error("Failed to poll schema", "remote");
-          console.error(error);
           throw error;
         },
       ) ??
         [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
       this.pollQueriesOnce().catch((error) => {
         log.error("Failed to poll queries", "remote");
-        console.error(error);
         throw error;
       }),
     ]);
@@ -350,7 +348,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
     this.schemaLoader = new SchemaLoader(this.sourceManager, source);
     this.queryLoader.on("pollError", (error) => {
       log.error("Failed to poll queries", "remote");
-      console.error(error);
     });
     this.queryLoader.on("poll", (queries) => {
       this.optimizer.addQueries(queries).catch((error) => {
@@ -358,7 +355,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
           `Failed to add ${queries.length} queries to optimizer`,
           "remote",
         );
-        console.error(error);
       });
       this.pgStatStatementsStatus = PgStatStatementsStatus.Installed;
     }).on("pgStatStatementsNotInstalled", () => {

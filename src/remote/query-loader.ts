@@ -81,7 +81,6 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
           this.scheduleNextPoll();
         }
       }, (error) => {
-        console.error(error);
         // we don't expect an error here. Better signal our exit
         this.emit("exit");
       });
