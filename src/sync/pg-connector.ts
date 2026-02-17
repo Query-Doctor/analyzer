@@ -90,6 +90,7 @@ export type ResetPgStatStatementsResult =
 export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
+  private pssSchema: PgIdentifier | null = null;
   /**
    * The minimum size for a table to be considered for sampling.
    * Otherwise we use the `order by random()` instead.
@@ -471,6 +472,21 @@ ORDER BY
     };
   }
 
+  private async getPssSchema(): Promise<PgIdentifier> {
+    if (this.pssSchema) return this.pssSchema;
+    const result = await this.db.exec<{ schema: string }>(`
+      SELECT n.nspname as schema
+      FROM pg_extension e
+      JOIN pg_namespace n ON n.oid = e.extnamespace
+      WHERE e.extname = 'pg_stat_statements'
+    `);
+    if (result.length === 0) {
+      throw new ExtensionNotInstalledError("pg_stat_statements");
+    }
+    this.pssSchema = PgIdentifier.fromString(result[0].schema);
+    return this.pssSchema;
+  }
+
   /**
    * Get the latest queries using pg_stat_statements
    * @throws {ExtensionNotInstalledError} - pg_stat_statements is not installed
@@ -478,6 +494,7 @@ ORDER BY
    */
   public async getRecentQueries(): Promise<RecentQuery[]> {
     try {
+      const pssSchema = await this.getPssSchema();
       const results = await this.db.exec<RawRecentQuery>(`
       SELECT
         'unknown_user' as "username",
@@ -486,7 +503,7 @@ ORDER BY
         calls,
         rows,
         toplevel as "topLevel"
-      FROM pg_stat_statements
+      FROM ${pssSchema}.pg_stat_statements
       WHERE query not like '%pg_stat_statements%'
         -- and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
@@ -498,9 +515,7 @@ ORDER BY
         results,
       );
     } catch (err) {
-      if (err instanceof ExtensionNotInstalledError) {
-        throw err;
-      }
+      if (err instanceof ExtensionNotInstalledError) throw err;
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')
@@ -518,12 +533,14 @@ ORDER BY
    */
   public async resetPgStatStatements(): Promise<void> {
     try {
+      const pssSchema = await this.getPssSchema();
       await this.db.exec(`
-          SELECT pg_stat_statements_reset(); -- @qd_introspection
+          SELECT ${pssSchema}.pg_stat_statements_reset(); -- @qd_introspection
       `);
 
       this.segmentedQueryCache.reset(this.db);
     } catch (err) {
+      if (err instanceof ExtensionNotInstalledError) throw err;
       if (
         err instanceof Error &&
         err.message.includes(
