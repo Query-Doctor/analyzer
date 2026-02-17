@@ -40,7 +40,7 @@ RUN apk add -uU --no-cache \
     su-exec \
     openssl \
     krb5 \
-    postgresql-client \
+    postgresql17-client \
     perl
 
 # Copy pgBadger
@@ -60,8 +60,8 @@ RUN mkdir -p /var/lib/postgresql/data \
 
 WORKDIR /app
 # making sure we use the binaries from the installed postgresql17 client
-ENV PG_DUMP_BINARY=/usr/local/pgsql/bin/pg_dump
-ENV PG_RESTORE_BINARY=/usr/local/pgsql/bin/pg_restore
+ENV PG_DUMP_BINARY=/usr/bin/pg_dump
+ENV PG_RESTORE_BINARY=/usr/bin/pg_restore
 ENV PATH="/usr/local/pgsql/bin:$PATH"
 ENV PGDATA=/var/lib/postgresql/data
 
@@ -69,16 +69,17 @@ RUN sed -i 's|nobody:/|nobody:/home|' /etc/passwd && chown nobody:nobody /home
 
 ENV POSTGRES_URL=postgresql://postgres@localhost/postgres?host=/tmp
 
-RUN su-exec postgres initdb -D $PGDATA || true && \
-    # echo "shared_preload_libraries = 'timescaledb,pg_stat_statements'" >> $PGDATA/postgresql.conf && \
-    echo "listen_addresses = ''" >> $PGDATA/postgresql.conf && \
-    echo "unix_socket_directories = '/tmp'" >> $PGDATA/postgresql.conf
+COPY ./docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 
 USER postgres
 
+RUN initdb -D "$PGDATA"
+
+# We don't expose 5432 because
+# 1. We use a unix socket
+# 2. The external user should never have to interface with the internal postgres service
 EXPOSE 2345
 
-CMD ["/bin/bash", "-c", "\
-    pg_ctl -D $PGDATA -l $PGDATA/logfile start || (cat $PGDATA/logfile && exit 1) && \
-    until pg_isready -h /tmp; do sleep 0.5; done && \
-    node /app/dist/main.mjs"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
