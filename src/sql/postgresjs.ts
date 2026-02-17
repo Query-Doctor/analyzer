@@ -84,16 +84,6 @@ function serializeParams(params?: unknown[]): unknown[] | undefined {
   });
 }
 
-/**
- * Format a string array as a PostgreSQL array literal.
- * Use this for params that target ::text[] casts instead of ::jsonb,
- * so they bypass JSON serialization in serializeParams.
- */
-export function toPgTextArray(arr: string[]): string {
-  if (arr.length === 0) return "{}";
-  return "{" + arr.map((s) => '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"').join(",") + "}";
-}
-
 export function wrapPgPool(pool: Pool): Postgres {
   // Handle idle client errors to prevent process crashes.
   // Expected during DROP DATABASE ... WITH (FORCE) which terminates
