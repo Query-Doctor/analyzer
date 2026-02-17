@@ -23,7 +23,6 @@ import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
-import { toPgTextArray } from "../sql/postgresjs.ts";
 import { ConnectionManager } from "./connection-manager.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -185,7 +184,7 @@ ORDER BY
     pg_tables.tablename, fk."referencedTable", fk."sourceColumn";-- @qd_introspection
     `,
           [
-            toPgTextArray(options.excludedSchemas),
+            options.excludedSchemas,
           ],
         ),
     )();
@@ -445,7 +444,7 @@ ORDER BY
        JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
          ON n.nspname = t.schema_name AND c.relname = t.table_name
        WHERE c.relkind IN ('r', 'm')`,
-      [toPgTextArray(schemaNames), toPgTextArray(tableNames)],
+      [schemaNames, tableNames],
     );
     return Number(results[0]?.total_rows ?? 0);
   }
