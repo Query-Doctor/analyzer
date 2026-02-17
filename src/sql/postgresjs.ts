@@ -1,4 +1,4 @@
-import { Pool, type PoolConfig, type PoolClient } from "pg";
+import { Pool, type PoolConfig } from "pg";
 import Cursor from "pg-cursor";
 import {
   type Postgres,
@@ -69,17 +69,32 @@ function connect(connectable: Connectable, config: PoolConfig) {
 }
 
 /**
- * Pre-serialize array/object params as JSON strings.
- * pg serializes arrays as PostgreSQL array literals ({...}),
- * but the Postgres interface expects postgres.js semantics
- * where complex types are sent as JSON strings ([...]).
+ * Arrays are supported BUT only for primitive values.
+ * For anything else jsonb has to be serialized
+ */
+function serializeArray(arr: unknown[]): unknown[] | string {
+  const allPrimitiveValues = arr.every((v) => typeof v === "string" || typeof v === "number" || typeof v === "boolean");
+  if (allPrimitiveValues) {
+    return arr;
+  }
+  return JSON.stringify(arr);
+}
+
+/**
+ * node-postgres does not serialize jsonb in an expected way
  */
 function serializeParams(params?: unknown[]): unknown[] | undefined {
   if (!params) return params;
   return params.map((p) => {
-    if (p === null || p === undefined) return p;
-    if (Array.isArray(p)) return JSON.stringify(p);
-    if (typeof p === "object" && !(p instanceof Buffer)) return JSON.stringify(p);
+    if (p === null || p === undefined) {
+      return p;
+    }
+    if (Array.isArray(p) && p.length > 0) {
+      return serializeArray(p);
+    }
+    if (typeof p === "object" && !(p instanceof Buffer)) {
+      return JSON.stringify(p);
+    }
     return p;
   });
 }
@@ -126,7 +141,7 @@ export function wrapPgPool(pool: Pool): Postgres {
               }
             };
             const result = queue.then(doExec, doExec);
-            queue = result.then(() => {}, () => {});
+            queue = result.then(() => { }, () => { });
             return result;
           },
         };
