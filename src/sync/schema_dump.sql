@@ -72,7 +72,8 @@ WITH all_indexes AS (
     LEFT JOIN pg_tablespace ts ON i.reltablespace = ts.oid
   WHERE
     n.nspname not like 'pg_%' AND
-    -- n.nspname = 'public' AND      -- Your original schema filter
+    -- Filter out timescaledb system catalogs
+    n.nspname not like '_timescaledb_%' AND
     t.relispartition = false  -- Only list indexes on parent/non-partitioned tables
   ORDER BY
     n.nspname, t.relname, i.relname
@@ -265,6 +266,8 @@ all_views as (
   WHERE
     n.nspname not like 'pg_%'
     AND n.nspname <> 'information_schema'
+    AND n.nspname <> 'timescaledb_information'
+    AND n.nspname not like '_timescaledb_%'
     AND c.relkind IN ('v' /* views */, 'm' /* materialized views */)
   ORDER BY
     n.nspname, c.relname
