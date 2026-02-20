@@ -1,5 +1,33 @@
-`analyzer` is capable of giving index recommendations after going through your
-postgres logs. It works with all languages, ORMs and query builders!
+# Query Doctor Analyzer
+
+PostgreSQL index recommendation tool that analyzes your queries and suggests optimal indexes.
+
+## Features
+
+- Works with any language, ORM, or query builder
+- Automatic index recommendations based on real query execution
+- Cost-based analysis using PostgreSQL EXPLAIN plans
+- Optional production statistics sync for accurate cost estimates
+- Support for TimescaleDB hypertables and materialized views
+- Non-destructive (all analysis done in a local copy of the schema)
+
+## Modes
+
+The analyzer can run in two modes:
+
+### Server Mode
+
+Run as an HTTP server for real-time query analysis during development.
+
+```bash
+docker run --pull always -t -p 2345:2345 ghcr.io/query-doctor/analyzer
+```
+
+The server runs on port `2345` and can be connected to from [app.querydoctor.com](https://app.querydoctor.com).
+
+### CI Mode
+
+Run as a GitHub Action to automatically analyze queries from your test suite and post index recommendations as PR comments.
 
 There are a couple assumptions about your CI pipeline we make for this to work.
 
@@ -27,22 +55,20 @@ log_directory='/var/log/postgresql' # or any path you like
 log_filename='postgres.log' # or any name you like
 ```
 
-### Optional
+#### Optional
 
 You have a production database you can pull statistics from (using a query given
-by us)
+by us).
 
----
+## CI Mode Setup
 
-# Steps for setup
+Currently we only support GitHub Actions but it would not be difficult to add
+support for other CI platforms like Azure Pipelines.
 
-Currently we only support GitHub actions but it would not be difficult to add
-support for other CI platforms like azure pipelines.
+### GitHub Actions
 
-## Github Actions
-
-`ubuntu` runners in github already ships with postgres as part of the default
-image, so we try to leverage that. Because github workflows does not support
+`ubuntu` runners in GitHub already ships with postgres as part of the default
+image, so we try to leverage that. Because GitHub workflows does not support
 specifying arguments to services https://github.com/actions/runner/pull/1152, we
 can’t run postgres as a container. And trying to run postgres in docker directly
 causes network problems because it seems `--network=host` is also not supported
@@ -85,7 +111,7 @@ you can change `sudo -u postgres createuser -s -d -r -w me` to create a new user
 with a name of your choosing and `sudo -u postgres createdb testing` to create a
 db with a different name.
 
-1. Run your migrations and seed scripts. This is just an example showing that
+2. Run your migrations and seed scripts. This is just an example showing that
    the migrations should target the postgres instance that was set up with the
    previous command
 
@@ -101,9 +127,9 @@ jobs:
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
-1. Run your test suite against the same database. You can do this with any tool
+3. Run your test suite against the same database. You can do this with any tool
    and use any query builder or ORM you like.
-2. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
+4. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
    reviewing the indexes found in your database.
 
 ```yaml
@@ -127,7 +153,7 @@ jobs:
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
-1. Add `pull-request: write` permissions to your job to allow
+5. Add `pull-request: write` permissions to your job to allow
 
 ```yaml
 jobs:
@@ -139,7 +165,7 @@ jobs:
 ...
 ```
 
-## Statistics synchronization
+## Statistics Synchronization
 
 To make sure that we can most accurately emulate your production database, we
 need access to its stats.
@@ -245,13 +271,13 @@ Note: The function is defined with `SECURITY DEFINER` so that it can be called
 either manually, or automatically by the analyzer if you set up stats pull
 integration.
 
-#### Regular PSQL
+### Regular PSQL
 
 ```shell
 psql -d <yourdb> -At -F "" -c "select _qd_dump_stats(false)" > stats.json
 ```
 
-#### Postgres in Kubernetes
+### Postgres in Kubernetes
 
 This example uses cloudnative-pg, but it can apply to any pod that has access to
 psql as superuser.
