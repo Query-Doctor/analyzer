@@ -120,10 +120,12 @@ export const FullSchemaConstraint = z.object({
   constraintType: z.enum([
     "check",
     "foreign_key",
+    "not_null",
     "primary_key",
     "unique",
+    "trigger",
     "exclusion",
-  ]),
+  ]).or(z.string()),
   definition: z.string(),
   isDeferrable: z.boolean().optional(),
   isInitiallyDeferred: z.boolean().optional(),

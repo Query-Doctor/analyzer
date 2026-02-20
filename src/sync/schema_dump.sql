@@ -156,9 +156,12 @@ SELECT
         CASE con.contype
           WHEN 'c' THEN 'check'
           WHEN 'f' THEN 'foreign_key'
+          WHEN 'n' THEN 'not_null'
           WHEN 'p' THEN 'primary_key'
           WHEN 'u' THEN 'unique'
+          WHEN 't' THEN 'trigger'
           WHEN 'x' THEN 'exclusion'
+          ELSE con.contype
         END,
 
       -- pg_get_constraintdef is the easiest way to get the full definition
