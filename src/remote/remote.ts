@@ -372,6 +372,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   }
 
   async cleanup(): Promise<void> {
+    this.queryLoader?.stop();
     await this.optimizer.finish;
     this.optimizer.stop();
     await Promise.all([
