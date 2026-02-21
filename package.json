@@ -27,7 +27,7 @@
     "fastify": "^5.7.4",
     "jsondiffpatch": "^0.7.3",
     "nunjucks": "^3.2.4",
-    "pg": "^8.16.0",
+    "pg": "^8.18.0",
     "pg-cursor": "^2.12.3",
     "pgsql-deparser": "^17.11.1",
     "prettier": "^3",
