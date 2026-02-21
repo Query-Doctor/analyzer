@@ -12,39 +12,39 @@
     "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs --packages=external && cp src/reporters/github/success.md.j2 src/sync/schema_dump.sql dist/"
   },
   "dependencies": {
-    "@actions/core": "^1.11.1",
-    "@actions/github": "^6.0.1",
+    "@actions/core": "^3.0.0",
+    "@actions/github": "^9.0.0",
     "@fastify/cors": "^11.2.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
     "@libpg-query/parser": "^17.6.3",
     "@opentelemetry/api": "^1.9.0",
-    "@pgsql/types": "^17.6.1",
+    "@pgsql/types": "^17.6.2",
     "@query-doctor/core": "^0.4.0",
     "async-sema": "^3.1.1",
-    "dedent": "^1.6.0",
+    "dedent": "^1.7.1",
     "fast-csv": "^5.0.5",
-    "fastify": "^5.3.3",
+    "fastify": "^5.7.4",
     "jsondiffpatch": "^0.7.3",
     "nunjucks": "^3.2.4",
-    "pg": "^8.16.0",
-    "pg-cursor": "^2.12.3",
-    "pgsql-deparser": "^17.11.1",
+    "pg": "^8.18.0",
+    "pg-cursor": "^2.17.0",
+    "pgsql-deparser": "^17.17.2",
     "prettier": "^3",
     "prettier-plugin-sql": "^0.19",
     "sql-highlight": "^6.1.0",
-    "zod": "^4.1.12"
+    "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@testcontainers/postgresql": "^11.9.0",
+    "@testcontainers/postgresql": "^11.12.0",
     "@types/node": "^24.9.1",
     "@types/nunjucks": "^3.2.6",
-    "@types/pg": "^8.15.4",
+    "@types/pg": "^8.16.0",
     "@types/pg-cursor": "^2.7.2",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.27.3",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.3",
-    "vitest": "^3.1.4"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
