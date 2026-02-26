@@ -71,13 +71,13 @@ export class RecentQuery {
     seenAt: number,
   ) {
     const analyzer = new Analyzer(parse);
-    const query = this.rewriteQuery(data.query);
-    const analysis = await analyzer.analyze(query);
     const formattedQuery = await RecentQuery.formatQuery(
-      analysis.queryWithoutTags,
+      data.query,
     );
+    const analysis = await analyzer.analyze(formattedQuery);
+    const query = this.rewriteQuery(analysis.queryWithoutTags);
     return new RecentQuery(
-      { ...data, query: analysis.queryWithoutTags, formattedQuery },
+      { ...data, query, formattedQuery },
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
@@ -115,8 +115,8 @@ export class RecentQuery {
     return referencedTables.some((ref) =>
       ref.table.startsWith("pg_") ||
       ref.schema &&
-        (ref.schema.startsWith("_timescale") ||
-          ref.schema === "timescaledb_information")
+      (ref.schema.startsWith("_timescale") ||
+        ref.schema === "timescaledb_information")
     );
   }
 
