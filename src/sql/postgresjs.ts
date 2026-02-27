@@ -60,10 +60,29 @@ export function connectToSource(
   return connect(connectable, config);
 }
 
+/**
+ * node-pg treats sslmode=require as rejectUnauthorized: true,
+ * but PostgreSQL semantics for "require" only mean "encrypt the connection"
+ * without verifying the server certificate. This breaks self-signed certs.
+ */
+export function getSslConfig(connectable: Connectable): PoolConfig["ssl"] {
+  const sslmode = connectable.url.searchParams.get("sslmode");
+  if (!sslmode || sslmode === "disable") return undefined;
+  if (sslmode === "verify-full" || sslmode === "verify-ca") return true;
+  // require, prefer, allow — encrypt but accept self-signed certificates
+  return { rejectUnauthorized: false };
+}
+
 function connect(connectable: Connectable, config: PoolConfig) {
+  const ssl = getSslConfig(connectable);
+  // Strip sslmode from the connection string so pg-connection-string
+  // doesn't override our explicit ssl config (it treats require as verify-full)
+  const url = new URL(connectable.toString());
+  url.searchParams.delete("sslmode");
   const pool = new Pool({
     ...config,
-    connectionString: connectable.toString(),
+    connectionString: url.toString(),
+    ...(ssl !== undefined && { ssl }),
   });
   return wrapPgPool(pool);
 }
