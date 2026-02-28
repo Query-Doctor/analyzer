@@ -55,6 +55,7 @@ export function connectToSource(
   const config: PoolConfig = {
     max: 20,
     idleTimeoutMillis: DEFAULT_IDLE_TIMEOUT_MS,
+    allowExitOnIdle: true,
   };
 
   return connect(connectable, config);
