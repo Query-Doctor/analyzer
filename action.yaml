@@ -16,9 +16,11 @@ runs:
       with:
         node-version: 24
         cache: npm
+        cache-dependency-path: ${{ github.action_path }}/package-lock.json
 
     - name: Install dependencies
       shell: bash
+      working-directory: ${{ github.action_path }}
       run: npm ci
 
     # Cache pgBadger build
@@ -54,6 +56,7 @@ runs:
     # Run the application
     - name: Run Analyzer
       shell: bash
+      working-directory: ${{ github.action_path }}
       run: npm run start
       env:
         PG_DUMP_BINARY: /usr/bin/pg_dump
