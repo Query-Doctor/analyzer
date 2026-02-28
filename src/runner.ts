@@ -13,6 +13,7 @@ import {
   IndexedTable,
   IndexOptimizer,
   OptimizeResult,
+  type Postgres,
   PostgresQueryBuilder,
   Statistics,
   StatisticsMode,
@@ -43,6 +44,7 @@ export class Runner {
     optimized: 0,
   };
   constructor(
+    private readonly db: Postgres,
     private readonly optimizer: IndexOptimizer,
     private readonly existingIndexes: IndexedTable[],
     private readonly stats: Statistics,
@@ -62,12 +64,17 @@ export class Runner {
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(db, stats, existingIndexes);
     return new Runner(
+      db,
       optimizer,
       existingIndexes,
       stats,
       options.logPath,
       options.maxCost,
     );
+  }
+
+  async close() {
+    await (this.db as unknown as { close(): Promise<void> }).close();
   }
 
   async run() {
@@ -82,7 +89,9 @@ export class Runner {
       this.logPath,
     ];
     console.log(`pgbadger ${args.join(" ")}`);
-    const child = spawn("pgbadger", args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("pgbadger", args, {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
     child.stderr!.pipe(process.stderr);
     let error: Error | undefined;
     const stream = csv
@@ -195,7 +204,7 @@ export class Runner {
       await analyzer.analyze(formattedQuery);
 
     const selectsCatalog = referencedTables.find((ref) =>
-      ref.table.startsWith("pg_")
+      ref.table.startsWith("pg_"),
     );
     if (selectsCatalog) {
       if (env.DEBUG) {
@@ -258,11 +267,9 @@ export class Runner {
                 (e) => e.index_name === index,
               );
               if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${
-                  existing.index_columns
-                    .map((c) => `"${c.name}" ${c.order}`)
-                    .join(", ")
-                })`;
+                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
+                  .map((c) => `"${c.name}" ${c.order}`)
+                  .join(", ")})`;
               }
             })
             .filter((i) => i !== undefined);
@@ -369,21 +376,21 @@ export class Runner {
 
 export type QueryProcessResult =
   | {
-    kind: "invalid";
-  }
+      kind: "invalid";
+    }
   | {
-    kind: "cost_past_threshold";
-    warning: ReportQueryCostWarning;
-  }
+      kind: "cost_past_threshold";
+      warning: ReportQueryCostWarning;
+    }
   | {
-    kind: "recommendation";
-    recommendation: ReportIndexRecommendation;
-  }
+      kind: "recommendation";
+      recommendation: ReportIndexRecommendation;
+    }
   | {
-    kind: "error";
-    error: Error;
-  }
+      kind: "error";
+      error: Error;
+    }
   | {
-    kind: "zero_cost_plan";
-    explainPlan: object;
-  };
+      kind: "zero_cost_plan";
+      explainPlan: object;
+    };
