@@ -19,7 +19,11 @@ async function runInCI(
     maxCost,
   });
   log.info("main", "Running in CI mode. Skipping server creation");
-  await runner.run();
+  try {
+    await runner.run();
+  } finally {
+    await runner.close();
+  }
 }
 
 async function runOutsideCI() {
@@ -65,7 +69,6 @@ async function main() {
       env.STATISTICS_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,
     );
-    process.exit();
   } else {
     await runOutsideCI();
   }
