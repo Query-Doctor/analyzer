@@ -12,6 +12,7 @@ import {
   ExportedStats,
   IndexedTable,
   IndexOptimizer,
+  type IndexRecommendation,
   OptimizeResult,
   type Postgres,
   PostgresQueryBuilder,
@@ -104,6 +105,7 @@ export class Runner {
 
     const recommendations: ReportIndexRecommendation[] = [];
     const queriesPastThreshold: ReportQueryCostWarning[] = [];
+    const allResults: QueryProcessResult[] = [];
 
     console.time("total");
     for await (const chunk of stream) {
@@ -143,6 +145,9 @@ export class Runner {
         continue;
       }
       const result = await this.processQuery(parsed);
+      if (result.kind !== "invalid") {
+        allResults.push(result);
+      }
       switch (result.kind) {
         case "error":
           this.queryStats.errored++;
@@ -153,6 +158,8 @@ export class Runner {
         case "recommendation":
           recommendations.push(result.recommendation);
           break;
+        case "no_improvement":
+        case "zero_cost_plan":
         case "invalid":
           break;
       }
@@ -176,7 +183,7 @@ export class Runner {
     };
     await reporter.report(reportContext);
     console.timeEnd("total");
-    return reportContext;
+    return { reportContext, allResults };
   }
 
   async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {
@@ -229,6 +236,7 @@ export class Runner {
       if (typeof this.maxCost === "number" && log.plan.cost > this.maxCost) {
         return {
           kind: "cost_past_threshold",
+          rawQuery: query,
           warning: {
             fingerprint: fingerprintNum,
             formattedQuery,
@@ -258,7 +266,13 @@ export class Runner {
           );
           // this.queryStats.errored++;
           console.timeEnd(`timing`);
-          return { kind: "error", error: err as Error };
+          return {
+            kind: "error",
+            error: err as Error,
+            fingerprint: fingerprintNum,
+            rawQuery: query,
+            formattedQuery,
+          };
         }
         if (out.kind === "ok") {
           const existingIndexesForQuery = Array.from(out.existingIndexes)
@@ -275,12 +289,15 @@ export class Runner {
             .filter((i) => i !== undefined);
           if (out.newIndexes.size > 0) {
             this.queryStats.optimized++;
-            const newIndexes = Array.from(out.newIndexes)
-              .map((n) => out.triedIndexes.get(n)?.definition)
+            const newIndexRecommendations = Array.from(out.newIndexes)
+              .map((n) => out.triedIndexes.get(n))
               .filter((n) => n !== undefined);
+            const newIndexes = newIndexRecommendations.map((n) => n.definition);
             console.log(`New indexes: ${newIndexes.join(", ")}`);
             return {
               kind: "recommendation",
+              rawQuery: query,
+              indexRecommendations: newIndexRecommendations,
               recommendation: {
                 fingerprint: fingerprintNum,
                 formattedQuery,
@@ -305,6 +322,7 @@ export class Runner {
               );
               return {
                 kind: "cost_past_threshold",
+                rawQuery: query,
                 warning: {
                   fingerprint: fingerprintNum,
                   formattedQuery,
@@ -319,7 +337,14 @@ export class Runner {
                 },
               };
             }
-            return { kind: "invalid" };
+            return {
+              kind: "no_improvement",
+              fingerprint: fingerprintNum,
+              rawQuery: query,
+              formattedQuery,
+              cost: out.baseCost,
+              existingIndexes: existingIndexesForQuery,
+            };
           }
         } else if (out.kind === "zero_cost_plan") {
           console.log("Zero cost plan found");
@@ -328,6 +353,9 @@ export class Runner {
           return {
             kind: "zero_cost_plan",
             explainPlan: out.explainPlan,
+            fingerprint: fingerprintNum,
+            rawQuery: query,
+            formattedQuery,
           };
         }
         console.timeEnd(`timing`);
@@ -379,18 +407,35 @@ export type QueryProcessResult =
       kind: "invalid";
     }
   | {
-      kind: "cost_past_threshold";
-      warning: ReportQueryCostWarning;
-    }
+    kind: "cost_past_threshold";
+    rawQuery: string;
+    warning: ReportQueryCostWarning;
+  }
   | {
-      kind: "recommendation";
-      recommendation: ReportIndexRecommendation;
-    }
+    kind: "recommendation";
+    rawQuery: string;
+    indexRecommendations: IndexRecommendation[];
+    recommendation: ReportIndexRecommendation;
+  }
   | {
-      kind: "error";
-      error: Error;
-    }
+    kind: "no_improvement";
+    fingerprint: number;
+    rawQuery: string;
+    formattedQuery: string;
+    cost: number;
+    existingIndexes: string[];
+  }
   | {
-      kind: "zero_cost_plan";
-      explainPlan: object;
-    };
+    kind: "error";
+    error: Error;
+    fingerprint: number;
+    rawQuery: string;
+    formattedQuery: string;
+  }
+  | {
+    kind: "zero_cost_plan";
+    explainPlan: object;
+    fingerprint: number;
+    rawQuery: string;
+    formattedQuery: string;
+  };

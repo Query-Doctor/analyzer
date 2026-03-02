@@ -5,6 +5,7 @@ import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { shutdownController } from "./shutdown.ts";
+import { postToSiteApi } from "./reporters/site-api.ts";
 
 async function runInCI(
   postgresUrl: Connectable,
@@ -23,6 +24,13 @@ async function runInCI(
     await runner.run();
   } finally {
     await runner.close();
+  }
+  await runner.run();
+  const { allResults } = await runner.run();
+
+  const siteApiEndpoint = process.env.SITE_API_ENDPOINT;
+  if (siteApiEndpoint) {
+    await postToSiteApi(siteApiEndpoint, allResults);
   }
 }
 
