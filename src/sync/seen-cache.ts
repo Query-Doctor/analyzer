@@ -1,6 +1,7 @@
 import type { Postgres } from "@query-doctor/core";
 import { QueryHash, RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 import { fingerprint } from "@libpg-query/parser";
+import { log } from "../log.ts";
 
 interface CacheEntry {
   firstSeen: number;
@@ -50,7 +51,13 @@ export class QueryCache {
     // TODO: bound the concurrency
     return await Promise.all(rawQueries.map(async (rawQuery) => {
       const key = await this.store(rawQuery);
-      return RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
+      try {
+        return await RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
+      } catch (error) {
+        log.error(`Failed to analyze query ${rawQuery.query}`, "query-cache")
+        console.error(error)
+        throw error;
+      }
     }));
   }
 
