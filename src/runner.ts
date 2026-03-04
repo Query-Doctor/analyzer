@@ -28,6 +28,7 @@ import {
   type ReportQueryCostWarning,
   type ReportStatistics,
 } from "./reporters/reporter.ts";
+import { DEFAULT_CONFIG, type AnalyzerConfig } from "./config.ts";
 const bgBrightMagenta = (s: string) => `\x1b[105m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const blue = (s: string) => `\x1b[34m${s}\x1b[0m`;
@@ -51,6 +52,7 @@ export class Runner {
     private readonly stats: Statistics,
     private readonly logPath: string,
     private readonly maxCost?: number,
+    private readonly ignoredQueryHashes: Set<string> = new Set(),
   ) {}
 
   static async build(options: {
@@ -58,6 +60,7 @@ export class Runner {
     statisticsPath?: string;
     maxCost?: number;
     logPath: string;
+    ignoredQueryHashes?: string[];
   }) {
     const db = connectToSource(options.postgresUrl);
     const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
@@ -71,14 +74,11 @@ export class Runner {
       stats,
       options.logPath,
       options.maxCost,
+      new Set(options.ignoredQueryHashes ?? []),
     );
   }
 
-  async close() {
-    await (this.db as unknown as { close(): Promise<void> }).close();
-  }
-
-  async run() {
+  async run(config: AnalyzerConfig = DEFAULT_CONFIG) {
     const startDate = new Date();
     const logSize = statSync(this.logPath).size;
     console.log(`logPath=${this.logPath},fileSize=${logSize}`);
@@ -169,13 +169,32 @@ export class Runner {
       `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
     );
     const reporter = new GithubReporter(env.GITHUB_TOKEN);
-    const statistics = deriveIndexStatistics(recommendations);
+    const filteredRecommendations =
+      config.minimumCost > 0
+        ? recommendations.filter((r) => r.baseCost > config.minimumCost)
+        : recommendations;
+    const filteredThresholdWarnings =
+      config.minimumCost > 0
+        ? queriesPastThreshold.filter((w) => w.baseCost > config.minimumCost)
+        : queriesPastThreshold;
+    const statistics = deriveIndexStatistics(filteredRecommendations);
     const timeElapsed = Date.now() - startDate.getTime();
     console.log(`Generating report (${reporter.provider()})`);
+    if (config.minimumCost > 0) {
+      const filtered =
+        recommendations.length -
+        filteredRecommendations.length +
+        (queriesPastThreshold.length - filteredThresholdWarnings.length);
+      if (filtered > 0) {
+        console.log(
+          `Filtered ${filtered} queries below minimumCost=${config.minimumCost} from PR comment`,
+        );
+      }
+    }
     const reportContext: ReportContext = {
       statisticsMode: this.stats.mode,
-      recommendations,
-      queriesPastThreshold,
+      recommendations: filteredRecommendations,
+      queriesPastThreshold: filteredThresholdWarnings,
       queryStats: Object.freeze(this.queryStats),
       statistics,
       error,
@@ -191,6 +210,13 @@ export class Runner {
     const { query } = log;
     const queryFingerprint = await fingerprint(query);
     const fingerprintNum = parseInt(queryFingerprint, 16);
+    const hexHash = fingerprintNum.toString(16);
+    if (this.ignoredQueryHashes.has(hexHash)) {
+      if (env.DEBUG) {
+        console.log("Skipping ignored query", fingerprintNum);
+      }
+      return { kind: "invalid" };
+    }
     if (log.isIntrospection) {
       if (env.DEBUG) {
         console.log("Skipping introspection query", fingerprintNum);

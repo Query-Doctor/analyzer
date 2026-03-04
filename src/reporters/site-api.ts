@@ -1,5 +1,6 @@
 import * as github from "@actions/github";
 import type { IndexRecommendation } from "@query-doctor/core";
+import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { QueryProcessResult } from "../runner.ts";
 
 interface CiRunPayload {
@@ -151,10 +152,13 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
 export async function postToSiteApi(
   endpoint: string,
   results: QueryProcessResult[],
+  config: AnalyzerConfig = DEFAULT_CONFIG,
 ): Promise<void> {
+  const ignoredSet = new Set(config.ignoredQueryHashes);
   const queries = results
     .map(mapResultToQuery)
-    .filter((q): q is CiQueryPayload => q !== null);
+    .filter((q): q is CiQueryPayload => q !== null)
+    .filter((q) => !ignoredSet.has(q.hash));
 
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
