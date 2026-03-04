@@ -73,7 +73,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
   switch (result.kind) {
     case "recommendation":
       return {
-        hash: result.recommendation.fingerprint.toString(16),
+        hash: result.recommendation.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.recommendation.formattedQuery,
         optimization: {
@@ -93,7 +93,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
 
     case "no_improvement":
       return {
-        hash: result.fingerprint.toString(16),
+        hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
         optimization: {
@@ -105,7 +105,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
 
     case "zero_cost_plan":
       return {
-        hash: result.fingerprint.toString(16),
+        hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
         optimization: {
@@ -117,7 +117,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
 
     case "error":
       return {
-        hash: result.fingerprint.toString(16),
+        hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
         optimization: {
@@ -128,7 +128,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
 
     case "cost_past_threshold":
       return {
-        hash: result.warning.fingerprint.toString(16),
+        hash: result.warning.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.warning.formattedQuery,
         optimization: result.warning.optimization

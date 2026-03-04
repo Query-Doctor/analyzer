@@ -86,7 +86,7 @@ export interface IndexStatistic {
 }
 
 export interface ReportIndexRecommendation {
-  fingerprint: number;
+  fingerprint: string;
   formattedQuery: string;
   baseCost: number;
   baseExplainPlan: object;
@@ -97,7 +97,7 @@ export interface ReportIndexRecommendation {
 }
 
 export interface ReportQueryCostWarning {
-  fingerprint: number;
+  fingerprint: string;
   formattedQuery: string;
   baseCost: number;
   explainPlan: object;

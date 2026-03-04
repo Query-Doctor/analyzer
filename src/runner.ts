@@ -38,7 +38,7 @@ import { parse } from "@libpg-query/parser";
 import { Connectable } from "./sync/connectable.ts";
 
 export class Runner {
-  private readonly seenQueries = new Set<number>();
+  private readonly seenQueries = new Set<string>();
   public readonly queryStats: ReportStatistics = {
     total: 0,
     errored: 0,
@@ -209,27 +209,25 @@ export class Runner {
     this.queryStats.total++;
     const { query } = log;
     const queryFingerprint = await fingerprint(query);
-    const fingerprintNum = parseInt(queryFingerprint, 16);
-    const hexHash = fingerprintNum.toString(16);
-    if (this.ignoredQueryHashes.has(hexHash)) {
+    if (this.ignoredQueryHashes.has(queryFingerprint)) {
       if (env.DEBUG) {
-        console.log("Skipping ignored query", fingerprintNum);
+        console.log("Skipping ignored query", queryFingerprint);
       }
       return { kind: "invalid" };
     }
     if (log.isIntrospection) {
       if (env.DEBUG) {
-        console.log("Skipping introspection query", fingerprintNum);
+        console.log("Skipping introspection query", queryFingerprint);
       }
       return { kind: "invalid" };
     }
-    if (this.seenQueries.has(fingerprintNum)) {
+    if (this.seenQueries.has(queryFingerprint)) {
       if (env.DEBUG) {
-        console.log("Skipping duplicate query", fingerprintNum);
+        console.log("Skipping duplicate query", queryFingerprint);
       }
       return { kind: "invalid" };
     }
-    this.seenQueries.add(fingerprintNum);
+    this.seenQueries.add(queryFingerprint);
 
     const analyzer = new Analyzer(parse);
     const formattedQuery = await this.formatQuery(query);
@@ -244,7 +242,7 @@ export class Runner {
         console.log(
           "Skipping query that selects from catalog tables",
           selectsCatalog,
-          fingerprintNum,
+          queryFingerprint,
         );
       }
       return { kind: "invalid" };
@@ -257,14 +255,14 @@ export class Runner {
     if (indexCandidates.length === 0) {
       if (env.DEBUG) {
         console.log(ansiHighlightedQuery);
-        console.log("No index candidates found", fingerprintNum);
+        console.log("No index candidates found", queryFingerprint);
       }
       if (typeof this.maxCost === "number" && log.plan.cost > this.maxCost) {
         return {
           kind: "cost_past_threshold",
           rawQuery: query,
           warning: {
-            fingerprint: fingerprintNum,
+            fingerprint: queryFingerprint,
             formattedQuery,
             baseCost: log.plan.cost,
             explainPlan: log.plan.json,
@@ -274,7 +272,7 @@ export class Runner {
       }
     }
     return core.group<QueryProcessResult>(
-      `query:${fingerprintNum}`,
+      `query:${queryFingerprint}`,
       async (): Promise<QueryProcessResult> => {
         console.time(`timing`);
         this.printLegend();
@@ -295,7 +293,7 @@ export class Runner {
           return {
             kind: "error",
             error: err as Error,
-            fingerprint: fingerprintNum,
+            fingerprint: queryFingerprint,
             rawQuery: query,
             formattedQuery,
           };
@@ -325,7 +323,7 @@ export class Runner {
               rawQuery: query,
               indexRecommendations: newIndexRecommendations,
               recommendation: {
-                fingerprint: fingerprintNum,
+                fingerprint: queryFingerprint,
                 formattedQuery,
                 baseCost: out.baseCost,
                 baseExplainPlan: out.baseExplainPlan,
@@ -350,7 +348,7 @@ export class Runner {
                 kind: "cost_past_threshold",
                 rawQuery: query,
                 warning: {
-                  fingerprint: fingerprintNum,
+                  fingerprint: queryFingerprint,
                   formattedQuery,
                   baseCost: out.baseCost,
                   optimization: {
@@ -365,7 +363,7 @@ export class Runner {
             }
             return {
               kind: "no_improvement",
-              fingerprint: fingerprintNum,
+              fingerprint: queryFingerprint,
               rawQuery: query,
               formattedQuery,
               cost: out.baseCost,
@@ -379,7 +377,7 @@ export class Runner {
           return {
             kind: "zero_cost_plan",
             explainPlan: out.explainPlan,
-            fingerprint: fingerprintNum,
+            fingerprint: queryFingerprint,
             rawQuery: query,
             formattedQuery,
           };
@@ -445,7 +443,7 @@ export type QueryProcessResult =
   }
   | {
     kind: "no_improvement";
-    fingerprint: number;
+    fingerprint: string;
     rawQuery: string;
     formattedQuery: string;
     cost: number;
@@ -454,14 +452,14 @@ export type QueryProcessResult =
   | {
     kind: "error";
     error: Error;
-    fingerprint: number;
+    fingerprint: string;
     rawQuery: string;
     formattedQuery: string;
   }
   | {
     kind: "zero_cost_plan";
     explainPlan: object;
-    fingerprint: number;
+    fingerprint: string;
     rawQuery: string;
     formattedQuery: string;
   };
