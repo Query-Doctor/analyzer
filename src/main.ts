@@ -6,6 +6,7 @@ import { createServer } from "./server/http.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { shutdownController } from "./shutdown.ts";
 import { postToSiteApi } from "./reporters/site-api.ts";
+import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
 
 async function runInCI(
   postgresUrl: Connectable,
@@ -13,24 +14,26 @@ async function runInCI(
   statisticsPath?: string,
   maxCost?: number,
 ) {
+  const siteApiEndpoint = process.env.SITE_API_ENDPOINT;
+  const repo = process.env.GITHUB_REPOSITORY ?? "";
+
+  const config =
+    siteApiEndpoint && repo
+      ? await fetchAnalyzerConfig(siteApiEndpoint, repo)
+      : DEFAULT_CONFIG;
+
   const runner = await Runner.build({
     postgresUrl,
     statisticsPath,
     logPath,
     maxCost,
+    ignoredQueryHashes: config.ignoredQueryHashes,
   });
   log.info("main", "Running in CI mode. Skipping server creation");
-  try {
-    await runner.run();
-  } finally {
-    await runner.close();
-  }
-  await runner.run();
-  const { allResults } = await runner.run();
+  const { allResults } = await runner.run(config);
 
-  const siteApiEndpoint = process.env.SITE_API_ENDPOINT;
   if (siteApiEndpoint) {
-    await postToSiteApi(siteApiEndpoint, allResults);
+    await postToSiteApi(siteApiEndpoint, allResults, config);
   }
 }
 

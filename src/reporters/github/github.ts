@@ -84,6 +84,9 @@ export class GithubReporter implements Reporter {
       console.log(
         "No GitHub token or PR number provided, review will not be created",
       );
+      console.log("\n--- Rendered Report ---\n");
+      console.log(review);
+      console.log("\n--- End Report ---\n");
       return;
     }
     if (review.length > GithubReporter.MAX_REVIEW_BODY_LENGTH) {
