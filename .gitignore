@@ -18,3 +18,4 @@ devenv.local.yaml
 .zed
 
 node_modules
+.env
