@@ -16,6 +16,9 @@ const envSchema = z.object({
   POSTGRES_URL: z.string().optional(),
   DEBUG: z.stringbool().default(false),
   STATISTICS_PATH: z.string().optional(),
+
+  SITE_API_ENDPOINT: z.url().optional(),
+  GITHUB_REPOSITORY: z.string().optional()
 });
 
 // we want to avoid asking for ALL env permissions if possible
