@@ -97,7 +97,7 @@ export class Runner {
     const child = spawn("pgbadger", args, {
       stdio: ["ignore", "pipe", "pipe"],
     });
-    child.stderr!.pipe(process.stderr);
+    child.stderr!.pipe(process.stderr, { end: false });
     let error: Error | undefined;
     const stream = csv
       .parseStream(child.stdout!, {
