@@ -1,6 +1,67 @@
+### Query Doctor Analysis
+{% if runUrl %}
+[View full run details]({{ runUrl }})
+{% endif %}
+
+{% if comparison %}
+#### Comparison with {{ comparison.previousBranch }} @ {{ comparison.previousCommitSha[:7] }}
+
+| Metric | Count |
+|--------|-------|
+| Regressed queries | {{ comparison.regressed.length }} |
+| New queries | {{ comparison.newQueries.length }} |
+| Disappeared queries | {{ comparison.disappearedHashes.length }} |
+
+{% if comparison.regressed.length > 0 %}
+<details>
+<summary>Regressed queries ({{ comparison.regressed.length }})</summary>
+
+| Query | Previous Cost | Current Cost | Regression |
+|-------|--------------|--------------|------------|
+{% for q in comparison.regressed %}
+| <code>{{ q.hash }}</code> | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage.toFixed(1) }}% |
+{% endfor %}
+
+</details>
+{% endif %}
+
+{% if comparison.newQueries.length > 0 %}
+<details>
+<summary>New queries ({{ comparison.newQueries.length }})</summary>
+
+| Query | Cost |
+|-------|------|
+{% for q in comparison.newQueries %}
+{% if q.optimization.state === "improvements_available" %}
+| <code>{{ q.hash }}</code> | {{ q.optimization.cost }} |
+{% elif q.optimization.state === "no_improvement_found" %}
+| <code>{{ q.hash }}</code> | {{ q.optimization.cost }} |
+{% elif q.optimization.state === "error" %}
+| <code>{{ q.hash }}</code> | error |
+{% endif %}
+{% endfor %}
+
+</details>
+{% endif %}
+
+{% if comparison.disappearedHashes.length > 0 %}
+<details>
+<summary>Disappeared queries ({{ comparison.disappearedHashes.length }})</summary>
+
+{% for hash in comparison.disappearedHashes %}
+- <code>{{ hash }}</code>
+{% endfor %}
+
+</details>
+{% endif %}
+
+{% else %}
+> No previous run found for comparison.
+{% endif %}
+
 {% if statistics and statistics.length > 0 %}
-## Found New Recommended Indexes
-The following indexes are likely to make the most impact to your queries. They're ordered by how many queries seen in your tests 
+#### Recommended Indexes
+The following indexes are likely to make the most impact. Ordered by how many queries they help.
 
 <table>
   <thead>
@@ -19,12 +80,14 @@ The following indexes are likely to make the most impact to your queries. They'r
   </tbody>
 </table>
 {% else %}
-### Your queries look good!
+#### Your queries look good!
 Couldn't find any new indexes to recommend.
 {% endif %}
 
 {% if statisticsMode.kind === "fromAssumption" %}
-#### Statistics Mode
+<details>
+<summary>Statistics Mode</summary>
+
 When generating recommendations, we made the following changes to your database statistics:
 
 `fixed rows per table`
@@ -41,18 +104,28 @@ Instead of assuming a fixed number of rows per table (which can cause unnecessar
   env:
     STATISTICS_PATH: ./statistics.json
 ```
+
+</details>
 {% elif statisticsMode.kind === "fromStatisticsExport" %}
 {% if statisticsMode.source.kind === "path" %}
-#### Statistics Mode
+<details>
+<summary>Statistics Mode</summary>
+
 When generating recommendations, we used statistics from the file <code>{{ statisticsMode.source.path }}</code>.
+
+</details>
 {% elif statisticsMode.source.kind === "inline" %}
-#### Statistics Mode
+<details>
+<summary>Statistics Mode</summary>
+
 When generating recommendations, we used statistics from an inlined JSON object.
+
+</details>
 {% endif %}
 {% endif %}
 
 {% if recommendations.length > 0 %}
-### Optimization Overview
+#### Optimization Overview
 
 <table>
   <thead>

@@ -5,7 +5,12 @@ import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { shutdownController } from "./shutdown.ts";
-import { postToSiteApi } from "./reporters/site-api.ts";
+import {
+  buildQueries,
+  compareRuns,
+  fetchPreviousRun,
+  postToSiteApi,
+} from "./reporters/site-api.ts";
 import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
 
 async function runInCI(
@@ -16,6 +21,8 @@ async function runInCI(
 ) {
   const siteApiEndpoint = env.SITE_API_ENDPOINT;
   const repo = env.GITHUB_REPOSITORY;
+  const branch =
+    process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "";
 
   const config =
     siteApiEndpoint && repo
@@ -30,17 +37,69 @@ async function runInCI(
     ignoredQueryHashes: config.ignoredQueryHashes,
   });
   let allResults: QueryProcessResult[];
+  let reportContext;
 
   try {
     log.info("main", "Running in CI mode. Skipping server creation");
     const results = await runner.run(config);
     allResults = results.allResults;
+    reportContext = results.reportContext;
   } finally {
     await runner.close();
   }
 
+  const queries = buildQueries(allResults, config);
+
+  // POST to Site API first so we get the run ID for the PR comment link
+  let runId: string | null = null;
   if (siteApiEndpoint) {
-    await postToSiteApi(siteApiEndpoint, allResults, config);
+    runId = await postToSiteApi(siteApiEndpoint, queries);
+  }
+
+  // Build the run URL and query base URL for the PR comment
+  if (siteApiEndpoint && runId) {
+    // SITE_API_ENDPOINT is e.g. https://api.querydoctor.com
+    // The app lives at https://app.querydoctor.com — derive from the API URL
+    const appUrl =
+      process.env.SITE_APP_URL ??
+      siteApiEndpoint.replace(/\/api\/?$/, "").replace("api.", "app.");
+    const baseUrl = appUrl.replace(/\/$/, "");
+    reportContext.runUrl = `${baseUrl}/ci/${runId}`;
+    reportContext.queryBaseUrl = baseUrl;
+  }
+
+  // Fetch previous run for comparison
+  if (siteApiEndpoint && repo) {
+    const comparisonBranch = config.comparisonBranch ?? branch;
+    const previousRun = await fetchPreviousRun(
+      siteApiEndpoint,
+      repo,
+      comparisonBranch,
+      runId ?? undefined,
+    );
+    if (previousRun) {
+      reportContext.comparison = compareRuns(
+        queries,
+        previousRun,
+        config.regressionThreshold,
+        config.minimumCost,
+        config.acknowledgedQueryHashes,
+      );
+    }
+  }
+
+  // Generate PR comment with comparison data
+  await runner.report(reportContext);
+
+  // Block PR if regressions exceed thresholds
+  if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
+    const messages = reportContext.comparison.regressed.map(
+      (q) =>
+        `  - ${q.hash}: cost ${q.previousCost} → ${q.currentCost} (+${q.regressionPercentage.toFixed(1)}%)`,
+    );
+    core.setFailed(
+      `${reportContext.comparison.regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
+    );
   }
 }
 
