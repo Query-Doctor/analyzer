@@ -281,9 +281,11 @@ export async function fetchPreviousRun(
   endpoint: string,
   repo: string,
   branch?: string,
+  excludeId?: string,
 ): Promise<PreviousRun | null> {
   const params = new URLSearchParams({ repo });
   if (branch) params.set("branch", branch);
+  if (excludeId) params.set("excludeId", excludeId);
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs/latest?${params}`;
   console.log(`Fetching previous run from ${url}`);
 
