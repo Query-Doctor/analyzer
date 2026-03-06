@@ -111,6 +111,7 @@ export class Runner {
     const queriesPastThreshold: ReportQueryCostWarning[] = [];
     const allResults: QueryProcessResult[] = [];
 
+    const childClosed = new Promise<void>((resolve) => child.on("close", () => resolve()));
     console.time("total");
     for await (const chunk of stream) {
       const [
@@ -168,7 +169,7 @@ export class Runner {
           break;
       }
     }
-    await new Promise<void>((resolve) => child.on("close", () => resolve()));
+    await childClosed;
     console.log(
       `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
     );
