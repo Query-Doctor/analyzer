@@ -4,7 +4,7 @@
 {% endif %}
 
 {% if comparison %}
-#### Comparison with {{ comparison.previousBranch }} @ {{ comparison.previousCommitSha[:7] }}
+#### Comparison with {{ comparison.previousBranch }} @ {{ comparison.previousCommitSha | truncate(7, true, "") }}
 
 | Metric | Count |
 |--------|-------|
@@ -19,7 +19,7 @@
 | Query | Previous Cost | Current Cost | Regression |
 |-------|--------------|--------------|------------|
 {% for q in comparison.regressed %}
-| <code>{{ q.hash }}</code> | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage.toFixed(1) }}% |
+| <code>{{ q.hash }}</code> | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
 {% endfor %}
 
 </details>
@@ -32,11 +32,11 @@
 | Query | Cost |
 |-------|------|
 {% for q in comparison.newQueries %}
-{% if q.optimization.state === "improvements_available" %}
+{% if q.optimization.state == "improvements_available" %}
 | <code>{{ q.hash }}</code> | {{ q.optimization.cost }} |
-{% elif q.optimization.state === "no_improvement_found" %}
+{% elif q.optimization.state == "no_improvement_found" %}
 | <code>{{ q.hash }}</code> | {{ q.optimization.cost }} |
-{% elif q.optimization.state === "error" %}
+{% elif q.optimization.state == "error" %}
 | <code>{{ q.hash }}</code> | error |
 {% endif %}
 {% endfor %}
