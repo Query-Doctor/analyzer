@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { Runner } from "./runner.ts";
+import { QueryProcessResult, Runner } from "./runner.ts";
 import { env } from "./env.ts";
 import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
@@ -29,8 +29,15 @@ async function runInCI(
     maxCost,
     ignoredQueryHashes: config.ignoredQueryHashes,
   });
-  log.info("main", "Running in CI mode. Skipping server creation");
-  const { allResults } = await runner.run(config);
+  let allResults: QueryProcessResult[];
+
+  try {
+    log.info("main", "Running in CI mode. Skipping server creation");
+    const results = await runner.run(config);
+    allResults = results.allResults;
+  } finally {
+    await runner.close();
+  }
 
   if (siteApiEndpoint) {
     await postToSiteApi(siteApiEndpoint, allResults, config);

@@ -53,7 +53,7 @@ export class Runner {
     private readonly logPath: string,
     private readonly maxCost?: number,
     private readonly ignoredQueryHashes: Set<string> = new Set(),
-  ) {}
+  ) { }
 
   static async build(options: {
     postgresUrl: Connectable;
@@ -76,6 +76,10 @@ export class Runner {
       options.maxCost,
       new Set(options.ignoredQueryHashes ?? []),
     );
+  }
+
+  async close() {
+    await (this.db as unknown as { close(): Promise<void> }).close();
   }
 
   async run(config: AnalyzerConfig = DEFAULT_CONFIG) {
@@ -428,8 +432,8 @@ export class Runner {
 
 export type QueryProcessResult =
   | {
-      kind: "invalid";
-    }
+    kind: "invalid";
+  }
   | {
     kind: "cost_past_threshold";
     rawQuery: string;
