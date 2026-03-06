@@ -49,7 +49,7 @@ export class QueryCache {
 
   async sync(rawQueries: RawRecentQuery[]): Promise<RecentQuery[]> {
     // TODO: bound the concurrency
-    return await Promise.all(rawQueries.map(async (rawQuery) => {
+    const results = await Promise.allSettled(rawQueries.map(async (rawQuery) => {
       const key = await this.store(rawQuery);
       try {
         return await RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
@@ -59,6 +59,9 @@ export class QueryCache {
         throw error;
       }
     }));
+    return results
+      .filter((r): r is PromiseFulfilledResult<RecentQuery> => r.status === "fulfilled")
+      .map((r) => r.value);
   }
 
   reset(): void {
