@@ -9,13 +9,113 @@ const __dirname = dirname(__filename);
 const success = readFileSync(join(__dirname, "success.md.j2"), "utf-8");
 import n from "nunjucks";
 import {
+  deriveIndexStatistics,
   isQueryLong,
   renderExplain,
   ReportContext,
+  ReportIndexRecommendation,
   Reporter,
 } from "../reporter.ts";
+import type { ImprovedQuery, RegressedQuery } from "../site-api.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
+
+interface DisplayRecommendation extends ReportIndexRecommendation {
+  queryPreview: string;
+}
+
+interface DisplayRegression extends RegressedQuery {
+  queryPreview: string;
+}
+
+interface DisplayImprovement extends ImprovedQuery {
+  queryPreview: string;
+}
+
+export function formatCost(cost: number): string {
+  return Math.round(cost).toLocaleString("en-US");
+}
+
+export function queryPreview(formattedQuery: string): string {
+  const preview = formattedQuery
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 3)
+    .join(" ");
+  if (preview.length > 120) {
+    return preview.slice(0, 117) + "...";
+  }
+  return preview;
+}
+
+function addPreviews(
+  recs: ReportIndexRecommendation[],
+): DisplayRecommendation[] {
+  return recs.map((r) => ({
+    ...r,
+    queryPreview: queryPreview(r.formattedQuery),
+  }));
+}
+
+function addRegressionPreviews(
+  regressions: RegressedQuery[],
+): DisplayRegression[] {
+  return regressions.map((r) => ({
+    ...r,
+    queryPreview: queryPreview(r.formattedQuery),
+  }));
+}
+
+function addImprovementPreviews(
+  improvements: ImprovedQuery[],
+): DisplayImprovement[] {
+  return improvements.map((r) => ({
+    ...r,
+    queryPreview: queryPreview(r.formattedQuery),
+  }));
+}
+
+export function buildViewModel(ctx: ReportContext) {
+  const hasComparison = !!ctx.comparison;
+
+  if (!hasComparison) {
+    return {
+      displayRecommendations: addPreviews(ctx.recommendations),
+      displayRegressed: [] as DisplayRegression[],
+      displayAcknowledgedRegressed: [] as DisplayRegression[],
+      displayImproved: [] as DisplayImprovement[],
+      preExistingRecommendations: [] as DisplayRecommendation[],
+      newQueryCount: 0,
+      hasComparison: false,
+    };
+  }
+
+  const newQueryHashes = new Set(
+    ctx.comparison!.newQueries.map((q) => q.hash),
+  );
+
+  const displayRecommendations = addPreviews(
+    ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
+  );
+  const preExistingRecommendations = addPreviews(
+    ctx.recommendations.filter((r) => !newQueryHashes.has(r.fingerprint)),
+  );
+
+  const displayRegressed = addRegressionPreviews(ctx.comparison!.regressed);
+  const displayAcknowledgedRegressed = addRegressionPreviews(ctx.comparison!.acknowledgedRegressed);
+  const displayImproved = addImprovementPreviews(ctx.comparison!.improved);
+
+  return {
+    displayRecommendations,
+    displayRegressed,
+    displayAcknowledgedRegressed,
+    displayImproved,
+    preExistingRecommendations,
+    newQueryCount: ctx.comparison!.newQueries.length,
+    hasComparison: true,
+  };
+}
 
 export class GithubReporter implements Reporter {
   // This might be much longer https://github.com/dead-claudia/github-limits?tab=readme-ov-file#pr-body
@@ -42,10 +142,13 @@ export class GithubReporter implements Reporter {
     const existingReview = await this.findExistingReview();
     // we don't want to create a "something went wrong" review
     // if we can't render properly. Letting this step crash if needed
+    const viewModel = buildViewModel(ctx);
     const output = this.renderToMd(success, {
       ...ctx,
-      isQueryLong: isQueryLong,
-      renderExplain: renderExplain,
+      ...viewModel,
+      isQueryLong,
+      renderExplain,
+      formatCost,
     });
     return this.createReview(output, existingReview);
   }
@@ -122,6 +225,7 @@ export class GithubReporter implements Reporter {
     reportContext: ReportContext & {
       renderExplain: (explainPlan: object) => string;
       isQueryLong: (query: string) => boolean;
+      formatCost: (cost: number) => string;
     },
   ) {
     return n.renderString(content, reportContext);
