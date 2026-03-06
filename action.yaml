@@ -8,11 +8,6 @@ branding:
   icon: "database"
   color: "blue"
 
-inputs:
-  endpoint:
-    description: 'URL of a Query Doctor Site API instance to send results to (e.g. https://app.querydoctor.com). If omitted, results are only posted as a PR comment.'
-    required: false
-
 runs:
   using: "composite"
   steps:
@@ -66,4 +61,4 @@ runs:
         PG_DUMP_BINARY: /usr/bin/pg_dump
         CI: "true"
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
-        SITE_API_ENDPOINT: ${{ inputs.endpoint }}
+        SITE_API_ENDPOINT: ${{ env.SITE_API_ENDPOINT }}

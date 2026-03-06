@@ -47,3 +47,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           POSTGRES_URL: postgres://query_doctor@localhost:5432/testing
           LOG_PATH: /var/log/postgresql/postgres.log
+          SITE_API_ENDPOINT: ${{ vars.SITE_API_ENDPOINT }}
