@@ -14,8 +14,8 @@ async function runInCI(
   statisticsPath?: string,
   maxCost?: number,
 ) {
-  const siteApiEndpoint = process.env.SITE_API_ENDPOINT;
-  const repo = process.env.GITHUB_REPOSITORY ?? "";
+  const siteApiEndpoint = env.SITE_API_ENDPOINT;
+  const repo = env.GITHUB_REPOSITORY;
 
   const config =
     siteApiEndpoint && repo
