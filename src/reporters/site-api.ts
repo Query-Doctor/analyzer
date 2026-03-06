@@ -66,6 +66,7 @@ export interface RunComparison {
   previousBranch: string;
   previousCommitSha: string;
   regressed: RegressedQuery[];
+  acknowledgedRegressed: RegressedQuery[];
   newQueries: CiQueryPayload[];
   disappearedHashes: string[];
 }
@@ -195,11 +196,15 @@ export function compareRuns(
   currentQueries: CiQueryPayload[],
   previousRun: PreviousRun,
   regressionThreshold: number,
+  minimumCost: number = 0,
+  acknowledgedQueryHashes: string[] = [],
 ): RunComparison {
   const prevByHash = new Map(previousRun.queries.map((q) => [q.hash, q]));
   const currentHashes = new Set(currentQueries.map((q) => q.hash));
+  const acknowledgedSet = new Set(acknowledgedQueryHashes);
 
   const regressed: RegressedQuery[] = [];
+  const acknowledgedRegressed: RegressedQuery[] = [];
   const newQueries: CiQueryPayload[] = [];
 
   for (const current of currentQueries) {
@@ -214,13 +219,22 @@ export function compareRuns(
 
     const regressionPct = ((currentCost - prevCost) / prevCost) * 100;
     if (regressionPct > regressionThreshold) {
-      regressed.push({
+      // Skip regressions where both costs are below minimumCost
+      if (minimumCost > 0 && prevCost < minimumCost && currentCost < minimumCost) {
+        continue;
+      }
+      const entry: RegressedQuery = {
         hash: current.hash,
         query: current.query,
         previousCost: prevCost,
         currentCost,
         regressionPercentage: regressionPct,
-      });
+      };
+      if (acknowledgedSet.has(current.hash)) {
+        acknowledgedRegressed.push(entry);
+      } else {
+        regressed.push(entry);
+      }
     }
   }
 
@@ -236,6 +250,7 @@ export function compareRuns(
     previousBranch: previousRun.branch,
     previousCommitSha: previousRun.commitSha,
     regressed,
+    acknowledgedRegressed,
     newQueries,
     disappearedHashes,
   };

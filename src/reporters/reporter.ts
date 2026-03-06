@@ -82,6 +82,7 @@ export interface ReportContext {
   error?: Error;
   comparison?: RunComparison;
   runUrl?: string;
+  queryBaseUrl?: string;
 }
 
 export interface IndexStatistic {

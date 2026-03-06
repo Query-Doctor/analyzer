@@ -1,33 +1,54 @@
-### Query Doctor Analysis
+{% set hasUntriagedRegressions = comparison and comparison.regressed.length > 0 %}
+{% set hasAcknowledgedRegressions = comparison and comparison.acknowledgedRegressed.length > 0 %}
+{% set hasIndexRecs = statistics and statistics.length > 0 %}
+{% set hasOptimizations = recommendations.length > 0 %}
+{% if hasUntriagedRegressions %}
+### Query Doctor Analysis — Action Required
+{% else %}
+### Query Doctor Analysis — All Clear
+{% endif %}
 {% if runUrl %}
 [View full run details]({{ runUrl }})
 {% endif %}
 
-{{ queryStats.total | default('?') }} queries seen | {{ queryStats.matched | default('?') }} matched | {{ queryStats.optimized | default('?') }} optimized{% if queryStats.errored > 0 %} | {{ queryStats.errored }} errored{% endif %}
+{% if hasUntriagedRegressions %}
+{{ queryStats.total | default('?') }} queries analyzed | {{ comparison.regressed.length }} regression{{ "s" if comparison.regressed.length != 1 else "" }} need{{ "" if comparison.regressed.length != 1 else "s" }} triage
+{% else %}
+{{ queryStats.total | default('?') }} queries analyzed, no action needed.
+{% endif %}
 
 {% if comparison %}
-#### Changes from {{ comparison.previousBranch }} @ {{ comparison.previousCommitSha | truncate(7, true, "") }}
-
-{% if comparison.regressed.length > 0 or comparison.newQueries.length > 0 or comparison.disappearedHashes.length > 0 %}
-| Regressed | New | Disappeared |
-|-----------|-----|-------------|
-| {{ comparison.regressed.length }} | {{ comparison.newQueries.length }} | {{ comparison.disappearedHashes.length }} |
-{% else %}
-No changes detected.
-{% endif %}
-{% if comparison.regressed.length > 0 %}
+{% if hasUntriagedRegressions %}
+#### Regressions Requiring Triage
 
 | Query | Previous Cost | Current Cost | Regression |
 |-------|--------------|--------------|------------|
 {% for q in comparison.regressed %}
-| <code>{{ q.hash }}</code> | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
+| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
 {% endfor %}
 {% endif %}
-{% else %}
-> No previous run found for comparison.
+{% if hasAcknowledgedRegressions %}
+
+<details>
+<summary>{{ comparison.acknowledgedRegressed.length }} acknowledged regression{{ "s" if comparison.acknowledgedRegressed.length != 1 else "" }} (not blocking)</summary>
+
+| Query | Previous Cost | Current Cost | Regression |
+|-------|--------------|--------------|------------|
+{% for q in comparison.acknowledgedRegressed %}
+| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
+{% endfor %}
+
+</details>
+{% endif %}
+{% if comparison.newQueries.length > 0 or comparison.disappearedHashes.length > 0 %}
+
+| New Queries | Disappeared |
+|-------------|-------------|
+| {{ comparison.newQueries.length }} | {{ comparison.disappearedHashes.length }} |
+{% endif %}
 {% endif %}
 
-{% if statistics and statistics.length > 0 %}
+{% if hasIndexRecs %}
 #### Recommended Indexes
 
 | Index | Queries Helped |
@@ -37,7 +58,7 @@ No changes detected.
 {% endfor %}
 {% endif %}
 
-{% if recommendations.length > 0 %}
+{% if hasOptimizations %}
 #### Optimizations Available
 
 | Query | Cost | Optimized Cost | Improvement |
@@ -45,8 +66,6 @@ No changes detected.
 {% for recommendation in recommendations %}
 | <code>{{ recommendation.fingerprint }}</code> | {{ recommendation.baseCost }} | {{ recommendation.optimizedCost }} | {{ (recommendation.baseCost / recommendation.optimizedCost) | round(2) }}x |
 {% endfor %}
-{% elif not (statistics and statistics.length > 0) %}
-No index recommendations found.
 {% endif %}
 
 {% if statisticsMode.kind == "fromAssumption" %}
