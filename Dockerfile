@@ -30,6 +30,8 @@ RUN npm ci --omit=dev
 
 # Final image
 ARG PG_IMAGE
+FROM ghcr.io/query-doctor/postgres:${PG_IMAGE} AS postgres-source
+
 ENV LD_LIBRARY_PATH="/usr/local/lib"
 FROM node:24-alpine
 
@@ -46,7 +48,7 @@ RUN apk add -uU --no-cache \
 # Copy pgBadger
 COPY --from=pgbadger-builder /usr/local/bin/pgbadger /usr/local/bin/pgbadger
 
-COPY --from=ghcr.io/query-doctor/postgres:pg14-timescale-2.16 /usr/local/pgsql /usr/local/pgsql
+COPY --from=postgres-source /usr/local/pgsql /usr/local/pgsql
 
 # Copy application
 COPY --from=build /app/dist /app/dist

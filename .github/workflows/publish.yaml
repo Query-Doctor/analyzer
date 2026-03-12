@@ -13,13 +13,21 @@ env:
 
 jobs:
   build:
-    name: Publish container
+    name: Publish container (${{ matrix.pg_image }})
     permissions:
       id-token: write
       contents: read
       attestations: write
       packages: write
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        pg_image:
+          - pg14-timescale-2.16
+          - pg18
+        include:
+          - pg_image: pg18
+            latest: true
     steps:
       - uses: actions/checkout@v4
       - name: Login to ghcr
@@ -37,9 +45,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
+          key: ${{ runner.os }}-buildx-${{ matrix.pg_image }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-buildx-
+            ${{ runner.os }}-buildx-${{ matrix.pg_image }}-
       - name: Set sync_version from package.json
         run: |
           sync_version=$(jq -r '.version' package.json)
@@ -53,9 +61,11 @@ jobs:
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           # outputs: type=docker
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            PG_IMAGE=${{ matrix.pg_image }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.sync_version }}
+            ${{ matrix.latest && format('{0}/{1}:latest', env.REGISTRY, env.IMAGE_NAME) || '' }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.sync_version }}-${{ matrix.pg_image }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,mode=max,dest=/tmp/.buildx-cache-new
       # This ugly bit is necessary if you don't want your cache to grow forever
