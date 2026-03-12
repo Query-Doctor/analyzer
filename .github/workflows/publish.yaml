@@ -24,6 +24,7 @@ jobs:
       matrix:
         pg_image:
           - pg14-timescale-2.16
+          - pg-17
           - pg-18
         include:
           - pg_image: pg-18
