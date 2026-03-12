@@ -130,8 +130,8 @@ jobs:
 3. Run your test suite against the same database. You can do this with any tool
    and use any query builder or ORM you like.
 4. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
-   reviewing the indexes found in your database.
-
+   reviewing the indexes found in your database. `SITE_API_ENDPOINT` is the
+   Query Doctor API endpoint used to fetch per-repo configuration.
 ```yaml
 jobs:
   run:
@@ -150,6 +150,7 @@ jobs:
         uses: query-doctor/analyzer@v0
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          SITE_API_ENDPOINT: https://api.querydoctor.com
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
