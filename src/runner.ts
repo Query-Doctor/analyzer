@@ -172,7 +172,6 @@ export class Runner {
     console.log(
       `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
     );
-    const reporter = new GithubReporter(env.GITHUB_TOKEN);
     const filteredRecommendations =
       config.minimumCost > 0
         ? recommendations.filter((r) => r.baseCost > config.minimumCost)
@@ -183,7 +182,6 @@ export class Runner {
         : queriesPastThreshold;
     const statistics = deriveIndexStatistics(filteredRecommendations);
     const timeElapsed = Date.now() - startDate.getTime();
-    console.log(`Generating report (${reporter.provider()})`);
     if (config.minimumCost > 0) {
       const filtered =
         recommendations.length -
@@ -204,9 +202,14 @@ export class Runner {
       error,
       metadata: { logSize, timeElapsed },
     };
-    await reporter.report(reportContext);
     console.timeEnd("total");
     return { reportContext, allResults };
+  }
+
+  async report(reportContext: ReportContext) {
+    const reporter = new GithubReporter(env.GITHUB_TOKEN);
+    console.log(`Generating report (${reporter.provider()})`);
+    await reporter.report(reportContext);
   }
 
   async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {

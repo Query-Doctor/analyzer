@@ -13,14 +13,14 @@ interface CiRunPayload {
   queries: CiQueryPayload[];
 }
 
-interface CiQueryPayload {
+export interface CiQueryPayload {
   hash: string;
   query: string;
   formattedQuery: string;
   optimization: CiOptimization;
 }
 
-type CiOptimization =
+export type CiOptimization =
   | {
       state: "improvements_available";
       cost: number;
@@ -51,6 +51,32 @@ interface CiIndexRecommendation {
   }>;
   where?: string;
   definition: string;
+}
+
+export interface PreviousRun {
+  id: string;
+  repo: string;
+  branch: string;
+  commitSha: string;
+  queries: CiQueryPayload[];
+}
+
+export interface RunComparison {
+  previousRunId: string;
+  previousBranch: string;
+  previousCommitSha: string;
+  regressed: RegressedQuery[];
+  acknowledgedRegressed: RegressedQuery[];
+  newQueries: CiQueryPayload[];
+  disappearedHashes: string[];
+}
+
+export interface RegressedQuery {
+  hash: string;
+  query: string;
+  previousCost: number;
+  currentCost: number;
+  regressionPercentage: number;
 }
 
 function mapIndexRecommendation(rec: IndexRecommendation): CiIndexRecommendation {
@@ -149,17 +175,91 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
   }
 }
 
-export async function postToSiteApi(
-  endpoint: string,
+function getQueryCost(q: CiQueryPayload): number | null {
+  if (q.optimization.state === "improvements_available") return q.optimization.cost;
+  if (q.optimization.state === "no_improvement_found") return q.optimization.cost;
+  return null;
+}
+
+export function buildQueries(
   results: QueryProcessResult[],
   config: AnalyzerConfig = DEFAULT_CONFIG,
-): Promise<void> {
+): CiQueryPayload[] {
   const ignoredSet = new Set(config.ignoredQueryHashes);
-  const queries = results
+  return results
     .map(mapResultToQuery)
     .filter((q): q is CiQueryPayload => q !== null)
     .filter((q) => !ignoredSet.has(q.hash));
+}
 
+export function compareRuns(
+  currentQueries: CiQueryPayload[],
+  previousRun: PreviousRun,
+  regressionThreshold: number,
+  minimumCost: number = 0,
+  acknowledgedQueryHashes: string[] = [],
+): RunComparison {
+  const prevByHash = new Map(previousRun.queries.map((q) => [q.hash, q]));
+  const currentHashes = new Set(currentQueries.map((q) => q.hash));
+  const acknowledgedSet = new Set(acknowledgedQueryHashes);
+
+  const regressed: RegressedQuery[] = [];
+  const acknowledgedRegressed: RegressedQuery[] = [];
+  const newQueries: CiQueryPayload[] = [];
+
+  for (const current of currentQueries) {
+    const prev = prevByHash.get(current.hash);
+    if (!prev) {
+      newQueries.push(current);
+      continue;
+    }
+    const prevCost = getQueryCost(prev);
+    const currentCost = getQueryCost(current);
+    if (prevCost === null || currentCost === null || prevCost === 0) continue;
+
+    const regressionPct = ((currentCost - prevCost) / prevCost) * 100;
+    if (regressionPct > regressionThreshold) {
+      // Skip regressions where both costs are below minimumCost
+      if (minimumCost > 0 && prevCost < minimumCost && currentCost < minimumCost) {
+        continue;
+      }
+      const entry: RegressedQuery = {
+        hash: current.hash,
+        query: current.query,
+        previousCost: prevCost,
+        currentCost,
+        regressionPercentage: regressionPct,
+      };
+      if (acknowledgedSet.has(current.hash)) {
+        acknowledgedRegressed.push(entry);
+      } else {
+        regressed.push(entry);
+      }
+    }
+  }
+
+  const disappearedHashes: string[] = [];
+  for (const [hash] of prevByHash) {
+    if (!currentHashes.has(hash)) {
+      disappearedHashes.push(hash);
+    }
+  }
+
+  return {
+    previousRunId: previousRun.id,
+    previousBranch: previousRun.branch,
+    previousCommitSha: previousRun.commitSha,
+    regressed,
+    acknowledgedRegressed,
+    newQueries,
+    disappearedHashes,
+  };
+}
+
+export async function postToSiteApi(
+  endpoint: string,
+  queries: CiQueryPayload[],
+): Promise<string | null> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "",
@@ -181,11 +281,44 @@ export async function postToSiteApi(
     if (!response.ok) {
       const text = await response.text();
       console.warn(`Site API responded with ${response.status}: ${text}`);
-    } else {
-      const body = await response.json();
-      console.log(`Site API ingestion successful: ${JSON.stringify(body)}`);
+      return null;
     }
+    const body = (await response.json()) as { id: string };
+    console.log(`Site API ingestion successful: ${JSON.stringify(body)}`);
+    return body.id;
   } catch (err) {
     console.warn(`Failed to POST to Site API: ${err}`);
+    return null;
+  }
+}
+
+export async function fetchPreviousRun(
+  endpoint: string,
+  repo: string,
+  branch?: string,
+  excludeId?: string,
+): Promise<PreviousRun | null> {
+  const params = new URLSearchParams({ repo });
+  if (branch) params.set("branch", branch);
+  if (excludeId) params.set("excludeId", excludeId);
+  const url = `${endpoint.replace(/\/$/, "")}/ci/runs/latest?${params}`;
+  console.log(`Fetching previous run from ${url}`);
+
+  try {
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (response.status === 404) {
+      console.log("No previous run found");
+      return null;
+    }
+    if (!response.ok) {
+      console.warn(`Failed to fetch previous run: ${response.status}`);
+      return null;
+    }
+    return (await response.json()) as PreviousRun;
+  } catch (err) {
+    console.warn(`Failed to fetch previous run: ${err}`);
+    return null;
   }
 }

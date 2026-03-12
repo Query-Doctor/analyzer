@@ -2,18 +2,15 @@ export interface AnalyzerConfig {
   minimumCost: number;
   regressionThreshold: number;
   ignoredQueryHashes: string[];
-  /**
-   * an undefined array means last seen queries
-   * should not be applicable. Otherwise every single
-   * query would be marked as new.
-   */
-  lastSeenQueries?: string[];
+  acknowledgedQueryHashes: string[];
+  comparisonBranch?: string;
 }
 
 export const DEFAULT_CONFIG: AnalyzerConfig = {
   minimumCost: 0,
   regressionThreshold: 0,
   ignoredQueryHashes: [],
+  acknowledgedQueryHashes: [],
 };
 
 export async function fetchAnalyzerConfig(
@@ -30,15 +27,16 @@ export async function fetchAnalyzerConfig(
       console.warn(`Config fetch returned ${response.status}, using defaults`);
       return DEFAULT_CONFIG;
     }
-    const data = (await response.json()) as AnalyzerConfig;
+    const data = (await response.json()) as Partial<AnalyzerConfig>;
     console.log(
-      `Config loaded: minimumCost=${data.minimumCost}, regressionThreshold=${data.regressionThreshold}, ignoredHashes=${data.ignoredQueryHashes?.length ?? 0}`,
+      `Config loaded: minimumCost=${data.minimumCost}, regressionThreshold=${data.regressionThreshold}, ignoredHashes=${data.ignoredQueryHashes?.length ?? 0}, acknowledgedHashes=${data.acknowledgedQueryHashes?.length ?? 0}, comparisonBranch=${data.comparisonBranch ?? "(same branch)"}`,
     );
     return {
-      minimumCost: data.minimumCost,
-      regressionThreshold: data.regressionThreshold,
-      ignoredQueryHashes: data.ignoredQueryHashes,
-      lastSeenQueries: data.lastSeenQueries,
+      minimumCost: data.minimumCost ?? 0,
+      regressionThreshold: data.regressionThreshold ?? 0,
+      ignoredQueryHashes: data.ignoredQueryHashes ?? [],
+      acknowledgedQueryHashes: data.acknowledgedQueryHashes ?? [],
+      comparisonBranch: data.comparisonBranch,
     };
   } catch (err) {
     console.warn(`Failed to fetch config: ${err}. Using defaults`);

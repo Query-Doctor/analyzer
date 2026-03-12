@@ -1,4 +1,5 @@
 import type { IndexIdentifier, StatisticsMode } from "@query-doctor/core";
+import type { RunComparison } from "./site-api.ts";
 
 export interface Reporter {
   provider(): string;
@@ -79,6 +80,9 @@ export interface ReportContext {
   statistics: [IndexIdentifier, IndexStatistic][];
   metadata: ReportMetadata;
   error?: Error;
+  comparison?: RunComparison;
+  runUrl?: string;
+  queryBaseUrl?: string;
 }
 
 export interface IndexStatistic {

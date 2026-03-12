@@ -9,6 +9,7 @@ const __dirname = dirname(__filename);
 const success = readFileSync(join(__dirname, "success.md.j2"), "utf-8");
 import n from "nunjucks";
 import {
+  deriveIndexStatistics,
   isQueryLong,
   renderExplain,
   ReportContext,
@@ -16,6 +17,43 @@ import {
 } from "../reporter.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
+
+function buildViewModel(ctx: ReportContext) {
+  const hasComparison = !!ctx.comparison;
+
+  if (!hasComparison) {
+    return {
+      displayRecommendations: ctx.recommendations,
+      displayStatistics: ctx.statistics,
+      totalRecommendations: ctx.recommendations.length,
+      totalStatistics: ctx.statistics.length,
+      newQueryCount: 0,
+      regressedCount: 0,
+      disappearedCount: 0,
+      hasComparison: false,
+    };
+  }
+
+  const newQueryHashes = new Set(
+    ctx.comparison!.newQueries.map((q) => q.hash),
+  );
+
+  const displayRecommendations = ctx.recommendations.filter((r) =>
+    newQueryHashes.has(r.fingerprint),
+  );
+  const displayStatistics = deriveIndexStatistics(displayRecommendations);
+
+  return {
+    displayRecommendations,
+    displayStatistics,
+    totalRecommendations: ctx.recommendations.length,
+    totalStatistics: ctx.statistics.length,
+    newQueryCount: ctx.comparison!.newQueries.length,
+    regressedCount: ctx.comparison!.regressed.length,
+    disappearedCount: ctx.comparison!.disappearedHashes.length,
+    hasComparison: true,
+  };
+}
 
 export class GithubReporter implements Reporter {
   // This might be much longer https://github.com/dead-claudia/github-limits?tab=readme-ov-file#pr-body
@@ -42,8 +80,10 @@ export class GithubReporter implements Reporter {
     const existingReview = await this.findExistingReview();
     // we don't want to create a "something went wrong" review
     // if we can't render properly. Letting this step crash if needed
+    const viewModel = buildViewModel(ctx);
     const output = this.renderToMd(success, {
       ...ctx,
+      ...viewModel,
       isQueryLong: isQueryLong,
       renderExplain: renderExplain,
     });
