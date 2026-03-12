@@ -1,7 +1,7 @@
 {% set hasUntriagedRegressions = comparison and comparison.regressed.length > 0 %}
 {% set hasAcknowledgedRegressions = comparison and comparison.acknowledgedRegressed.length > 0 %}
-{% set hasIndexRecs = statistics and statistics.length > 0 %}
-{% set hasOptimizations = recommendations.length > 0 %}
+{% set hasIndexRecs = displayStatistics and displayStatistics.length > 0 %}
+{% set hasOptimizations = displayRecommendations.length > 0 %}
 {% if hasUntriagedRegressions %}
 ### Query Doctor Analysis — Action Required
 {% else %}
@@ -11,10 +11,15 @@
 [View full run details]({{ runUrl }})
 {% endif %}
 
-{% if hasUntriagedRegressions %}
-{{ queryStats.total | default('?') }} queries analyzed | {{ comparison.regressed.length }} regression{{ "s" if comparison.regressed.length != 1 else "" }} need{{ "" if comparison.regressed.length != 1 else "s" }} triage
+{% if hasComparison %}
+{{ queryStats.total | default('?') }} queries analyzed
+{%- if newQueryCount > 0 %} | {{ newQueryCount }} new quer{{ "ies" if newQueryCount != 1 else "y" }}{% endif %}
+{%- if regressedCount > 0 %} | {{ regressedCount }} regression{{ "s" if regressedCount != 1 else "" }}{% endif %}
+{%- if hasOptimizations %} | {{ displayRecommendations.length }} optimization{{ "s" if displayRecommendations.length != 1 else "" }}{% endif %}
+{%- if disappearedCount > 0 %} | {{ disappearedCount }} disappeared{% endif %}
 {% else %}
-{{ queryStats.total | default('?') }} queries analyzed, no action needed.
+{{ queryStats.total | default('?') }} queries analyzed
+{%- if hasOptimizations %} | {{ displayRecommendations.length }} optimization{{ "s" if displayRecommendations.length != 1 else "" }} available{% endif %}
 {% endif %}
 
 {% if comparison %}
@@ -40,32 +45,32 @@
 
 </details>
 {% endif %}
-{% if comparison.newQueries.length > 0 or comparison.disappearedHashes.length > 0 %}
-
-| New Queries | Disappeared |
-|-------------|-------------|
-| {{ comparison.newQueries.length }} | {{ comparison.disappearedHashes.length }} |
-{% endif %}
 {% endif %}
 
 {% if hasIndexRecs %}
-#### Recommended Indexes
+#### Recommended Indexes{% if hasComparison %} (New Queries){% endif %}
 
 | Index | Queries Helped |
 |-------|---------------|
-{% for index, stats in statistics %}
+{% for index, stats in displayStatistics %}
 | <code>{{ index }}</code> | {{ stats.usageCount }} |
 {% endfor %}
+{% if hasComparison and totalStatistics > displayStatistics.length %}
+<sub>{{ totalStatistics }} total across all queries. Showing {{ displayStatistics.length }} for new queries only.</sub>
+{% endif %}
 {% endif %}
 
 {% if hasOptimizations %}
-#### Optimizations Available
+#### Optimizations Available{% if hasComparison %} (New Queries){% endif %}
 
 | Query | Cost | Optimized Cost | Improvement |
 |-------|------|---------------|-------------|
-{% for recommendation in recommendations %}
+{% for recommendation in displayRecommendations %}
 | <code>{{ recommendation.fingerprint }}</code> | {{ recommendation.baseCost }} | {{ recommendation.optimizedCost }} | {{ (recommendation.baseCost / recommendation.optimizedCost) | round(2) }}x |
 {% endfor %}
+{% if hasComparison and totalRecommendations > displayRecommendations.length %}
+<sub>{{ totalRecommendations }} total across all queries. Showing {{ displayRecommendations.length }} for new queries only.</sub>
+{% endif %}
 {% endif %}
 
 {% if statisticsMode.kind == "fromAssumption" %}

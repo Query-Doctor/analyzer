@@ -70,7 +70,8 @@ async function runInCI(
 
   // Fetch previous run for comparison
   if (siteApiEndpoint && repo) {
-    const comparisonBranch = config.comparisonBranch ?? branch;
+    const comparisonBranch =
+      config.comparisonBranch ?? process.env.GITHUB_BASE_REF ?? branch;
     const previousRun = await fetchPreviousRun(
       siteApiEndpoint,
       repo,
