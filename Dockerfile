@@ -1,5 +1,5 @@
 ARG ALPINE_VERSION=3.22
-ARG PG_IMAGE=pg14-timescale-2.16
+ARG PG_IMAGE=pg-18
 FROM alpine:${ALPINE_VERSION} AS pgbadger-builder
 
 RUN apk add --no-cache \
@@ -42,7 +42,6 @@ RUN apk add -uU --no-cache \
     su-exec \
     openssl \
     krb5 \
-    postgresql17-client \
     perl
 
 # Copy pgBadger
@@ -55,15 +54,16 @@ COPY --from=build /app/dist /app/dist
 COPY --from=build /app/node_modules /app/node_modules
 
 # Setup postgres user and directories
-RUN mkdir -p /var/lib/postgresql/data \
+RUN addgroup -S postgres && adduser -S -G postgres postgres \
+    && mkdir -p /var/lib/postgresql/data \
     && chown -R postgres:postgres /var/lib/postgresql \
     && chown -R postgres:postgres /usr/local/pgsql \
     && chmod 1777 /tmp
 
 WORKDIR /app
-# making sure we use the binaries from the installed postgresql17 client
-ENV PG_DUMP_BINARY=/usr/bin/pg_dump
-ENV PG_RESTORE_BINARY=/usr/bin/pg_restore
+# pg_dump and pg_restore come from /usr/local/pgsql/bin copied from postgres-source
+ENV PG_DUMP_BINARY=/usr/local/pgsql/bin/pg_dump
+ENV PG_RESTORE_BINARY=/usr/local/pgsql/bin/pg_restore
 ENV PATH="/usr/local/pgsql/bin:$PATH"
 ENV PGDATA=/var/lib/postgresql/data
 
