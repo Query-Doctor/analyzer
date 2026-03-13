@@ -117,6 +117,7 @@ export async function createServer(
   hostname: string,
   port: number,
   targetDb?: Connectable,
+  sourceDb?: Connectable,
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false });
 
@@ -171,13 +172,15 @@ export async function createServer(
   });
 
   if (remoteController) {
-    fastify.post("/postgres", async (request, reply) => {
-      log.info(`[POST] /postgres`, "http");
-      const result = await remoteController.onFullSync(
-        JSON.stringify(request.body),
-      );
-      return reply.status(result.status).send(result.body);
-    });
+    if (!sourceDb) {
+      fastify.post("/postgres", async (request, reply) => {
+        log.info(`[POST] /postgres`, "http");
+        const result = await remoteController.onFullSync(
+          JSON.stringify(request.body),
+        );
+        return reply.status(result.status).send(result.body);
+      });
+    }
 
     fastify.get("/postgres", async (request, reply) => {
       log.info(`[GET] /postgres`, "http");
@@ -214,9 +217,24 @@ export async function createServer(
       );
       return reply.status(result.status).send(result.body);
     });
+
   }
 
   await fastify.listen({ host: hostname, port });
+
+  if (remoteController && sourceDb) {
+    log.info(`SOURCE_DATABASE_URL set, triggering initial sync`, "http");
+    remoteController.onFullSync(JSON.stringify({ db: sourceDb.toString() })).then((result) => {
+      if (result.status >= 400) {
+        log.error(`Initial sync failed: ${JSON.stringify(result.body)}`, "http");
+        process.exit(1);
+      }
+    }).catch((error) => {
+      log.error(`Initial sync failed: ${error}`, "http");
+      process.exit(1);
+    });
+  }
+
   return fastify;
 }
 

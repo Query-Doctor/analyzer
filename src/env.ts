@@ -14,6 +14,7 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   LOG_PATH: z.string().optional(),
   POSTGRES_URL: z.string().optional(),
+  SOURCE_DATABASE_URL: z.string().optional(),
   DEBUG: z.stringbool().default(false),
   STATISTICS_PATH: z.string().optional(),
 

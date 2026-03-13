@@ -59,6 +59,7 @@ async function runOutsideCI() {
     env.HOST,
     env.PORT,
     Connectable.fromString(env.POSTGRES_URL),
+    env.SOURCE_DATABASE_URL ? Connectable.fromString(env.SOURCE_DATABASE_URL) : undefined,
   );
 
   const shutdown = async () => {
