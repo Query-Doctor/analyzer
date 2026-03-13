@@ -1,8 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
+import { PgIdentifier } from "@query-doctor/core";
 import { PostgresSyncer } from "../sync/syncer.ts";
 import { log } from "../log.ts";
 import { LiveQueryRequest, SyncRequest } from "./sync.dto.ts";
@@ -122,7 +124,7 @@ export async function createServer(
 
   await fastify.register(cors, {
     origin: "*",
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "DELETE"],
     allowedHeaders: ["Content-Type"],
     exposedHeaders: [
       "Content-Type",
@@ -142,13 +144,77 @@ export async function createServer(
 
   await fastify.register(websocket);
 
+  // -- Session management for multi-user (demo) mode --
+  type Session = {
+    controller: RemoteController;
+    remote: Remote;
+    manager: ConnectionManager;
+    sourceManager: ConnectionManager;
+    createdAt: number;
+  };
+
+  const sessions = new Map<string, Session>();
+
+  // Shared manager for the default (single-user) Remote
   const optimizingDbConnectionManager = ConnectionManager.forLocalDatabase();
 
-  const remoteController = targetDb
+  // Default controller for non-session requests (backward compat)
+  const defaultController = targetDb
     ? new RemoteController(
         new Remote(targetDb, optimizingDbConnectionManager),
       )
     : undefined;
+
+  function makeSession(sessionId: string): Session {
+    const dbName = PgIdentifier.fromString(`sync_${sessionId}`);
+    const manager = ConnectionManager.forLocalDatabase();
+    const srcManager = ConnectionManager.forRemoteDatabase();
+    const remote = new Remote(targetDb!, manager, srcManager, dbName);
+    const controller = new RemoteController(remote);
+    const session: Session = {
+      controller,
+      remote,
+      manager,
+      sourceManager: srcManager,
+      createdAt: Date.now(),
+    };
+    sessions.set(sessionId, session);
+    log.info(`Created session ${sessionId} (db: sync_${sessionId})`, "http");
+    return session;
+  }
+
+  async function destroySession(sessionId: string): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (!session) return;
+
+    const dbName = session.remote.sessionDbName;
+    await session.remote.cleanup();
+
+    // Drop the session database using the shared connection manager
+    if (targetDb) {
+      const baseDbUrl = targetDb.withDatabaseName(Remote.baseDbName);
+      const baseDb = optimizingDbConnectionManager.getOrCreateConnection(baseDbUrl);
+      await baseDb.exec(`drop database if exists ${dbName} with (force);`);
+    }
+
+    sessions.delete(sessionId);
+    log.info(`Destroyed session ${sessionId}`, "http");
+  }
+
+  function generateSessionId(): string {
+    return randomBytes(4).toString("hex");
+  }
+
+  /**
+   * Resolve which controller to use for a request.
+   * If sessionId is provided, look up the session. Otherwise use the default.
+   */
+  function resolveController(sessionId?: string): RemoteController | undefined {
+    if (sessionId) {
+      return sessions.get(sessionId)?.controller;
+    }
+    return defaultController;
+  }
 
   fastify.get("/", async (_request, reply) => {
     return reply.redirect("https://github.com/Query-Doctor/analyzer", 307);
@@ -170,18 +236,57 @@ export async function createServer(
     return reply.status(result.status).send(result.body);
   });
 
-  if (remoteController) {
+  if (targetDb) {
     fastify.post("/postgres", async (request, reply) => {
       log.info(`[POST] /postgres`, "http");
-      const result = await remoteController.onFullSync(
-        JSON.stringify(request.body),
-      );
-      return reply.status(result.status).send(result.body);
+
+      const body = request.body as Record<string, unknown>;
+      let controller: RemoteController;
+      let sessionId: string | undefined;
+
+      if (body.createSession === true) {
+        // Demo/multi-user mode: create a new isolated session
+        sessionId = generateSessionId();
+        const session = makeSession(sessionId);
+        controller = session.controller;
+      } else if (typeof body.sessionId === "string") {
+        // Reuse an existing session
+        sessionId = body.sessionId;
+        const session = sessions.get(sessionId);
+        if (!session) {
+          return reply.status(404).send({ error: "Session not found" });
+        }
+        controller = session.controller;
+      } else if (defaultController) {
+        controller = defaultController;
+      } else {
+        return reply.status(500).send({ error: "No target database configured" });
+      }
+
+      const result = await controller.onFullSync(JSON.stringify(body));
+
+      const responseBody = sessionId
+        ? { ...(result.body as object), sessionId }
+        : result.body;
+
+      return reply.status(result.status).send(responseBody);
     });
 
     fastify.get("/postgres", async (request, reply) => {
       log.info(`[GET] /postgres`, "http");
-      const result = await remoteController.getStatus();
+
+      const query = request.query as Record<string, unknown>;
+      const sessionId = typeof query.sessionId === "string"
+        ? query.sessionId
+        : undefined;
+
+      const controller = resolveController(sessionId);
+      if (!controller) {
+        const msg = sessionId ? "Session not found" : "No target database configured";
+        return reply.status(sessionId ? 404 : 500).send({ error: msg });
+      }
+
+      const result = await controller.getStatus();
       return reply.send(result);
     });
 
@@ -190,29 +295,77 @@ export async function createServer(
         "/postgres/ws",
         { websocket: true },
         (socket, _request) => {
-          remoteController.onWebsocketConnection(socket);
+          // Websocket only supported for default (single-user) mode
+          defaultController?.onWebsocketConnection(socket);
         },
       );
     });
 
     fastify.post("/postgres/indexes", async (request, reply) => {
       log.info(`[POST] /postgres/indexes`, "http");
-      const result = await remoteController.createIndex(request.body);
+      const body = request.body as Record<string, unknown>;
+      const sessionId = typeof body.sessionId === "string"
+        ? body.sessionId
+        : undefined;
+
+      const controller = resolveController(sessionId);
+      if (!controller) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+
+      const result = await controller.createIndex(body);
       return reply.status(result.status).send(result.body);
     });
 
     fastify.post("/postgres/indexes/toggle", async (request, reply) => {
       log.info(`[POST] /postgres/indexes/toggle`, "http");
-      const result = await remoteController.toggleIndex(request.body);
+      const body = request.body as Record<string, unknown>;
+      const sessionId = typeof body.sessionId === "string"
+        ? body.sessionId
+        : undefined;
+
+      const controller = resolveController(sessionId);
+      if (!controller) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+
+      const result = await controller.toggleIndex(body);
       return reply.status(result.status).send(result.body);
     });
 
     fastify.post("/postgres/reset", async (request, reply) => {
       log.info(`[POST] /postgres/reset`, "http");
-      const result = await remoteController.onReset(
-        JSON.stringify(request.body),
-      );
+      const body = request.body as Record<string, unknown>;
+      const sessionId = typeof body.sessionId === "string"
+        ? body.sessionId
+        : undefined;
+
+      const controller = resolveController(sessionId);
+      if (!controller) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+
+      const result = await controller.onReset(JSON.stringify(body));
       return reply.status(result.status).send(result.body);
+    });
+
+    fastify.delete("/postgres/session/:sessionId", async (request, reply) => {
+      const { sessionId } = request.params as { sessionId: string };
+      log.info(`[DELETE] /postgres/session/${sessionId}`, "http");
+
+      if (!sessions.has(sessionId)) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+
+      try {
+        await destroySession(sessionId);
+        return reply.send({ success: true });
+      } catch (error) {
+        console.error(`Failed to destroy session ${sessionId}:`, error);
+        return reply.status(500).send({
+          error: error instanceof Error ? error.message : "Failed to destroy session",
+        });
+      }
     });
   }
 

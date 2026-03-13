@@ -26,16 +26,18 @@ type RemoteEvents = {
 
 /**
  * Represents a db for doing optimization work.
- * We only maintain one instance of this class as we only do
- * optimization against one physical postgres database.
- * But potentially more logical databases in the future.
+ *
+ * Each instance targets a specific optimizing database, identified by
+ * {@link sessionDbName}. For single-user mode this defaults to `optimizing_db`.
+ * For multi-session (demo) mode, each session gets a unique database name
+ * like `sync_<sessionId>` so concurrent syncs don't clobber each other.
  *
  * `Remote` only concerns itself with the remote it's doing optimization
  * against. It does not deal with the source in any way aside from running sync
  */
 export class Remote extends EventEmitter<RemoteEvents> {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
-  static readonly optimizingDbName = PgIdentifier.fromString(
+  static readonly defaultOptimizingDbName = PgIdentifier.fromString(
     "optimizing_db",
   );
   /* Threshold that we determine is "too few rows" for Postgres to start using indexes
@@ -44,6 +46,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private static readonly STATS_ROWS_THRESHOLD = 5_000;
 
   readonly optimizer: QueryOptimizer;
+  readonly sessionDbName: PgIdentifier;
 
   /**
    * We have to juggle 2 different connections to the Remote
@@ -71,10 +74,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
     /** The manager for ONLY the source db connections */
     private readonly sourceManager: ConnectionManager = ConnectionManager
       .forRemoteDatabase(),
+    optimizingDbName: PgIdentifier = Remote.defaultOptimizingDbName,
   ) {
     super();
+    this.sessionDbName = optimizingDbName;
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
-    this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
+    this.optimizingDbUDRL = targetURL.withDatabaseName(optimizingDbName);
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
   }
 
@@ -211,12 +216,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
   }
 
   /**
-   * Drops and recreates the {@link Remote.optimizingDbName} db.
-   *
-   * TODO: allow juggling multiple databases in the future
+   * Drops and recreates the session's optimizing database.
    */
   private async resetDatabase(): Promise<void> {
-    const databaseName = Remote.optimizingDbName;
+    const databaseName = this.sessionDbName;
     log.info(`Resetting internal database: ${databaseName}`, "remote");
     const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
     // these cannot be run in the same `exec` block as that implicitly creates transactions

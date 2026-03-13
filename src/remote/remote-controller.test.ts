@@ -43,7 +43,7 @@ test("controller syncs correctly", async () => {
       expect(syncResult.status).toEqual(200);
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbName).toString(),
       });
       const tablesAfter =
         await pool.query("select tablename from pg_tables where schemaname = 'public'");
@@ -95,7 +95,7 @@ test("creating an index via endpoint adds it to the optimizing db", async () => 
       expect(syncResult.status).toEqual(200);
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbName).toString(),
       });
 
       // Verify no indexes exist initially

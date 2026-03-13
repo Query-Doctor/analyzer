@@ -93,7 +93,7 @@ test("syncs correctly", async () => {
       expect(indexNames).toEqual(expect.arrayContaining(["testing_1234"]));
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbName).toString(),
       });
 
       const indexesAfter =
