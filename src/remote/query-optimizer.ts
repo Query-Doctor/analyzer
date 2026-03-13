@@ -115,13 +115,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   ): Promise<OptimizedQuery[]> {
     this.stop();
     const validQueries = this.appendQueries(allRecentQueries);
-    await this.applyStatistics(statsMode);
+    await this.setStatistics(statsMode);
     this._allQueries = this.queries.size;
     await this.work();
     return validQueries;
   }
 
-  async applyStatistics(
+  async setStatistics(
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
   ): Promise<void> {
     const version = PostgresVersion.parse("17");
@@ -133,9 +133,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
       trace: false,
     });
-    // ordering is important here
     this.target = { optimizer, statistics };
-    await this.restart();
   }
 
   stop() {
