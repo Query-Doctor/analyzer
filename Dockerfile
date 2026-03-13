@@ -27,6 +27,9 @@ RUN npm ci
 COPY . .
 RUN npm run build
 RUN npm ci --omit=dev
+# Patch @query-doctor/core: exclude PostGIS extension schemas from dumpStats (see Query-Doctor/Site#2532)
+RUN sed -i "s|n.nspname <> 'information_schema'|n.nspname <> 'information_schema' AND n.nspname NOT IN ('tiger', 'tiger_data', 'topology')|g" \
+    node_modules/@query-doctor/core/dist/index.mjs
 
 # Final image
 ARG PG_IMAGE
