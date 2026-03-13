@@ -10,6 +10,7 @@ import {
   ToggleIndexDto,
 } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
+import { ExportedStats, Statistics } from "@query-doctor/core";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -152,6 +153,41 @@ export class RemoteController {
           type: "error",
           error: env.HOSTED ? "Internal Server Error" : error,
           message: "Failed to sync database",
+        },
+      };
+    }
+  }
+
+  async onImportStats(body: unknown): Promise<HandlerResult> {
+    let stats: ExportedStats[];
+    try {
+      stats = ExportedStats.array().parse(body);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return {
+          status: 400,
+          body: { type: "error", error: "invalid_body", message: error.message },
+        };
+      }
+      return {
+        status: 400,
+        body: { type: "error", error: "invalid_body", message: "body must be an array of ExportedStats" },
+      };
+    }
+
+    try {
+      await this.remote.optimizer.applyStatistics(
+        Statistics.statsModeFromExport(stats),
+      );
+      return { status: 200, body: { success: true } };
+    } catch (error) {
+      console.error(error);
+      return {
+        status: 500,
+        body: {
+          type: "error",
+          error: env.HOSTED ? "Internal Server Error" : error,
+          message: "Failed to import stats",
         },
       };
     }
