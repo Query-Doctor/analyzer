@@ -1,5 +1,5 @@
 import { test, expect, vi, afterEach } from "vitest";
-import { assert, assertDefined } from "./test-utils.ts";
+import { assert, assertDefined, normalizeQuery } from "./test-utils.ts";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
@@ -48,11 +48,11 @@ test("controller syncs correctly", async () => {
     const conn = Connectable.fromString(pg.getConnectionUri());
     const optimizer = new QueryOptimizer(manager, conn);
 
-    const expectedImprovements = ["select * from testing where a = $1;"];
+    const expectedImprovements = ["SELECT * FROM testing WHERE a = $1;"];
     const expectedNoImprovements = [
-      "select * from testing where b = $1;",
-      "select * from testing where b > $1;",
-      "select * from testing where b < $1;",
+      "SELECT * FROM testing WHERE b = $1;",
+      "SELECT * FROM testing WHERE b > $1;",
+      "SELECT * FROM testing WHERE b < $1;",
     ];
 
     let improvements: string[] = [];
@@ -63,10 +63,10 @@ test("controller syncs correctly", async () => {
       throw error;
     });
     optimizer.addListener("improvementsAvailable", (query) => {
-      improvements.push(query.query);
+      improvements.push(normalizeQuery(query.query));
     });
     optimizer.addListener("noImprovements", (query) => {
-      noImprovements.push(query.query);
+      noImprovements.push(normalizeQuery(query.query));
     });
 
     const connector = manager.getConnectorFor(conn);
@@ -476,7 +476,7 @@ test("timed out queries are retried with exponential backoff up to maxRetries", 
     try {
       const recentQueries = await connector.getRecentQueries();
       const slowQuery = recentQueries.find((q) =>
-        q.query.includes("slow_table") && q.query.startsWith("select")
+        normalizeQuery(q.query).includes("slow_table") && normalizeQuery(q.query).startsWith("SELECT")
       );
       assertDefined(slowQuery, "Expected to find slow_table query");
 
@@ -563,7 +563,7 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
     try {
       const recentQueries = await connector.getRecentQueries();
       const mixedQuery = recentQueries.find((q) =>
-        q.query.includes("order by created_at desc, status asc")
+        normalizeQuery(q.query).includes("ORDER BY created_at DESC, status ASC")
       );
       assertDefined(mixedQuery, "Expected to find mixed sort direction query");
 
@@ -594,7 +594,7 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
 
       const queries = optimizer.getQueries();
       const result = queries.find((q) =>
-        q.query.includes("order by created_at desc, status asc")
+        normalizeQuery(q.query).includes("ORDER BY created_at DESC, status ASC")
       );
       assertDefined(result, "Expected to find query result");
       assert(
