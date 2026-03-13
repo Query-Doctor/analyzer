@@ -37,3 +37,34 @@ test("sync returns empty array when all queries fail", async () => {
 
   expect(results).toHaveLength(0);
 });
+
+test("sync bounds concurrency to MAX_CONCURRENCY", async () => {
+  const cache = new QueryCache();
+
+  let peakConcurrent = 0;
+  let currentConcurrent = 0;
+
+  const originalAnalyze = (await import("../sql/recent-query.ts")).RecentQuery.analyze;
+  const { RecentQuery } = await import("../sql/recent-query.ts");
+  vi.spyOn(RecentQuery, "analyze").mockImplementation(async (...args) => {
+    currentConcurrent++;
+    peakConcurrent = Math.max(peakConcurrent, currentConcurrent);
+    // Yield to allow other tasks to start if concurrency is unbounded
+    await new Promise((r) => setTimeout(r, 10));
+    currentConcurrent--;
+    return originalAnalyze.call(RecentQuery, ...args);
+  });
+
+  // 30 queries — with unbounded concurrency all 30 would run simultaneously,
+  // with Sema(10) peak should be capped at 10
+  const queries = Array.from({ length: 30 }, (_, i) =>
+    makeRawQuery(`SELECT ${i + 1}`),
+  );
+
+  await cache.sync(queries);
+
+  expect(peakConcurrent).toBeLessThanOrEqual(10);
+  expect(peakConcurrent).toBeGreaterThan(1); // verify some concurrency exists
+
+  vi.restoreAllMocks();
+});
