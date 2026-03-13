@@ -178,7 +178,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
           throw error;
         },
       ) ??
-        [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
+      [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
       this.pollQueriesOnce().catch((error) => {
         log.error("Failed to poll queries", "remote");
         console.error(error);

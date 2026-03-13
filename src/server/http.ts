@@ -146,8 +146,8 @@ export async function createServer(
 
   const remoteController = targetDb
     ? new RemoteController(
-        new Remote(targetDb, optimizingDbConnectionManager),
-      )
+      new Remote(targetDb, optimizingDbConnectionManager),
+    )
     : undefined;
 
   fastify.get("/", async (_request, reply) => {
@@ -185,7 +185,7 @@ export async function createServer(
       return reply.send(result);
     });
 
-    fastify.register(async function (app) {
+    fastify.register(async function(app) {
       app.get(
         "/postgres/ws",
         { websocket: true },
@@ -212,6 +212,12 @@ export async function createServer(
       const result = await remoteController.onReset(
         JSON.stringify(request.body),
       );
+      return reply.status(result.status).send(result.body);
+    });
+
+    fastify.post("/postgres/stats", async (request, reply) => {
+      log.info(`[POST] /postgres/stats`, "http");
+      const result = await remoteController.onImportStats(request.body);
       return reply.status(result.status).send(result.body);
     });
   }
