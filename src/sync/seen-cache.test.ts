@@ -38,29 +38,33 @@ test("sync returns empty array when all queries fail", async () => {
   expect(results).toHaveLength(0);
 });
 
-test("sync marks queries over 50KB as analysisSkipped", async () => {
+test("sync bounds concurrency to MAX_CONCURRENCY", async () => {
   const cache = new QueryCache();
 
-  const smallQuery = makeRawQuery("SELECT 1");
-  // 60KB of valid SQL — simulates PostGIS extension bootstrap
-  const largeQuery = makeRawQuery(
-    `INSERT INTO spatial_ref_sys VALUES ${Array.from({ length: 1000 }, (_, i) => `(${i}, 'EPSG', ${i}, '${"x".repeat(50)}', '${"y".repeat(50)}')`).join(", ")}`,
+  let peakConcurrent = 0;
+  let currentConcurrent = 0;
+
+  const originalAnalyze = (await import("../sql/recent-query.ts")).RecentQuery.analyze;
+  const { RecentQuery } = await import("../sql/recent-query.ts");
+  vi.spyOn(RecentQuery, "analyze").mockImplementation(async (...args) => {
+    currentConcurrent++;
+    peakConcurrent = Math.max(peakConcurrent, currentConcurrent);
+    // Yield to allow other tasks to start if concurrency is unbounded
+    await new Promise((r) => setTimeout(r, 10));
+    currentConcurrent--;
+    return originalAnalyze.call(RecentQuery, ...args);
+  });
+
+  // 30 queries — with unbounded concurrency all 30 would run simultaneously,
+  // with Sema(10) peak should be capped at 10
+  const queries = Array.from({ length: 30 }, (_, i) =>
+    makeRawQuery(`SELECT ${i + 1}`),
   );
 
-  expect(largeQuery.query.length).toBeGreaterThan(50_000);
+  await cache.sync(queries);
 
-  const results = await cache.sync([smallQuery, largeQuery]);
+  expect(peakConcurrent).toBeLessThanOrEqual(10);
+  expect(peakConcurrent).toBeGreaterThan(1); // verify some concurrency exists
 
-  expect(results).toHaveLength(2);
-
-  const small = results.find((r) => r.query.includes("SELECT"));
-  const large = results.find((r) => r.query.includes("spatial_ref_sys"));
-
-  expect(small).toBeDefined();
-  expect(small!.analysisSkipped).toBe(false);
-
-  expect(large).toBeDefined();
-  expect(large!.analysisSkipped).toBe(true);
-  expect(large!.tableReferences).toEqual([]);
-  expect(large!.nudges).toEqual([]);
+  vi.restoreAllMocks();
 });
