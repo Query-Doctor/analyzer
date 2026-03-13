@@ -1,6 +1,7 @@
 import type { Postgres } from "@query-doctor/core";
 import { QueryHash, RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 import { fingerprint } from "@libpg-query/parser";
+import { Sema } from "async-sema";
 import { log } from "../log.ts";
 
 interface CacheEntry {
@@ -47,16 +48,21 @@ export class QueryCache {
     return this.list[key]?.firstSeen || Date.now();
   }
 
+  private static readonly MAX_CONCURRENCY = 10;
+
   async sync(rawQueries: RawRecentQuery[]): Promise<RecentQuery[]> {
-    // TODO: bound the concurrency
+    const sema = new Sema(QueryCache.MAX_CONCURRENCY);
     const results = await Promise.allSettled(rawQueries.map(async (rawQuery) => {
-      const key = await this.store(rawQuery);
+      await sema.acquire();
       try {
+        const key = await this.store(rawQuery);
         return await RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
       } catch (error) {
         log.error(`Failed to analyze query ${rawQuery.query}`, "query-cache")
         console.error(error)
         throw error;
+      } finally {
+        sema.release();
       }
     }));
     return results
