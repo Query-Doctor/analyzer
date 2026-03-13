@@ -34,6 +34,7 @@ export class RecentQuery {
   readonly isSelectQuery: boolean;
   readonly isIntrospection: boolean;
   readonly isTargetlessSelectQuery: boolean;
+  readonly analysisSkipped: boolean;
 
   /** Use {@link RecentQuery.analyze} instead */
   constructor(
@@ -44,6 +45,7 @@ export class RecentQuery {
     readonly nudges: Nudge[],
     readonly hash: QueryHash,
     readonly seenAt: number,
+    analysisSkipped = false,
   ) {
     this.username = data.username;
     this.query = data.query;
@@ -52,6 +54,7 @@ export class RecentQuery {
     this.calls = data.calls;
     this.rows = data.rows;
     this.topLevel = data.topLevel;
+    this.analysisSkipped = analysisSkipped;
 
     this.isSystemQuery = RecentQuery.isSystemQuery(tableReferences);
     this.isSelectQuery = RecentQuery.isSelectQuery(data);
@@ -65,11 +68,31 @@ export class RecentQuery {
     return Object.assign(this, { optimization });
   }
 
+  /**
+   * Queries beyond this size are included in results but skip expensive
+   * prettier.format() and Analyzer.analyze() to avoid OOM from massive
+   * extension bootstrap data (e.g. PostGIS's 800KB INSERT INTO spatial_ref_sys).
+   */
+  private static readonly MAX_ANALYZABLE_QUERY_SIZE = 50_000;
+
   static async analyze(
     data: RawRecentQuery,
     hash: QueryHash,
     seenAt: number,
   ) {
+    if (data.query.length > RecentQuery.MAX_ANALYZABLE_QUERY_SIZE) {
+      return new RecentQuery(
+        { ...data, formattedQuery: data.query },
+        [],
+        [],
+        [],
+        [],
+        hash,
+        seenAt,
+        true,
+      );
+    }
+
     const analyzer = new Analyzer(parse);
     const formattedQuery = await RecentQuery.formatQuery(
       data.query,
