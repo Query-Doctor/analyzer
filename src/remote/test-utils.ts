@@ -13,3 +13,7 @@ export function assertDefined<T>(
 ): asserts value is NonNullable<T> {
   expect(value, message ?? "Expected value to be defined").toBeTruthy();
 }
+
+export function normalizeQuery(query: string): string {
+  return query.replace(/\s+/g, " ");
+}

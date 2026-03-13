@@ -5,6 +5,7 @@ import { Remote } from "./remote.ts";
 import { Pool } from "pg";
 
 import { ConnectionManager } from "../sync/connection-manager.ts";
+import { normalizeQuery } from "./test-utils.ts";
 
 import { PgIdentifier } from "@query-doctor/core";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
@@ -72,10 +73,10 @@ test("syncs correctly", async () => {
       const result = await remote.syncFrom(source);
       const optimizedQueries = remote.optimizer.getQueries();
 
-      const queries = optimizedQueries.map((f) => f.query);
+      const queries = optimizedQueries.map((f) => normalizeQuery(f.query));
       expect(queries).toEqual(expect.arrayContaining([
-        "create table testing(a int, b text);",
-        "select * from testing where a = $1;",
+        "CREATE TABLE testing (a int, b text);",
+        "SELECT * FROM testing WHERE a = $1;",
       ]));
 
       assertOk(result.schema);
@@ -353,10 +354,10 @@ test("timescaledb with continuous aggregates sync correctly", async () => {
       );
       await remote.syncFrom(sourceConn);
       const queries = remote.optimizer.getQueries();
-      const queryStrings = queries.map((q) => q.query);
+      const queryStrings = queries.map((q) => normalizeQuery(q.query));
 
       expect(queryStrings).toEqual(expect.arrayContaining([
-        "select * from conditions where time < now();",
+        "SELECT * FROM conditions WHERE time < now();",
       ]));
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public';",
