@@ -178,7 +178,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
           throw error;
         },
       ) ??
-        [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
+      [] as Op[], /* no panic in case schemaLoader has not loaded in yet */
       this.pollQueriesOnce().catch((error) => {
         log.error("Failed to poll queries", "remote");
         console.error(error);
@@ -317,6 +317,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private getDatabaseInfo(source: Connectable) {
     const connector = this.sourceManager.getConnectorFor(source);
     return connector.getDatabaseInfo();
+  }
+
+  async applyStatistics(statsMode: StatisticsMode): Promise<void> {
+    await this.optimizer.setStatistics(statsMode);
+    await this.optimizer.restart();
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
