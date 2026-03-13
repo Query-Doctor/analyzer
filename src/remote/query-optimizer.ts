@@ -382,6 +382,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     ) {
       return { type: "ignored" };
     }
+    if (query.analysisSkipped) {
+      return {
+        type: "not_supported",
+        reason: "Query too large to analyze",
+      };
+    }
     if (!query.isSelectQuery) {
       return {
         type: "not_supported",

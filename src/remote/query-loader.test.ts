@@ -28,6 +28,7 @@ function createMockRecentQuery(query: string): RecentQuery {
     isSelectQuery: true,
     isIntrospection: false,
     isTargetlessSelectQuery: false,
+    analysisSkipped: false,
     tableReferences: [],
     columnReferences: [],
     tags: [],
