@@ -273,6 +273,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<StatsResult> {
     const connector = this.sourceManager.getConnectorFor(source);
+    await connector.analyze();
     const totalRows = await connector.getTotalRowCount(tables);
 
     if (totalRows < Remote.STATS_ROWS_THRESHOLD) {

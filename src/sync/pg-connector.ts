@@ -426,24 +426,24 @@ ORDER BY
     return FullSchema.parse(results.result);
   }
 
+  public async analyze(): Promise<void> {
+    await this.db.exec("ANALYZE", []);
+  }
+
   public async getTotalRowCount(
     tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<number> {
     if (tables.length === 0) return 0;
 
-    const schemaNames = Array.from(
-      new Set(tables.map((t) => t.schemaName.toString())),
-    );
-    const tableNames = Array.from(
-      new Set(tables.map((t) => t.tableName.toString())),
-    );
+    const schemaNames = tables.map((t) => t.schemaName.toString());
+    const tableNames = tables.map((t) => t.tableName.toString());
 
     const results = await this.db.exec<{ total_rows: string }>(
       `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
        JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
-         ON n.nspname = t.schema_name AND c.relname = t.table_name
+         ON quote_ident(n.nspname) = t.schema_name AND quote_ident(c.relname) = t.table_name
        WHERE c.relkind IN ('r', 'm')`,
       [schemaNames, tableNames],
     );
@@ -505,7 +505,7 @@ ORDER BY
         toplevel as "topLevel"
       FROM ${pssSchema}.pg_stat_statements
       WHERE query not like '%pg_stat_statements%'
-        -- and dbid = (select oid from pg_database where datname = current_database())
+        and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
         -- and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
