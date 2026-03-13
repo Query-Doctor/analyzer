@@ -319,6 +319,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
     return connector.getDatabaseInfo();
   }
 
+  async applyStatistics(statsMode: StatisticsMode): Promise<void> {
+    await this.optimizer.setStatistics(statsMode);
+    await this.optimizer.restart();
+  }
+
   async resetPgStatStatements(source: Connectable): Promise<void> {
     const connector = this.sourceManager.getConnectorFor(source);
     await connector.resetPgStatStatements();

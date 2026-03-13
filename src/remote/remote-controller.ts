@@ -176,7 +176,7 @@ export class RemoteController {
     }
 
     try {
-      await this.remote.optimizer.applyStatistics(
+      await this.remote.applyStatistics(
         Statistics.statsModeFromExport(stats),
       );
       return { status: 200, body: { success: true } };
