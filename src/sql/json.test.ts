@@ -53,3 +53,23 @@ test("handles mixed leading whitespace and escaped newlines", () => {
   const result = preprocessEncodedJson(input);
   expect(result).toBe('{"data": 1}');
 });
+
+test("preserves \\r as escaped sequence after unescaping", () => {
+  const input = '{"key": "val\rue"}';
+  const result = preprocessEncodedJson(input);
+  expect(result).toBe('{"key": "val\\rue"}');
+});
+
+test("preserves \\t as escaped sequence after unescaping", () => {
+  const input = '{"key": "val\tue"}';
+  const result = preprocessEncodedJson(input);
+  expect(result).toBe('{"key": "val\\tue"}');
+});
+
+test("skips non-whitespace characters before opening brace", () => {
+  expect(preprocessEncodedJson('abc{"key": 1}')).toBe('{"key": 1}');
+});
+
+test("returns undefined for whitespace-only input", () => {
+  expect(preprocessEncodedJson("   \\n\\n   ")).toBeUndefined();
+});
