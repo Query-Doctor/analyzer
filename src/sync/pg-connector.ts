@@ -90,7 +90,11 @@ export type ResetPgStatStatementsResult =
 export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
-  private pssSchema: PgIdentifier | null = null;
+  private querySource: QuerySourceExtension | null = null;
+  private static extensionNotInstalledError = new ExtensionNotInstalledError([
+    "pg_stat_statements",
+    "pg_stat_monitor"
+  ])
   /**
    * The minimum size for a table to be considered for sampling.
    * Otherwise we use the `order by random()` instead.
@@ -99,7 +103,7 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
   constructor(
     private readonly db: Postgres,
     private readonly segmentedQueryCache: SegmentedQueryCache,
-  ) {}
+  ) { }
 
   async onStartAnalyze(): Promise<void> {
     const results = await this.db.exec<{ table: string; count: number }>(
@@ -262,8 +266,7 @@ ORDER BY
     } else {
       // this really needs to be tweaked lol
       cursor = this.db.cursor(
-        `select *, ctid from ${fullyQualifiedTable} tablesample bernoulli(${
-          options.requiredRows / tupleEstimate + 10
+        `select *, ctid from ${fullyQualifiedTable} tablesample bernoulli(${options.requiredRows / tupleEstimate + 10
         }) repeatable(1) -- @qd_introspection`,
       );
     }
@@ -312,12 +315,10 @@ ORDER BY
     }
     const comments = [
       `-- START:Sampled data`,
-      `-- Sampled by @query-doctor/analyzer on ${
-        new Date().toISOString()
-      } | options = ${
-        JSON.stringify(
-          options,
-        )
+      `-- Sampled by @query-doctor/analyzer on ${new Date().toISOString()
+      } | options = ${JSON.stringify(
+        options,
+      )
       }`,
       "--",
       "-- Note: Using session_replication_role to prevent foreign key constraints from being checked.",
@@ -353,11 +354,10 @@ ORDER BY
       const columns = tableSchema.columns.map(
         (c) => `quote_literal(${c.name}) as ${c.name}`,
       );
-      const query = `select ${
-        columns.join(
-          ", ",
-        )
-      } from (select * from ${fullyQualifiedTable} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
+      const query = `select ${columns.join(
+        ", ",
+      )
+        } from (select * from ${fullyQualifiedTable} where ctid = any($1::tid[])) as samples -- @qd_introspection`;
       log.debug(
         `${query} : [${allCtids.join(", ")}]`,
         "pg-connector:serialize",
@@ -371,10 +371,9 @@ ORDER BY
       const comment =
         `-- ${fullyQualifiedTable} | ${serialized.length} sampled out of ${estimate.toLocaleString()} (estimate)`;
       const insertStatement =
-        `${comment}\nINSERT INTO ${fullyQualifiedTable} (${
-          tableSchema.columns
-            .map((c) => c.name)
-            .join(", ")
+        `${comment}\nINSERT INTO ${fullyQualifiedTable} (${tableSchema.columns
+          .map((c) => c.name)
+          .join(", ")
         })\nOVERRIDING SYSTEM VALUE VALUES\n`;
       // overriding system value prevents breaking columns that are (generated always as)
       if (serialized.length === 0) {
@@ -384,17 +383,16 @@ ORDER BY
       const serializedRows = [];
       for (const row of serialized) {
         serializedRows.push(
-          `(${
-            tableSchema.columns
-              .map((col) => {
-                const value =
-                  (row as Record<string, unknown>)[col.name.toString()];
-                if (value === null) {
-                  return "NULL";
-                }
-                return value;
-              })
-              .join(", ")
+          `(${tableSchema.columns
+            .map((col) => {
+              const value =
+                (row as Record<string, unknown>)[col.name.toString()];
+              if (value === null) {
+                return "NULL";
+              }
+              return value;
+            })
+            .join(", ")
           })`,
         );
       }
@@ -472,19 +470,27 @@ ORDER BY
     };
   }
 
-  private async getPssSchema(): Promise<PgIdentifier> {
-    if (this.pssSchema) return this.pssSchema;
-    const result = await this.db.exec<{ schema: string }>(`
-      SELECT n.nspname as schema
+  private async getQuerySource(): Promise<QuerySourceExtension> {
+    if (this.querySource)
+      return this.querySource
+    const results = await this.db.exec<{ schema: string; extension: string }>(`
+      SELECT e.extname as extension, n.nspname as schema
       FROM pg_extension e
       JOIN pg_namespace n ON n.oid = e.extnamespace
-      WHERE e.extname = 'pg_stat_statements'
+      WHERE e.extname IN ('pg_stat_statements', 'pg_stat_monitor');
     `);
-    if (result.length === 0) {
-      throw new ExtensionNotInstalledError("pg_stat_statements");
+    const firstResult = results[0];
+    if (!firstResult) {
+      throw new ExtensionNotInstalledError([
+        "pg_stat_statements",
+        "pg_stat_monitor"
+      ]);
     }
-    this.pssSchema = PgIdentifier.fromString(result[0].schema);
-    return this.pssSchema;
+    this.querySource = {
+      extensionName: PgIdentifier.fromString(firstResult.extension),
+      schema: PgIdentifier.fromString(firstResult.schema)
+    };
+    return this.querySource;
   }
 
   /**
@@ -493,9 +499,10 @@ ORDER BY
    * @throws {PostgresError} - Not regular Error
    */
   public async getRecentQueries(): Promise<RecentQuery[]> {
+    const source = await this.getQuerySource();
     try {
-      const pssSchema = await this.getPssSchema();
-      const results = await this.db.exec<RawRecentQuery>(`
+      if (source.extensionName.toString() === "pg_stat_statements") {
+        const results = await this.db.exec<RawRecentQuery>(`
       SELECT
         'unknown_user' as "username",
         query,
@@ -503,28 +510,48 @@ ORDER BY
         calls,
         rows,
         toplevel as "topLevel"
-      FROM ${pssSchema}.pg_stat_statements
+      FROM ${source.schema}.pg_stat_statements
       WHERE query not like '%pg_stat_statements%'
         -- and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
         -- and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
 
-      return await this.segmentedQueryCache.sync(
-        this.db,
-        results,
-      );
+        return await this.segmentedQueryCache.sync(
+          this.db,
+          results,
+        );
+      } else if (source.extensionName.toString() === "pg_stat_monitor") {
+        const results = await this.db.exec<RawRecentQuery>(`
+      SELECT
+        COALESCE(username, 'unknown_user') as "username",
+        query,
+        mean_exec_time as "meanTime",
+        calls,
+        rows,
+        toplevel as "topLevel"
+      FROM ${source.schema}.pg_stat_monitor
+      WHERE query not like '%pg_stat_monitor%'
+        and query not like '%@qd_introspection%'
+      `); // we're excluding `pg_stat_monitor` from the results since it's almost certainly unrelated
+
+        return await this.segmentedQueryCache.sync(
+          this.db,
+          results,
+        );
+      }
     } catch (err) {
-      if (err instanceof ExtensionNotInstalledError) throw err;
       if (
         err instanceof Error &&
         err.message.includes('relation "pg_stat_statements" does not exist')
       ) {
-        throw new ExtensionNotInstalledError("pg_stat_statements");
+        throw PostgresConnector.extensionNotInstalledError;
       }
       console.error(err);
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
+
+    throw PostgresConnector.extensionNotInstalledError;
   }
 
   /**
@@ -532,22 +559,26 @@ ORDER BY
    * @throws {PostgresError}
    */
   public async resetPgStatStatements(): Promise<void> {
+    const source = await this.getQuerySource();
     try {
-      const pssSchema = await this.getPssSchema();
-      await this.db.exec(`
-          SELECT ${pssSchema}.pg_stat_statements_reset(); -- @qd_introspection
-      `);
+      if (source.extensionName.toString() === "pg_stat_statements") {
+        await this.db.exec(`
+            SELECT ${source.schema}.pg_stat_statements_reset(); -- @qd_introspection
+        `);
+      } else if (source.extensionName.toString() === "pg_stat_monitor") {
+        await this.db.exec(`
+            SELECT ${source.schema}.pg_stat_monitor_reset(); -- @qd_introspection
+        `);
+      }
 
       this.segmentedQueryCache.reset(this.db);
     } catch (err) {
-      if (err instanceof ExtensionNotInstalledError) throw err;
       if (
         err instanceof Error &&
-        err.message.includes(
-          "function pg_stat_statements_reset() does not exist",
-        )
+        (err.message.includes("function pg_stat_statements_reset() does not exist") ||
+          err.message.includes("function pg_stat_monitor_reset() does not exist"))
       ) {
-        throw new ExtensionNotInstalledError("pg_stat_statements");
+        throw PostgresConnector.extensionNotInstalledError;
       }
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
@@ -579,6 +610,11 @@ ORDER BY
     }
     return { username: results.username, isSuperuser: results.isSuperuser };
   }
+}
+
+interface QuerySourceExtension {
+  schema: PgIdentifier;
+  extensionName: PgIdentifier;
 }
 
 type TableName = string;

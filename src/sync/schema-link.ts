@@ -22,7 +22,7 @@ export class PostgresSchemaLink {
   constructor(
     public readonly connectable: Connectable,
     public readonly targetType: DumpTargetType,
-  ) {}
+  ) { }
 
   excludedSchemas(): string[] {
     return DumpCommand.excludedSchemas(this.connectable);
@@ -86,6 +86,10 @@ export class DumpCommand
     "pg_stat_statements",
     "pgcrypto",
     "uuid-ossp",
+  ];
+
+  private static readonly perconaDbExcludedExtensions = [
+    "pg_stat_monitor"
   ];
 
   // we don't want to allow callers to construct an instance
@@ -228,7 +232,7 @@ export class DumpCommand
     if (connectable.isSupabase()) {
       return this.supabaseExcludedExtensions;
     }
-    return [];
+    return this.perconaDbExcludedExtensions;
   }
 
   private static extraFlags(

@@ -21,8 +21,8 @@ export class PostgresError extends Error {
 export class ExtensionNotInstalledError extends Error {
   readonly statusCode = 400;
 
-  constructor(public readonly extension: string) {
-    super(`extension ${extension} is not installed`);
+  constructor(public readonly extensionNames: string[]) {
+    super(`none of the following extensions are installed: ${extensionNames.join(",")}`);
   }
 
   toJSON() {
