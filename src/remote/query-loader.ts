@@ -36,10 +36,7 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
       await this.runPoll();
       this.consecutiveErrors = 0;
     } catch (error) {
-      if (
-        error instanceof ExtensionNotInstalledError &&
-        error.extension === "pg_stat_statements"
-      ) {
+      if (error instanceof ExtensionNotInstalledError) {
         this.emit("pgStatStatementsNotInstalled");
         // we don't want to increment our consecutive errors
         // handler for this one because the user might install it

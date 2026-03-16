@@ -80,7 +80,7 @@ export class PostgresSyncer {
             return {
               kind: "error",
               type: "extension_not_installed",
-              extensionName: error.extension,
+              extensionName: error.extensionNames[0],
             };
           }
           throw error;

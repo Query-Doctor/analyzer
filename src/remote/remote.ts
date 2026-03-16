@@ -136,7 +136,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     } else if (recentQueries.reason instanceof ExtensionNotInstalledError) {
       recentQueriesError = {
         type: "extension_not_installed",
-        extensionName: recentQueries.reason.extension,
+        extensionName: recentQueries.reason.extensionNames[0],
       };
     }
 
