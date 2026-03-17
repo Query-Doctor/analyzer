@@ -13,20 +13,57 @@ import {
   isQueryLong,
   renderExplain,
   ReportContext,
+  ReportIndexRecommendation,
   Reporter,
 } from "../reporter.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
-function buildViewModel(ctx: ReportContext) {
+type CommentState =
+  | "all-clear"
+  | "optimizations"
+  | "regressions"
+  | "review-required"
+  | "no-baseline";
+
+interface DisplayRecommendation extends ReportIndexRecommendation {
+  queryPreview: string;
+}
+
+export function formatCost(cost: number): string {
+  return Math.round(cost).toLocaleString("en-US");
+}
+
+export function queryPreview(formattedQuery: string): string {
+  const firstLine = formattedQuery
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .slice(0, 2)
+    .join(" ");
+  if (firstLine.length > 80) {
+    return firstLine.slice(0, 77) + "...";
+  }
+  return firstLine;
+}
+
+function addPreviews(
+  recs: ReportIndexRecommendation[],
+): DisplayRecommendation[] {
+  return recs.map((r) => ({
+    ...r,
+    queryPreview: queryPreview(r.formattedQuery),
+  }));
+}
+
+export function buildViewModel(ctx: ReportContext) {
   const hasComparison = !!ctx.comparison;
 
   if (!hasComparison) {
     return {
-      displayRecommendations: ctx.recommendations,
-      displayStatistics: ctx.statistics,
+      state: "no-baseline" as CommentState,
+      displayRecommendations: addPreviews(ctx.recommendations),
       totalRecommendations: ctx.recommendations.length,
-      totalStatistics: ctx.statistics.length,
       newQueryCount: 0,
       regressedCount: 0,
       disappearedCount: 0,
@@ -38,16 +75,23 @@ function buildViewModel(ctx: ReportContext) {
     ctx.comparison!.newQueries.map((q) => q.hash),
   );
 
-  const displayRecommendations = ctx.recommendations.filter((r) =>
-    newQueryHashes.has(r.fingerprint),
+  const displayRecommendations = addPreviews(
+    ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
   );
-  const displayStatistics = deriveIndexStatistics(displayRecommendations);
+
+  const hasRegressions = ctx.comparison!.regressed.length > 0;
+  const hasOptimizations = displayRecommendations.length > 0;
+
+  let state: CommentState;
+  if (hasRegressions && hasOptimizations) state = "review-required";
+  else if (hasRegressions) state = "regressions";
+  else if (hasOptimizations) state = "optimizations";
+  else state = "all-clear";
 
   return {
+    state,
     displayRecommendations,
-    displayStatistics,
     totalRecommendations: ctx.recommendations.length,
-    totalStatistics: ctx.statistics.length,
     newQueryCount: ctx.comparison!.newQueries.length,
     regressedCount: ctx.comparison!.regressed.length,
     disappearedCount: ctx.comparison!.disappearedHashes.length,
@@ -84,8 +128,9 @@ export class GithubReporter implements Reporter {
     const output = this.renderToMd(success, {
       ...ctx,
       ...viewModel,
-      isQueryLong: isQueryLong,
-      renderExplain: renderExplain,
+      isQueryLong,
+      renderExplain,
+      formatCost,
     });
     return this.createReview(output, existingReview);
   }

@@ -1,11 +1,13 @@
-{% set hasUntriagedRegressions = comparison and comparison.regressed.length > 0 %}
-{% set hasAcknowledgedRegressions = comparison and comparison.acknowledgedRegressed.length > 0 %}
-{% set hasIndexRecs = displayStatistics and displayStatistics.length > 0 %}
-{% set hasOptimizations = displayRecommendations.length > 0 %}
-{% if hasUntriagedRegressions %}
-### Query Doctor Analysis — Action Required
-{% else %}
+{% if state == "all-clear" %}
 ### Query Doctor Analysis — All Clear
+{% elif state == "optimizations" %}
+### Query Doctor Analysis — Optimizations Found
+{% elif state == "regressions" %}
+### Query Doctor Analysis — Regressions Found
+{% elif state == "review-required" %}
+### Query Doctor Analysis — Review Required
+{% else %}
+### Query Doctor Analysis
 {% endif %}
 {% if runUrl %}
 [View full run details]({{ runUrl }})
@@ -15,24 +17,22 @@
 {{ queryStats.total | default('?') }} queries analyzed
 {%- if newQueryCount > 0 %} | {{ newQueryCount }} new quer{{ "ies" if newQueryCount != 1 else "y" }}{% endif %}
 {%- if regressedCount > 0 %} | {{ regressedCount }} regression{{ "s" if regressedCount != 1 else "" }}{% endif %}
-{%- if hasOptimizations %} | {{ displayRecommendations.length }} optimization{{ "s" if displayRecommendations.length != 1 else "" }}{% endif %}
-{%- if disappearedCount > 0 %} | {{ disappearedCount }} disappeared{% endif %}
+{%- if displayRecommendations.length > 0 %} | {{ displayRecommendations.length }} optimization{{ "s" if displayRecommendations.length != 1 else "" }}{% endif %}
 {% else %}
-{{ queryStats.total | default('?') }} queries analyzed
-{%- if hasOptimizations %} | {{ displayRecommendations.length }} optimization{{ "s" if displayRecommendations.length != 1 else "" }} available{% endif %}
+{{ queryStats.total | default('?') }} queries analyzed — no previous run to compare against.
 {% endif %}
 
 {% if comparison %}
-{% if hasUntriagedRegressions %}
+{% if comparison.regressed.length > 0 %}
 #### Regressions Requiring Triage
 
 | Query | Previous Cost | Current Cost | Regression |
 |-------|--------------|--------------|------------|
 {% for q in comparison.regressed %}
-| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
+| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ formatCost(q.previousCost) }} | {{ formatCost(q.currentCost) }} | +{{ q.regressionPercentage | round(1) }}% |
 {% endfor %}
 {% endif %}
-{% if hasAcknowledgedRegressions %}
+{% if comparison.acknowledgedRegressed.length > 0 %}
 
 <details>
 <summary>{{ comparison.acknowledgedRegressed.length }} acknowledged regression{{ "s" if comparison.acknowledgedRegressed.length != 1 else "" }} (not blocking)</summary>
@@ -40,33 +40,22 @@
 | Query | Previous Cost | Current Cost | Regression |
 |-------|--------------|--------------|------------|
 {% for q in comparison.acknowledgedRegressed %}
-| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ q.previousCost }} | {{ q.currentCost }} | +{{ q.regressionPercentage | round(1) }}% |
+| {% if queryBaseUrl %}[<code>{{ q.hash }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.hash }}</code>{% endif %} | {{ formatCost(q.previousCost) }} | {{ formatCost(q.currentCost) }} | +{{ q.regressionPercentage | round(1) }}% |
 {% endfor %}
 
 </details>
 {% endif %}
 {% endif %}
 
-{% if hasIndexRecs %}
-#### Recommended Indexes{% if hasComparison %} (New Queries){% endif %}
-
-| Index | Queries Helped |
-|-------|---------------|
-{% for index, stats in displayStatistics %}
-| <code>{{ index }}</code> | {{ stats.usageCount }} |
-{% endfor %}
-{% if hasComparison and totalStatistics > displayStatistics.length %}
-<sub>{{ totalStatistics }} total across all queries. Showing {{ displayStatistics.length }} for new queries only.</sub>
-{% endif %}
+{% if displayRecommendations.length > 0 %}
+{% if hasComparison %}
+#### New Optimizations
 {% endif %}
 
-{% if hasOptimizations %}
-#### Optimizations Available{% if hasComparison %} (New Queries){% endif %}
-
-| Query | Cost | Optimized Cost | Improvement |
-|-------|------|---------------|-------------|
-{% for recommendation in displayRecommendations %}
-| <code>{{ recommendation.fingerprint }}</code> | {{ recommendation.baseCost }} | {{ recommendation.optimizedCost }} | {{ (recommendation.baseCost / recommendation.optimizedCost) | round(2) }}x |
+| Query | Recommended Index | Cost | Improvement |
+|-------|-------------------|------|-------------|
+{% for r in displayRecommendations %}
+| {% if queryBaseUrl %}[{{ r.queryPreview }}]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}{{ r.queryPreview }}{% endif %} | <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> | {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} | {{ (r.baseCost / r.optimizedCost) | round(2) }}x |
 {% endfor %}
 {% if hasComparison and totalRecommendations > displayRecommendations.length %}
 <sub>{{ totalRecommendations }} total across all queries. Showing {{ displayRecommendations.length }} for new queries only.</sub>
