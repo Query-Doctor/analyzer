@@ -14,7 +14,7 @@
 #### This PR improves queries
 
 {% for q in displayImproved %}
-- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} ({{ q.improvementPercentage | round(0) }}% reduction){% if q.previousIndexes.length > 0 %}<br>was using: {% for idx in q.previousIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if q.currentIndexes.length > 0 %}<br>now using: {% for idx in q.currentIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
+- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} ({{ q.improvementPercentage | round(0) }}% reduction){% if q.previousIndexes.length > 0 %}<br>was using: {% for idx in q.previousIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if q.currentIndexes.length > 0 %}<br>now using: {% for idx in q.currentIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{{""}}
 {% endfor %}
 {% endif %}
 
