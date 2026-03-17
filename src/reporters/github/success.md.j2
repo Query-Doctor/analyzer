@@ -14,11 +14,7 @@
 #### This PR improves queries
 
 {% for q in displayImproved %}
-- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}
-  cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} ({{ q.improvementPercentage | round(0) }}% reduction)
-{% if q.previousIndexes.length > 0 %}  was using: {% for idx in q.previousIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
-{% endif %}{% if q.currentIndexes.length > 0 %}  now using: {% for idx in q.currentIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
-{% endif %}
+- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} ({{ q.improvementPercentage | round(0) }}% reduction){% if q.previousIndexes.length > 0 %}<br>was using: {% for idx in q.previousIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if q.currentIndexes.length > 0 %}<br>now using: {% for idx in q.currentIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}
 {% endfor %}
 {% endif %}
 
@@ -26,8 +22,7 @@
 #### This PR has regressions on queries
 
 {% for q in displayRegressed %}
-- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}
-  cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
+- {% if queryBaseUrl %}[<code>{{ q.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ q.hash }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
 {% endfor %}
 {% endif %}
 
@@ -36,18 +31,16 @@
 <summary>{{ displayAcknowledgedRegressed.length }} acknowledged regression{{ "s" if displayAcknowledgedRegressed.length != 1 else "" }} (not blocking)</summary>
 
 {% for q in displayAcknowledgedRegressed %}
-- <code>{{ q.queryPreview }}</code> · cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
+- <code>{{ q.queryPreview }}</code><br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
 {% endfor %}
 </details>
 {% endif %}
 
 {% if displayRecommendations.length > 0 %}
-#### New queries found
+#### This PR introduces queries with recommendations
 
 {% for r in displayRecommendations %}
-- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}
-  recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code>
-  cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
+- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
 {% endfor %}
 {% endif %}
 
@@ -56,7 +49,7 @@
 <summary>{{ preExistingRecommendations.length }} pre-existing issue{{ "s" if preExistingRecommendations.length != 1 else "" }}</summary>
 
 {% for r in preExistingRecommendations %}
-- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %} — index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> · cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
+- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> · cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
 {% endfor %}
 </details>
 {% endif %}
