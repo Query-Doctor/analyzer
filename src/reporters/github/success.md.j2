@@ -57,9 +57,20 @@
 {% for r in displayRecommendations %}
 | {% if queryBaseUrl %}[{{ r.queryPreview }}]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}{{ r.queryPreview }}{% endif %} | <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> | {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} | {{ (r.baseCost / r.optimizedCost) | round(2) }}x |
 {% endfor %}
-{% if hasComparison and totalRecommendations > displayRecommendations.length %}
-<sub>{{ totalRecommendations }} total across all queries. Showing {{ displayRecommendations.length }} for new queries only.</sub>
 {% endif %}
+{% endif %}
+
+{% if hasComparison and preExistingRecommendations.length > 0 %}
+<details>
+<summary>{{ preExistingRecommendations.length }} pre-existing issue{{ "s" if preExistingRecommendations.length != 1 else "" }}</summary>
+
+{% for r in preExistingRecommendations %}
+{{ r.queryPreview }}
+recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code>
+{{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (r.baseCost / r.optimizedCost) | round(2) }}x)
+
+{% endfor %}
+</details>
 {% endif %}
 
 {% if statisticsMode.kind == "fromAssumption" %}

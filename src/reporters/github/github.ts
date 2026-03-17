@@ -78,6 +78,9 @@ export function buildViewModel(ctx: ReportContext) {
   const displayRecommendations = addPreviews(
     ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
   );
+  const preExistingRecommendations = addPreviews(
+    ctx.recommendations.filter((r) => !newQueryHashes.has(r.fingerprint)),
+  );
 
   const hasRegressions = ctx.comparison!.regressed.length > 0;
   const hasOptimizations = displayRecommendations.length > 0;
@@ -91,6 +94,7 @@ export function buildViewModel(ctx: ReportContext) {
   return {
     state,
     displayRecommendations,
+    preExistingRecommendations,
     totalRecommendations: ctx.recommendations.length,
     newQueryCount: ctx.comparison!.newQueries.length,
     regressedCount: ctx.comparison!.regressed.length,

@@ -243,4 +243,61 @@ describe("buildViewModel", () => {
     ]);
     expect(vm.totalRecommendations).toBe(4);
   });
+
+  test("preExistingRecommendations contains non-new-query recommendations", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-1",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [
+        makeRecommendation({ fingerprint: "new-1" }),
+        makeRecommendation({ fingerprint: "existing-1", formattedQuery: 'SELECT "name" FROM "products"' }),
+        makeRecommendation({ fingerprint: "existing-2", formattedQuery: 'UPDATE "orders" SET "status" = $1' }),
+      ],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.preExistingRecommendations).toHaveLength(2);
+    expect(vm.preExistingRecommendations!.map((r) => r.fingerprint)).toEqual([
+      "existing-1",
+      "existing-2",
+    ]);
+    expect(vm.preExistingRecommendations![0].queryPreview).toBe('SELECT "name" FROM "products"');
+    expect(vm.preExistingRecommendations![1].queryPreview).toBe('UPDATE "orders" SET "status" = $1');
+  });
+
+  test("preExistingRecommendations is empty when all recommendations are for new queries", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-1",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [
+        makeRecommendation({ fingerprint: "new-1" }),
+      ],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.preExistingRecommendations).toHaveLength(0);
+  });
+
+  test("no-baseline state does not include preExistingRecommendations", () => {
+    const ctx = makeContext({
+      recommendations: [makeRecommendation({})],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.state).toBe("no-baseline");
+    expect(vm).not.toHaveProperty("preExistingRecommendations");
+  });
 });
