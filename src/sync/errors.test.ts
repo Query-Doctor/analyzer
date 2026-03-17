@@ -21,18 +21,18 @@ test("PostgresError.toResponse returns 500 with JSON body", async () => {
   expect(await response.json()).toEqual(error.toJSON());
 });
 
-test("ExtensionNotInstalledError serializes with extension name", () => {
-  const error = new ExtensionNotInstalledError("pg_stat_statements");
+test("ExtensionNotInstalledError serializes with extension names", () => {
+  const error = new ExtensionNotInstalledError(["pg_stat_statements"]);
   expect(error.toJSON()).toEqual({
     kind: "error",
     type: "extension_not_installed",
-    extensionName: "extension pg_stat_statements is not installed",
+    extensionName: "none of the following extensions are installed: pg_stat_statements",
   });
-  expect(error.extension).toBe("pg_stat_statements");
+  expect(error.extensionNames).toEqual(["pg_stat_statements"]);
 });
 
 test("ExtensionNotInstalledError.toResponse returns 400", async () => {
-  const error = new ExtensionNotInstalledError("pg_stat_statements");
+  const error = new ExtensionNotInstalledError(["pg_stat_statements"]);
   const response = error.toResponse();
   expect(response.status).toBe(400);
   expect(await response.json()).toEqual(error.toJSON());
@@ -57,6 +57,6 @@ test("MaxTableIterationsReached.toResponse returns 500", async () => {
 
 test("all error classes are instances of Error", () => {
   expect(new PostgresError("x")).toBeInstanceOf(Error);
-  expect(new ExtensionNotInstalledError("x")).toBeInstanceOf(Error);
+  expect(new ExtensionNotInstalledError(["x"])).toBeInstanceOf(Error);
   expect(new MaxTableIterationsReached(1)).toBeInstanceOf(Error);
 });
