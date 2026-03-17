@@ -58,7 +58,6 @@
 | {% if queryBaseUrl %}[{{ r.queryPreview }}]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}{{ r.queryPreview }}{% endif %} | <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> | {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} | {{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction |
 {% endfor %}
 {% endif %}
-{% endif %}
 
 {% if hasComparison and preExistingRecommendations.length > 0 %}
 <details>
