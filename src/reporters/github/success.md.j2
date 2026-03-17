@@ -55,7 +55,7 @@
 | Query | Recommended Index | Cost | Improvement |
 |-------|-------------------|------|-------------|
 {% for r in displayRecommendations %}
-| {% if queryBaseUrl %}[{{ r.queryPreview }}]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}{{ r.queryPreview }}{% endif %} | <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> | {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} | {{ (r.baseCost / r.optimizedCost) | round(2) }}x |
+| {% if queryBaseUrl %}[{{ r.queryPreview }}]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}{{ r.queryPreview }}{% endif %} | <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> | {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} | {{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction |
 {% endfor %}
 {% endif %}
 {% endif %}
@@ -67,7 +67,7 @@
 {% for r in preExistingRecommendations %}
 {{ r.queryPreview }}
 recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code>
-{{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (r.baseCost / r.optimizedCost) | round(2) }}x)
+{{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
 
 {% endfor %}
 </details>
