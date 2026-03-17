@@ -211,6 +211,7 @@ export class GithubReporter implements Reporter {
     reportContext: ReportContext & {
       renderExplain: (explainPlan: object) => string;
       isQueryLong: (query: string) => boolean;
+      formatCost: (cost: number) => string;
     },
   ) {
     return n.renderString(content, reportContext);
