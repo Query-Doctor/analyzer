@@ -5,11 +5,14 @@ import { log } from "./log.ts";
 import { createServer } from "./server/http.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { shutdownController } from "./shutdown.ts";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   buildQueries,
   compareRuns,
   fetchPreviousRun,
   postToSiteApi,
+  type PreviousRun,
 } from "./reporters/site-api.ts";
 import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
 
@@ -69,8 +72,12 @@ async function runInCI(
   }
 
   // Fetch previous run for comparison
-  let previousRun = null;
-  if (siteApiEndpoint && repo) {
+  const mockPath = join(process.cwd(), "fixtures", "mock-previous-run.json");
+  let previousRun: PreviousRun | null = null;
+  if (existsSync(mockPath)) {
+    log.info("main", `Loading mock previous run from ${mockPath}`);
+    previousRun = JSON.parse(readFileSync(mockPath, "utf-8"));
+  } else if (siteApiEndpoint && repo) {
     const comparisonBranch =
       config.comparisonBranch ?? process.env.GITHUB_BASE_REF ?? branch;
     previousRun = await fetchPreviousRun(
