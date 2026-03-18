@@ -181,7 +181,7 @@ describe("buildViewModel", () => {
     expect(vm.displayRecommendations).toHaveLength(0);
   });
 
-  test("improvements surface in displayImproved", () => {
+  test("improvements surface in displayImproved with indexesChanged true", () => {
     const ctx = makeContext({
       comparison: makeComparison({
         improved: [
@@ -201,8 +201,29 @@ describe("buildViewModel", () => {
     const vm = buildViewModel(ctx);
     expect(vm.displayImproved).toHaveLength(1);
     expect(vm.displayImproved[0].queryPreview).toBe("SELECT 1");
-    expect(vm.displayImproved[0].previousIndexes).toEqual(["users_pkey"]);
-    expect(vm.displayImproved[0].currentIndexes).toEqual(["users_pkey", "users_email_idx"]);
+    expect(vm.displayImproved[0].indexesChanged).toBe(true);
+  });
+
+  test("improvements with identical indexes have indexesChanged false", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        improved: [
+          {
+            hash: "improved-1",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            previousCost: 500,
+            currentCost: 100,
+            improvementPercentage: 80,
+            previousIndexes: ["users_pkey"],
+            currentIndexes: ["users_pkey"],
+          },
+        ],
+      }),
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.displayImproved).toHaveLength(1);
+    expect(vm.displayImproved[0].indexesChanged).toBe(false);
   });
 
   test("filters recommendations to only new queries", () => {
@@ -271,4 +292,5 @@ describe("buildViewModel", () => {
     const vm = buildViewModel(ctx);
     expect(vm.preExistingRecommendations).toHaveLength(0);
   });
+
 });

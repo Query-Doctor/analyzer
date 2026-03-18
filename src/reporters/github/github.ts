@@ -16,6 +16,7 @@ import {
   ReportIndexRecommendation,
   Reporter,
 } from "../reporter.ts";
+
 import type { ImprovedQuery, RegressedQuery } from "../site-api.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
@@ -30,6 +31,7 @@ interface DisplayRegression extends RegressedQuery {
 
 interface DisplayImprovement extends ImprovedQuery {
   queryPreview: string;
+  indexesChanged: boolean;
 }
 
 export function formatCost(cost: number): string {
@@ -67,12 +69,20 @@ function addRegressionPreviews(
   }));
 }
 
+function indexesChanged(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return true;
+  const sortedA = [...a].sort();
+  const sortedB = [...b].sort();
+  return !sortedA.every((v, i) => v === sortedB[i]);
+}
+
 function addImprovementPreviews(
   improvements: ImprovedQuery[],
 ): DisplayImprovement[] {
   return improvements.map((r) => ({
     ...r,
     queryPreview: queryPreview(r.formattedQuery),
+    indexesChanged: indexesChanged(r.previousIndexes, r.currentIndexes),
   }));
 }
 
