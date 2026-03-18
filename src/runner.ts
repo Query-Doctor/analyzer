@@ -319,6 +319,23 @@ export class Runner {
             })
             .filter((i) => i !== undefined);
           if (out.newIndexes.size > 0) {
+            const costReductionPct = out.baseCost > 0
+              ? ((out.baseCost - out.finalCost) / out.baseCost) * 100
+              : 0;
+            if (Math.round(costReductionPct) <= 0) {
+              console.log(
+                `Skipping recommendation with ${costReductionPct.toFixed(1)}% cost reduction (rounds to 0%)`,
+              );
+              console.timeEnd(`timing`);
+              return {
+                kind: "no_improvement",
+                fingerprint: queryFingerprint,
+                rawQuery: query,
+                formattedQuery,
+                cost: out.baseCost,
+                existingIndexes: existingIndexesForQuery,
+              };
+            }
             this.queryStats.optimized++;
             const newIndexRecommendations = Array.from(out.newIndexes)
               .map((n) => out.triedIndexes.get(n))
