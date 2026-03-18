@@ -49,7 +49,7 @@
 <summary>{{ preExistingRecommendations.length }} pre-existing issue{{ "s" if preExistingRecommendations.length != 1 else "" }}</summary>
 
 {% for r in preExistingRecommendations %}
-- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code> · cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
+- {% if queryBaseUrl %}[<code>{{ r.queryPreview }}</code>]({{ queryBaseUrl }}/ci/queries/{{ r.fingerprint }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
 {% endfor %}
 </details>
 {% endif %}
