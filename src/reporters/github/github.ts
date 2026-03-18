@@ -43,10 +43,9 @@ export function queryPreview(formattedQuery: string): string {
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
-    .slice(0, 3)
     .join(" ");
-  if (preview.length > 120) {
-    return preview.slice(0, 117) + "...";
+  if (preview.length > 200) {
+    return preview.slice(0, 197) + "...";
   }
   return preview;
 }
