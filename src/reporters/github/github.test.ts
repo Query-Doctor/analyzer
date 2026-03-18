@@ -34,7 +34,7 @@ describe("queryPreview", () => {
     );
   });
 
-  test("joins first three lines of multiline query", () => {
+  test("inlines all lines of multiline query", () => {
     const query = `SELECT
   "id",
   "name"
@@ -42,14 +42,16 @@ FROM
   "users"
 WHERE
   "users"."id" = $1`;
-    expect(queryPreview(query)).toBe('SELECT "id", "name"');
+    expect(queryPreview(query)).toBe(
+      'SELECT "id", "name" FROM "users" WHERE "users"."id" = $1',
+    );
   });
 
-  test("truncates long lines at 120 chars", () => {
+  test("truncates at 200 chars", () => {
     const longQuery =
-      'SELECT "id", "user_id", "widget_id", "lesson_id", "module_id", "type", "data", "completed", "state", "extra_column_one", "extra_column_two" FROM "user_widgets"';
+      'SELECT "id", "user_id", "widget_id", "lesson_id", "module_id", "type", "data", "completed", "state", "extra_column_one", "extra_column_two", "extra_column_three", "extra_column_four", "extra_column_five" FROM "user_widgets" WHERE "user_id" = $1';
     const result = queryPreview(longQuery);
-    expect(result.length).toBeLessThanOrEqual(120);
+    expect(result.length).toBeLessThanOrEqual(200);
     expect(result).toMatch(/\.\.\.$/);
   });
 
