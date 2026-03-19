@@ -64,7 +64,7 @@ async function runInCI(
       process.env.SITE_APP_URL ??
       siteApiEndpoint.replace(/\/api\/?$/, "").replace("api.", "app.");
     const baseUrl = appUrl.replace(/\/$/, "");
-    reportContext.runUrl = `${baseUrl}/ci/${runId}`;
+    reportContext.runUrl = `${baseUrl}/ixr/ci/${runId}`;
     reportContext.queryBaseUrl = baseUrl;
   }
 
