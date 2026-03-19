@@ -11,6 +11,7 @@ import {
   fetchPreviousRun,
   postToSiteApi,
 } from "./reporters/site-api.ts";
+import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
 
 async function runInCI(
@@ -95,10 +96,14 @@ async function runInCI(
 
   // Block PR if regressions exceed thresholds
   if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
-    const messages = reportContext.comparison.regressed.map(
-      (q) =>
-        `  - ${q.hash}: cost ${q.previousCost} → ${q.currentCost} (+${q.regressionPercentage.toFixed(1)}%)`,
-    );
+    const messages = reportContext.comparison.regressed.map((q) => {
+      const preview = queryPreview(q.formattedQuery);
+      const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
+      const link = reportContext.runUrl
+        ? `\n    ${reportContext.runUrl}/${q.hash}`
+        : "";
+      return `  - ${preview}: ${cost}${link}`;
+    });
     core.setFailed(
       `${reportContext.comparison.regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
     );
