@@ -7,7 +7,9 @@
 {{ queryStats.total | default('?') }} queries analyzed
 {%- if newQueryCount > 0 %} | {{ newQueryCount }} new quer{{ "ies" if newQueryCount != 1 else "y" }}{% endif %}
 {% else %}
-{{ queryStats.total | default('?') }} queries analyzed — no previous run to compare against.
+{{ queryStats.total | default('?') }} queries analyzed — no baseline found to compare against.
+
+> **No baseline on `{{ comparisonBranch }}`** — the analyzer cannot detect regressions without a previous run. To establish a baseline, add a `push` trigger for your comparison branch so the analyzer runs on merges to `{{ comparisonBranch }}`. See the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger) for setup instructions.
 {% endif %}
 
 {% if displayImproved.length > 0 %}

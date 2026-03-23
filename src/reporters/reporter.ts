@@ -81,6 +81,7 @@ export interface ReportContext {
   metadata: ReportMetadata;
   error?: Error;
   comparison?: RunComparison;
+  comparisonBranch?: string;
   runUrl?: string;
   queryBaseUrl?: string;
 }

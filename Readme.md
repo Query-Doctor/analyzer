@@ -75,7 +75,17 @@ causes network problems because it seems `--network=host` is also not supported
 in dind (docker-in-docker). So we instead copy an explicit setup to the existing
 postgres, which boots up 10x faster than docker anyway.
 
-1. Copy the setup script
+1. Set up the workflow trigger. Include both `pull_request` (for PR analysis) and
+   `push` to your main branch (to establish a baseline for comparison).
+
+```yaml
+on:
+  pull_request:
+  push:
+    branches: [main]
+```
+
+2. Copy the setup script
 
 ```yaml
 jobs:
@@ -111,7 +121,7 @@ you can change `sudo -u postgres createuser -s -d -r -w me` to create a new user
 with a name of your choosing and `sudo -u postgres createdb testing` to create a
 db with a different name.
 
-2. Run your migrations and seed scripts. This is just an example showing that
+3. Run your migrations and seed scripts. This is just an example showing that
    the migrations should target the postgres instance that was set up with the
    previous command
 
@@ -127,9 +137,9 @@ jobs:
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
-3. Run your test suite against the same database. You can do this with any tool
+4. Run your test suite against the same database. You can do this with any tool
    and use any query builder or ORM you like.
-4. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
+5. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
    reviewing the indexes found in your database. `SITE_API_ENDPOINT` is the
    Query Doctor API endpoint used to fetch per-repo configuration.
 ```yaml
@@ -154,7 +164,7 @@ jobs:
           POSTGRES_URL: postgres://me@localhost/testing
 ```
 
-5. Add `pull-request: write` permissions to your job to allow
+6. Add `pull-request: write` permissions to your job to allow
 
 ```yaml
 jobs:

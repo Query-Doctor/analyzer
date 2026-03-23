@@ -80,6 +80,15 @@ async function runInCI(
       comparisonBranch,
       runId ?? undefined,
     );
+    reportContext.comparisonBranch = comparisonBranch;
+    if (!previousRun) {
+      log.info(
+        "main",
+        `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
+          `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
+          `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
+      );
+    }
   }
   if (previousRun) {
     reportContext.comparison = compareRuns(
