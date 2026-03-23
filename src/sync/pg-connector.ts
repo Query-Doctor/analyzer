@@ -514,6 +514,9 @@ ORDER BY
       WHERE query not like '%pg_stat_statements%'
         -- and dbid = (select oid from pg_database where datname = current_database())
         and query not like '%@qd_introspection%'
+        -- excluding this makes sure we can use analyzer
+        -- in multi-tenant environments
+        and query != '<insufficient privilege>'
         -- and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
       `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
 
