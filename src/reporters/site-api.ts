@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import type { IndexRecommendation } from "@query-doctor/core";
+import type { IndexRecommendation, Nudge } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { QueryProcessResult } from "../runner.ts";
 
@@ -18,6 +18,7 @@ interface CiQueryPayload {
   query: string;
   formattedQuery: string;
   optimization: CiOptimization;
+  nudges: Nudge[];
 }
 
 type CiOptimization =
@@ -76,6 +77,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         hash: result.recommendation.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.recommendation.formattedQuery,
+        nudges: result.nudges,
         optimization: {
           state: "improvements_available",
           cost: result.recommendation.baseCost,
@@ -96,6 +98,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
+        nudges: result.nudges,
         optimization: {
           state: "no_improvement_found",
           cost: result.cost,
@@ -108,6 +111,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
+        nudges: result.nudges,
         optimization: {
           state: "no_improvement_found",
           cost: 0,
@@ -120,6 +124,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         hash: result.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.formattedQuery,
+        nudges: result.nudges,
         optimization: {
           state: "error",
           error: result.error.message,
@@ -131,6 +136,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         hash: result.warning.fingerprint,
         query: result.rawQuery,
         formattedQuery: result.warning.formattedQuery,
+        nudges: result.nudges,
         optimization: result.warning.optimization
           ? {
               state: "no_improvement_found",

@@ -13,6 +13,7 @@ import {
   IndexedTable,
   IndexOptimizer,
   type IndexRecommendation,
+  type Nudge,
   OptimizeResult,
   type Postgres,
   PostgresQueryBuilder,
@@ -235,7 +236,7 @@ export class Runner {
 
     const analyzer = new Analyzer(parse);
     const formattedQuery = await this.formatQuery(query);
-    const { indexesToCheck, ansiHighlightedQuery, referencedTables } =
+    const { indexesToCheck, ansiHighlightedQuery, referencedTables, nudges } =
       await analyzer.analyze(formattedQuery);
 
     const selectsCatalog = referencedTables.find((ref) =>
@@ -265,6 +266,7 @@ export class Runner {
         return {
           kind: "cost_past_threshold",
           rawQuery: query,
+          nudges,
           warning: {
             fingerprint: queryFingerprint,
             formattedQuery,
@@ -300,6 +302,7 @@ export class Runner {
             fingerprint: queryFingerprint,
             rawQuery: query,
             formattedQuery,
+            nudges,
           };
         }
         if (out.kind === "ok") {
@@ -325,6 +328,7 @@ export class Runner {
             return {
               kind: "recommendation",
               rawQuery: query,
+              nudges,
               indexRecommendations: newIndexRecommendations,
               recommendation: {
                 fingerprint: queryFingerprint,
@@ -351,6 +355,7 @@ export class Runner {
               return {
                 kind: "cost_past_threshold",
                 rawQuery: query,
+                nudges,
                 warning: {
                   fingerprint: queryFingerprint,
                   formattedQuery,
@@ -372,6 +377,7 @@ export class Runner {
               formattedQuery,
               cost: out.baseCost,
               existingIndexes: existingIndexesForQuery,
+              nudges,
             };
           }
         } else if (out.kind === "zero_cost_plan") {
@@ -384,6 +390,7 @@ export class Runner {
             fingerprint: queryFingerprint,
             rawQuery: query,
             formattedQuery,
+            nudges,
           };
         }
         console.timeEnd(`timing`);
@@ -437,11 +444,13 @@ export type QueryProcessResult =
   | {
     kind: "cost_past_threshold";
     rawQuery: string;
+    nudges: Nudge[];
     warning: ReportQueryCostWarning;
   }
   | {
     kind: "recommendation";
     rawQuery: string;
+    nudges: Nudge[];
     indexRecommendations: IndexRecommendation[];
     recommendation: ReportIndexRecommendation;
   }
@@ -452,6 +461,7 @@ export type QueryProcessResult =
     formattedQuery: string;
     cost: number;
     existingIndexes: string[];
+    nudges: Nudge[];
   }
   | {
     kind: "error";
@@ -459,6 +469,7 @@ export type QueryProcessResult =
     fingerprint: string;
     rawQuery: string;
     formattedQuery: string;
+    nudges: Nudge[];
   }
   | {
     kind: "zero_cost_plan";
@@ -466,4 +477,5 @@ export type QueryProcessResult =
     fingerprint: string;
     rawQuery: string;
     formattedQuery: string;
+    nudges: Nudge[];
   };
