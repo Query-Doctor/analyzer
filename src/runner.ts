@@ -337,6 +337,7 @@ export class Runner {
                 formattedQuery,
                 cost: out.baseCost,
                 existingIndexes: existingIndexesForQuery,
+                nudges,                explainPlan: out.baseExplainPlan,
               };
             }
             this.queryStats.optimized++;
@@ -398,6 +399,7 @@ export class Runner {
               cost: out.baseCost,
               existingIndexes: existingIndexesForQuery,
               nudges,
+              explainPlan: out.baseExplainPlan,
             };
           }
         } else if (out.kind === "zero_cost_plan") {
@@ -482,8 +484,8 @@ export type QueryProcessResult =
     cost: number;
     existingIndexes: string[];
     nudges: Nudge[];
-  }
-  | {
+    explainPlan?: object;
+  }  | {
     kind: "error";
     error: Error;
     fingerprint: string;

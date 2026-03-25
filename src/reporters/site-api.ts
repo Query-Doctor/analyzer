@@ -29,11 +29,14 @@ export type CiOptimization =
       costReductionPercentage: number;
       indexRecommendations: CiIndexRecommendation[];
       indexesUsed: string[];
+      explainPlan?: object;
+      optimizedExplainPlan?: object;
     }
   | {
       state: "no_improvement_found";
       cost: number;
       indexesUsed: string[];
+      explainPlan?: object;
     }
   | {
       state: "error";
@@ -129,6 +132,8 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
               : 0,
           indexRecommendations: result.indexRecommendations.map(mapIndexRecommendation),
           indexesUsed: result.recommendation.existingIndexes,
+          explainPlan: result.recommendation.baseExplainPlan,
+          optimizedExplainPlan: result.recommendation.explainPlan,
         },
       };
 
@@ -142,6 +147,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
           state: "no_improvement_found",
           cost: result.cost,
           indexesUsed: result.existingIndexes,
+          explainPlan: result.explainPlan,
         },
       };
 
@@ -155,6 +161,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
           state: "no_improvement_found",
           cost: 0,
           indexesUsed: [],
+          explainPlan: result.explainPlan,
         },
       };
 
@@ -181,11 +188,13 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
               state: "no_improvement_found",
               cost: result.warning.baseCost,
               indexesUsed: result.warning.optimization.existingIndexes,
+              explainPlan: result.warning.explainPlan,
             }
           : {
               state: "no_improvement_found",
               cost: result.warning.baseCost,
               indexesUsed: [],
+              explainPlan: result.warning.explainPlan,
             },
       };
 
