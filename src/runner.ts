@@ -272,6 +272,7 @@ export class Runner {
           rawQuery: query,
           nudges,
           tags,
+          referencedTables,
           warning: {
             fingerprint: queryFingerprint,
             formattedQuery,
@@ -309,6 +310,7 @@ export class Runner {
             formattedQuery,
             nudges,
             tags,
+            referencedTables,
           };
         }
         if (out.kind === "ok") {
@@ -342,6 +344,7 @@ export class Runner {
                 existingIndexes: existingIndexesForQuery,
                 nudges,
                 tags,
+                referencedTables,
                 explainPlan: out.baseExplainPlan,
               };
             }
@@ -356,6 +359,7 @@ export class Runner {
               rawQuery: query,
               nudges,
               tags,
+              referencedTables,
               indexRecommendations: newIndexRecommendations,
               recommendation: {
                 fingerprint: queryFingerprint,
@@ -384,6 +388,7 @@ export class Runner {
                 rawQuery: query,
                 nudges,
                 tags,
+                referencedTables,
                 warning: {
                   fingerprint: queryFingerprint,
                   formattedQuery,
@@ -407,6 +412,7 @@ export class Runner {
               existingIndexes: existingIndexesForQuery,
               nudges,
               tags,
+              referencedTables,
               explainPlan: out.baseExplainPlan,
             };
           }
@@ -422,6 +428,7 @@ export class Runner {
             formattedQuery,
             nudges,
             tags,
+            referencedTables,
           };
         }
         console.timeEnd(`timing`);
@@ -477,6 +484,7 @@ export type QueryProcessResult =
     rawQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
+    referencedTables: Array<{ schema?: string; table: string }>;
     warning: ReportQueryCostWarning;
   }
   | {
@@ -484,6 +492,7 @@ export type QueryProcessResult =
     rawQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
+    referencedTables: Array<{ schema?: string; table: string }>;
     indexRecommendations: IndexRecommendation[];
     recommendation: ReportIndexRecommendation;
   }
@@ -496,6 +505,7 @@ export type QueryProcessResult =
     existingIndexes: string[];
     nudges: Nudge[];
     tags: SQLCommenterTag[];
+    referencedTables: Array<{ schema?: string; table: string }>;
     explainPlan?: object;
   }  | {
     kind: "error";
@@ -505,6 +515,7 @@ export type QueryProcessResult =
     formattedQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
+    referencedTables: Array<{ schema?: string; table: string }>;
   }
   | {
     kind: "zero_cost_plan";
@@ -514,4 +525,5 @@ export type QueryProcessResult =
     formattedQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
+    referencedTables: Array<{ schema?: string; table: string }>;
   };
