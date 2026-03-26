@@ -15,6 +15,7 @@ import {
   type IndexRecommendation,
   type Nudge,
   type SQLCommenterTag,
+  type TableReference,
   OptimizeResult,
   type Postgres,
   PostgresQueryBuilder,
@@ -484,7 +485,7 @@ export type QueryProcessResult =
     rawQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
-    referencedTables: Array<{ schema?: string; table: string }>;
+    referencedTables: TableReference[];
     warning: ReportQueryCostWarning;
   }
   | {
@@ -492,7 +493,7 @@ export type QueryProcessResult =
     rawQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
-    referencedTables: Array<{ schema?: string; table: string }>;
+    referencedTables: TableReference[];
     indexRecommendations: IndexRecommendation[];
     recommendation: ReportIndexRecommendation;
   }
@@ -505,7 +506,7 @@ export type QueryProcessResult =
     existingIndexes: string[];
     nudges: Nudge[];
     tags: SQLCommenterTag[];
-    referencedTables: Array<{ schema?: string; table: string }>;
+    referencedTables: TableReference[];
     explainPlan?: object;
   }  | {
     kind: "error";
@@ -515,7 +516,7 @@ export type QueryProcessResult =
     formattedQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
-    referencedTables: Array<{ schema?: string; table: string }>;
+    referencedTables: TableReference[];
   }
   | {
     kind: "zero_cost_plan";
@@ -525,5 +526,5 @@ export type QueryProcessResult =
     formattedQuery: string;
     nudges: Nudge[];
     tags: SQLCommenterTag[];
-    referencedTables: Array<{ schema?: string; table: string }>;
+    referencedTables: TableReference[];
   };
