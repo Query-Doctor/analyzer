@@ -20,6 +20,7 @@ export interface CiQueryPayload {
   optimization: CiOptimization;
   nudges: Nudge[];
   tags: SQLCommenterTag[];
+  tableReferences: Array<{ schema?: string; table: string }>;
 }
 
 export type CiOptimization =
@@ -122,6 +123,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         formattedQuery: result.recommendation.formattedQuery,
         nudges: result.nudges,
         tags: result.tags,
+        tableReferences: result.referencedTables ?? [],
         optimization: {
           state: "improvements_available",
           cost: result.recommendation.baseCost,
@@ -146,6 +148,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         formattedQuery: result.formattedQuery,
         nudges: result.nudges,
         tags: result.tags,
+        tableReferences: result.referencedTables ?? [],
         optimization: {
           state: "no_improvement_found",
           cost: result.cost,
@@ -161,6 +164,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         formattedQuery: result.formattedQuery,
         nudges: result.nudges,
         tags: result.tags,
+        tableReferences: result.referencedTables ?? [],
         optimization: {
           state: "no_improvement_found",
           cost: 0,
@@ -176,6 +180,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         formattedQuery: result.formattedQuery,
         nudges: result.nudges,
         tags: result.tags,
+        tableReferences: result.referencedTables ?? [],
         optimization: {
           state: "error",
           error: result.error.message,
@@ -189,6 +194,7 @@ function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
         formattedQuery: result.warning.formattedQuery,
         nudges: result.nudges,
         tags: result.tags,
+        tableReferences: result.referencedTables ?? [],
         optimization: result.warning.optimization
           ? {
               state: "no_improvement_found",
