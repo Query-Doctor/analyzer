@@ -14,6 +14,7 @@ import {
   IndexOptimizer,
   type IndexRecommendation,
   type Nudge,
+  type SQLCommenterTag,
   OptimizeResult,
   type Postgres,
   PostgresQueryBuilder,
@@ -239,7 +240,7 @@ export class Runner {
 
     const analyzer = new Analyzer(parse);
     const formattedQuery = await this.formatQuery(query);
-    const { indexesToCheck, ansiHighlightedQuery, referencedTables, nudges } =
+    const { indexesToCheck, ansiHighlightedQuery, referencedTables, nudges, tags } =
       await analyzer.analyze(formattedQuery);
 
     const selectsCatalog = referencedTables.find((ref) =>
@@ -270,6 +271,7 @@ export class Runner {
           kind: "cost_past_threshold",
           rawQuery: query,
           nudges,
+          tags,
           warning: {
             fingerprint: queryFingerprint,
             formattedQuery,
@@ -306,6 +308,7 @@ export class Runner {
             rawQuery: query,
             formattedQuery,
             nudges,
+            tags,
           };
         }
         if (out.kind === "ok") {
@@ -337,7 +340,9 @@ export class Runner {
                 formattedQuery,
                 cost: out.baseCost,
                 existingIndexes: existingIndexesForQuery,
-                nudges,                explainPlan: out.baseExplainPlan,
+                nudges,
+                tags,
+                explainPlan: out.baseExplainPlan,
               };
             }
             this.queryStats.optimized++;
@@ -350,6 +355,7 @@ export class Runner {
               kind: "recommendation",
               rawQuery: query,
               nudges,
+              tags,
               indexRecommendations: newIndexRecommendations,
               recommendation: {
                 fingerprint: queryFingerprint,
@@ -377,6 +383,7 @@ export class Runner {
                 kind: "cost_past_threshold",
                 rawQuery: query,
                 nudges,
+                tags,
                 warning: {
                   fingerprint: queryFingerprint,
                   formattedQuery,
@@ -399,6 +406,7 @@ export class Runner {
               cost: out.baseCost,
               existingIndexes: existingIndexesForQuery,
               nudges,
+              tags,
               explainPlan: out.baseExplainPlan,
             };
           }
@@ -413,6 +421,7 @@ export class Runner {
             rawQuery: query,
             formattedQuery,
             nudges,
+            tags,
           };
         }
         console.timeEnd(`timing`);
@@ -467,12 +476,14 @@ export type QueryProcessResult =
     kind: "cost_past_threshold";
     rawQuery: string;
     nudges: Nudge[];
+    tags: SQLCommenterTag[];
     warning: ReportQueryCostWarning;
   }
   | {
     kind: "recommendation";
     rawQuery: string;
     nudges: Nudge[];
+    tags: SQLCommenterTag[];
     indexRecommendations: IndexRecommendation[];
     recommendation: ReportIndexRecommendation;
   }
@@ -484,6 +495,7 @@ export type QueryProcessResult =
     cost: number;
     existingIndexes: string[];
     nudges: Nudge[];
+    tags: SQLCommenterTag[];
     explainPlan?: object;
   }  | {
     kind: "error";
@@ -492,6 +504,7 @@ export type QueryProcessResult =
     rawQuery: string;
     formattedQuery: string;
     nudges: Nudge[];
+    tags: SQLCommenterTag[];
   }
   | {
     kind: "zero_cost_plan";
@@ -500,4 +513,5 @@ export type QueryProcessResult =
     rawQuery: string;
     formattedQuery: string;
     nudges: Nudge[];
+    tags: SQLCommenterTag[];
   };
