@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import type { IndexRecommendation, Nudge, SQLCommenterTag } from "@query-doctor/core";
+import type { IndexRecommendation, Nudge, SQLCommenterTag, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { QueryProcessResult } from "../runner.ts";
 
@@ -20,7 +20,7 @@ export interface CiQueryPayload {
   optimization: CiOptimization;
   nudges: Nudge[];
   tags: SQLCommenterTag[];
-  tableReferences: Array<{ schema?: string; table: string }>;
+  tableReferences: TableReference[];
 }
 
 export type CiOptimization =
