@@ -36,6 +36,8 @@ type RemoteEvents = {
 export class Remote extends EventEmitter<RemoteEvents> {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
   private static readonly optimizingDbPrefix = "optimizing_db";
+  static defaultOptimizingDbPrefix = PgIdentifier.fromString(`${Remote.optimizingDbPrefix}_0`)
+
   /* Threshold that we determine is "too few rows" for Postgres to start using indexes
    * and not defaulting to table scan.
    */
@@ -74,7 +76,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
     this.optimizingDbUDRL = targetURL.withDatabaseName(
-      PgIdentifier.fromString(`${Remote.optimizingDbPrefix}_0`),
+      Remote.defaultOptimizingDbPrefix,
     );
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
   }
