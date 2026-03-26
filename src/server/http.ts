@@ -223,6 +223,12 @@ export async function createServer(
       const result = await remoteController.onImportStats(request.body);
       return reply.status(result.status).send(result.body);
     });
+
+    fastify.post("/postgres/dump", async (request, reply) => {
+      log.info(`[POST] /postgres/dump`, "http");
+      const result = await remoteController.redump();
+      return reply.status(result.status).send(result.body);
+    });
   }
 
   await fastify.listen({ host: hostname, port });

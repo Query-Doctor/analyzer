@@ -11,6 +11,7 @@ import {
 } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
 import { ExportedStats, Statistics } from "@query-doctor/core";
+import type { Connectable } from "../sync/connectable.ts";
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -35,6 +36,7 @@ export class RemoteController {
   private socket?: WebSocket;
   private syncResponse?: Awaited<ReturnType<Remote["syncFrom"]>>;
   private syncStatus: SyncStatus = SyncStatus.NOT_STARTED;
+  private lastSourceDb?: Connectable;
 
   constructor(
     private readonly remote: Remote,
@@ -84,7 +86,7 @@ export class RemoteController {
 
   // TODO: type return (Site#2402)
   async getStatus(): Promise<unknown> {
-    if (!this.syncResponse || this.syncStatus !== SyncStatus.COMPLETED) {
+    if (!this.syncResponse) {
       return { status: this.syncStatus };
     }
     const { schema, meta } = this.syncResponse;
@@ -124,6 +126,7 @@ export class RemoteController {
     }
 
     const { db } = body.data;
+    this.lastSourceDb = db;
     try {
       this.syncStatus = SyncStatus.IN_PROGRESS;
       this.syncResponse = await this.remote.syncFrom(db, {
@@ -156,6 +159,18 @@ export class RemoteController {
         },
       };
     }
+  }
+
+  async redump(): Promise<HandlerResult> {
+    if (!this.lastSourceDb) {
+      return {
+        status: 400,
+        body: { type: "error", error: "no_source_db", message: "No source database has been synced yet" },
+      };
+    }
+    return this.onFullSync(
+      JSON.stringify({ db: this.lastSourceDb.toString() }),
+    );
   }
 
   async onImportStats(body: unknown): Promise<HandlerResult> {
