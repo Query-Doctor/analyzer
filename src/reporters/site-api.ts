@@ -1,7 +1,7 @@
 import * as github from "@actions/github";
 import type { IndexRecommendation, Nudge, SQLCommenterTag, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
-import type { QueryProcessResult } from "../runner.ts";
+import type { OptimizedQuery } from "../sql/recent-query.ts";
 
 interface CiRunPayload {
   repo: string;
@@ -25,25 +25,25 @@ export interface CiQueryPayload {
 
 export type CiOptimization =
   | {
-      state: "improvements_available";
-      cost: number;
-      optimizedCost: number;
-      costReductionPercentage: number;
-      indexRecommendations: CiIndexRecommendation[];
-      indexesUsed: string[];
-      explainPlan?: object;
-      optimizedExplainPlan?: object;
-    }
+    state: "improvements_available";
+    cost: number;
+    optimizedCost: number;
+    costReductionPercentage: number;
+    indexRecommendations: CiIndexRecommendation[];
+    indexesUsed: string[];
+    explainPlan?: object;
+    optimizedExplainPlan?: object;
+  }
   | {
-      state: "no_improvement_found";
-      cost: number;
-      indexesUsed: string[];
-      explainPlan?: object;
-    }
+    state: "no_improvement_found";
+    cost: number;
+    indexesUsed: string[];
+    explainPlan?: object;
+  }
   | {
-      state: "error";
-      error: string;
-    };
+    state: "error";
+    error: string;
+  };
 
 interface CiIndexRecommendation {
   schema: string;
@@ -114,105 +114,25 @@ function mapIndexRecommendation(rec: IndexRecommendation): CiIndexRecommendation
   };
 }
 
-function mapResultToQuery(result: QueryProcessResult): CiQueryPayload | null {
-  switch (result.kind) {
-    case "recommendation":
-      return {
-        hash: result.recommendation.fingerprint,
-        query: result.rawQuery,
-        formattedQuery: result.recommendation.formattedQuery,
-        nudges: result.nudges,
-        tags: result.tags,
-        tableReferences: result.referencedTables ?? [],
-        optimization: {
-          state: "improvements_available",
-          cost: result.recommendation.baseCost,
-          optimizedCost: result.recommendation.optimizedCost,
-          costReductionPercentage:
-            result.recommendation.baseCost > 0
-              ? ((result.recommendation.baseCost - result.recommendation.optimizedCost) /
-                  result.recommendation.baseCost) *
-                100
-              : 0,
-          indexRecommendations: result.indexRecommendations.map(mapIndexRecommendation),
-          indexesUsed: result.recommendation.existingIndexes,
-          explainPlan: result.recommendation.baseExplainPlan,
-          optimizedExplainPlan: result.recommendation.explainPlan,
-        },
-      };
-
-    case "no_improvement":
-      return {
-        hash: result.fingerprint,
-        query: result.rawQuery,
-        formattedQuery: result.formattedQuery,
-        nudges: result.nudges,
-        tags: result.tags,
-        tableReferences: result.referencedTables ?? [],
-        optimization: {
-          state: "no_improvement_found",
-          cost: result.cost,
-          indexesUsed: result.existingIndexes,
-          explainPlan: result.explainPlan,
-        },
-      };
-
-    case "zero_cost_plan":
-      return {
-        hash: result.fingerprint,
-        query: result.rawQuery,
-        formattedQuery: result.formattedQuery,
-        nudges: result.nudges,
-        tags: result.tags,
-        tableReferences: result.referencedTables ?? [],
-        optimization: {
-          state: "no_improvement_found",
-          cost: 0,
-          indexesUsed: [],
-          explainPlan: result.explainPlan,
-        },
-      };
-
-    case "error":
-      return {
-        hash: result.fingerprint,
-        query: result.rawQuery,
-        formattedQuery: result.formattedQuery,
-        nudges: result.nudges,
-        tags: result.tags,
-        tableReferences: result.referencedTables ?? [],
-        optimization: {
-          state: "error",
-          error: result.error.message,
-        },
-      };
-
-    case "cost_past_threshold":
-      return {
-        hash: result.warning.fingerprint,
-        query: result.rawQuery,
-        formattedQuery: result.warning.formattedQuery,
-        nudges: result.nudges,
-        tags: result.tags,
-        tableReferences: result.referencedTables ?? [],
-        optimization: result.warning.optimization
-          ? {
-              state: "no_improvement_found",
-              cost: result.warning.baseCost,
-              indexesUsed: result.warning.optimization.existingIndexes,
-              explainPlan: result.warning.explainPlan,
-            }
-          : {
-              state: "no_improvement_found",
-              cost: result.warning.baseCost,
-              indexesUsed: [],
-              explainPlan: result.warning.explainPlan,
-            },
-      };
-
-    case "invalid":
-      return null;
+function mapResultToQuery(result: OptimizedQuery): CiQueryPayload | null {
+  const { optimization } = result;
+  if (
+    optimization.state === "waiting" ||
+    optimization.state === "optimizing" ||
+    optimization.state === "not_supported" ||
+    optimization.state === "timeout"
+  ) {
+    return null;
   }
+  return {
+    hash: result.hash,
+    query: result.query,
+    formattedQuery: result.formattedQuery,
+    nudges: result.nudges,
+    tags: result.tags,
+    tableReferences: result.tableReferences ?? [],
+    optimization,
+  };
 }
 
 function getQueryCost(q: CiQueryPayload): number | null {
@@ -228,7 +148,7 @@ function getQueryIndexes(q: CiQueryPayload): string[] {
 }
 
 export function buildQueries(
-  results: QueryProcessResult[],
+  results: OptimizedQuery[],
   config: AnalyzerConfig = DEFAULT_CONFIG,
 ): CiQueryPayload[] {
   const ignoredSet = new Set(config.ignoredQueryHashes);
