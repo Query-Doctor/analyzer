@@ -35,9 +35,9 @@ type RemoteEvents = {
  */
 export class Remote extends EventEmitter<RemoteEvents> {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
-  static readonly optimizingDbName = PgIdentifier.fromString(
-    "optimizing_db",
-  );
+  private static readonly optimizingDbPrefix = "optimizing_db";
+  static defaultOptimizingDbPrefix = PgIdentifier.fromString(`${Remote.optimizingDbPrefix}_0`)
+
   /* Threshold that we determine is "too few rows" for Postgres to start using indexes
    * and not defaulting to table scan.
    */
@@ -55,8 +55,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
    *      destroyed and re-created on each successful sync along with the db itself
    */
   private baseDbURL: Connectable;
-  /** The URL of the optimizing db */
-  private readonly optimizingDbUDRL: Connectable;
+  private generation = 0;
+  /** The URL of the current generation optimizing db */
+  private optimizingDbUDRL: Connectable;
 
   private isPolling = false;
   private queryLoader?: QueryLoader;
@@ -74,7 +75,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
   ) {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
-    this.optimizingDbUDRL = targetURL.withDatabaseName(Remote.optimizingDbName);
+    this.optimizingDbUDRL = targetURL.withDatabaseName(
+      Remote.defaultOptimizingDbPrefix,
+    );
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
   }
 
@@ -210,21 +213,25 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
   }
 
-  /**
-   * Drops and recreates the {@link Remote.optimizingDbName} db.
-   *
-   * TODO: allow juggling multiple databases in the future
-   */
   private async resetDatabase(): Promise<void> {
-    const databaseName = Remote.optimizingDbName;
-    log.info(`Resetting internal database: ${databaseName}`, "remote");
+    const prevGeneration = this.generation;
+    const nextGeneration = prevGeneration + 1;
+    const nextDbName = PgIdentifier.fromString(
+      `${Remote.optimizingDbPrefix}_${nextGeneration}`,
+    );
+    log.info(`Creating new generation database: ${nextDbName}`, "remote");
     const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
+    await baseDb.exec(`create database ${nextDbName};`);
+    const prevDbName = PgIdentifier.fromString(
+      `${Remote.optimizingDbPrefix}_${prevGeneration}`,
+    );
+    this.generation = nextGeneration;
+    this.optimizingDbUDRL = this.optimizingDbUDRL.withDatabaseName(nextDbName);
+    this.optimizer.updateConnectable(this.optimizingDbUDRL);
     // these cannot be run in the same `exec` block as that implicitly creates transactions
     await baseDb.exec(
-      // drop database does not allow parameterization
-      `drop database if exists ${databaseName} with (force);`,
+      `drop database if exists ${prevDbName} with (force);`,
     );
-    await baseDb.exec(`create database ${databaseName};`);
   }
 
   private async pipeSchema(

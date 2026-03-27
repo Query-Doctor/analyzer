@@ -66,7 +66,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   constructor(
     private readonly manager: ConnectionManager,
-    private readonly connectable: Connectable,
+    private connectable: Connectable,
     config?: {
       maxRetries?: number;
       queryTimeoutMs?: number;
@@ -134,6 +134,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       trace: false,
     });
     this.target = { optimizer, statistics };
+  }
+
+  updateConnectable(connectable: Connectable) {
+    this.connectable = connectable;
   }
 
   stop() {

@@ -6,7 +6,6 @@ import { Pool } from "pg";
 
 import { RemoteController } from "./remote-controller.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
-import { RemoteSyncRequest } from "./remote.dto.ts";
 
 test("controller syncs correctly", async () => {
     const [sourceDb, targetDb] = await Promise.all([
@@ -36,14 +35,12 @@ test("controller syncs correctly", async () => {
     const remote = new RemoteController(innerRemote);
 
     try {
-      const syncResult = await remote.onFullSync(
-        RemoteSyncRequest.encode({ db: source }),
-      );
+      const syncResult = await remote.onFullSync(source);
 
       expect(syncResult.status).toEqual(200);
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbPrefix).toString(),
       });
       const tablesAfter =
         await pool.query("select tablename from pg_tables where schemaname = 'public'");
@@ -89,13 +86,11 @@ test("creating an index via endpoint adds it to the optimizing db", async () => 
 
     try {
       // First sync the database
-      const syncResult = await remote.onFullSync(
-        RemoteSyncRequest.encode({ db: source }),
-      );
+      const syncResult = await remote.onFullSync(source);
       expect(syncResult.status).toEqual(200);
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.optimizingDbName).toString(),
+        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbPrefix).toString(),
       });
 
       // Verify no indexes exist initially
@@ -152,9 +147,7 @@ test("controller returns extension error when pg_stat_statements is not installe
     const remote = new RemoteController(innerRemote);
 
     try {
-      const syncResult = await remote.onFullSync(
-        RemoteSyncRequest.encode({ db: source }),
-      );
+      const syncResult = await remote.onFullSync(source);
 
       expect(syncResult.status).toEqual(200);
 
