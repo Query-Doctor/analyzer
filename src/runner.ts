@@ -42,6 +42,7 @@ export class Runner {
       ConnectionManager.forLocalDatabase(),
     );
     await remote.syncFrom(options.sourcePostgresUrl);
+    await remote.optimizer.finish;
     return new Runner(
       remote,
       options.logPath,
