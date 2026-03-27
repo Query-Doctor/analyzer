@@ -62,6 +62,14 @@ runs:
       run: |
         PORT=$(shuf -i 10000-65000 -n 1)
         echo "PG_PORT=$PORT" >> $GITHUB_ENV
+        sudo apt-get install -y curl ca-certificates
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
+        echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client-18 || sudo apt-get install -y postgresql-client-17
+        PG_CLIENT_VERSION=$(ls /usr/lib/postgresql | sort -rn | head -1)
+        echo "PG_DUMP_BINARY=/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin/pg_dump" >> $GITHUB_ENV
+        echo "PG_RESTORE_BINARY=/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin/pg_restore" >> $GITHUB_ENV
         docker run -d \
           --name query-doctor-postgres \
           -p $PORT:5432 \
@@ -76,7 +84,6 @@ runs:
       working-directory: ${{ github.action_path }}
       run: npm run start
       env:
-        PG_DUMP_BINARY: /usr/bin/pg_dump
         CI: "true"
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         SITE_API_ENDPOINT: ${{ env.SITE_API_ENDPOINT }}
