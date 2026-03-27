@@ -115,6 +115,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
         this.getDatabaseInfo(source),
       ]);
 
+    if (restoreResult.status === "rejected") {
+      throw new Error(`Schema sync failed: ${restoreResult.reason}`);
+    }
+
     if (fullSchema.status === "fulfilled") {
       this.schemaLoader?.update(fullSchema.value);
     }
