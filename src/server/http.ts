@@ -12,6 +12,7 @@ import { SyncResult } from "../sync/syncer.ts";
 import * as errors from "../sync/errors.ts";
 import { RemoteController } from "../remote/remote-controller.ts";
 import { Connectable } from "../sync/connectable.ts";
+import { RemoteSyncRequest } from "../remote/remote.dto.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Remote } from "../remote/remote.ts";
 
@@ -175,9 +176,11 @@ export async function createServer(
     if (!sourceDb) {
       fastify.post("/postgres", async (request, reply) => {
         log.info(`[POST] /postgres`, "http");
-        const result = await remoteController.onFullSync(
-          JSON.stringify(request.body),
-        );
+        const body = RemoteSyncRequest.safeDecode(JSON.stringify(request.body));
+        if (!body.success) {
+          return reply.status(400).send(body.error);
+        }
+        const result = await remoteController.onFullSync(body.data.db);
         return reply.status(result.status).send(result.body);
       });
     }
@@ -235,7 +238,7 @@ export async function createServer(
 
   if (remoteController && sourceDb) {
     log.info(`SOURCE_DATABASE_URL set, triggering initial sync`, "http");
-    remoteController.onFullSync(JSON.stringify({ db: sourceDb.toString() })).then((result) => {
+    remoteController.onFullSync(sourceDb).then((result) => {
       if (result.status >= 400) {
         log.error(`Initial sync failed: ${JSON.stringify(result.body)}`, "http");
         process.exit(1);
