@@ -15,6 +15,9 @@ function makeQuery(hash: string, cost: number = 100): CiQueryPayload {
       cost,
       indexesUsed: [],
     },
+    nudges: [],
+    tags: [],
+    tableReferences: [],
   };
 }
 

@@ -10,7 +10,6 @@ test("returns parsed config from successful response", async () => {
     minimumCost: 100,
     regressionThreshold: 0.5,
     ignoredQueryHashes: ["abc123"],
-    lastSeenQueries: ["hash1"],
   };
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     Response.json(config, { status: 200 }),
@@ -65,7 +64,7 @@ test("passes through partial response with missing optional fields", async () =>
     minimumCost: 50,
     regressionThreshold: 0.1,
     ignoredQueryHashes: [],
-    // lastSeenQueries intentionally omitted
+    // all required fields present
   };
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     Response.json(partial, { status: 200 }),
@@ -75,20 +74,4 @@ test("passes through partial response with missing optional fields", async () =>
   expect(result.minimumCost).toBe(50);
   expect(result.regressionThreshold).toBe(0.1);
   expect(result.ignoredQueryHashes).toEqual([]);
-  expect(result.lastSeenQueries).toBeUndefined();
-});
-
-test("preserves lastSeenQueries when present in response", async () => {
-  const config = {
-    minimumCost: 0,
-    regressionThreshold: 0,
-    ignoredQueryHashes: [],
-    lastSeenQueries: ["q1", "q2"],
-  };
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    Response.json(config, { status: 200 }),
-  );
-
-  const result = await fetchAnalyzerConfig("https://api.example.com", "my/repo");
-  expect(result.lastSeenQueries).toEqual(["q1", "q2"]);
 });
