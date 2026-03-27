@@ -80,6 +80,7 @@ export class Runner {
         headers: false,
       })
       .on("error", (err) => {
+        console.error("Got a pgbadger error", err);
         error = err;
       });
 
@@ -137,9 +138,9 @@ export class Runner {
       const recentQuery = await RecentQuery.fromLogEntry(query, hash);
       recentQueries.push(recentQuery)
     }
+    console.log("Finished pgbadger stream");
     await this.remote.optimizer.addQueries(recentQueries);
 
-    await new Promise<void>((resolve) => child.on("close", () => resolve()));
     await this.remote.optimizer.finish;
 
     const optimizedQueries = this.remote.optimizer.getQueries();
