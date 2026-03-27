@@ -67,14 +67,16 @@ export class Runner {
     ignoredQueryHashes?: string[];
   }) {
     const db = connectToSource(options.postgresUrl);
-    // Run ANALYZE before reading statistics so pg_statistic (column-level
-    // stats like n_distinct) is populated deterministically from the current
-    // data.  Without this, autovacuum may or may not have analyzed tables,
-    // causing the same query to produce different EXPLAIN costs across runs.
-    await db.exec("ANALYZE");
-    const statisticsMode = options.statisticsPath
-      ? Runner.decideStatisticsMode(options.statisticsPath)
-      : await buildStatsFromDatabase(db);
+    let statisticsMode: StatisticsMode;
+    if (options.statisticsPath) {
+      statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
+    } else {
+      // Run ANALYZE so pg_class.relpages and pg_statistic reflect the
+      // current data.  Without this, relpages can be 0 after fresh
+      // inserts and column stats depend on autovacuum timing.
+      await db.exec("ANALYZE");
+      statisticsMode = await buildStatsFromDatabase(db);
+    }
     const stats = await Statistics.fromPostgres(db, statisticsMode);
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(db, stats, existingIndexes);
