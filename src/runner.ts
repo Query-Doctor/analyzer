@@ -40,6 +40,9 @@ export class Runner {
     const remote = new Remote(
       options.targetPostgresUrl,
       ConnectionManager.forLocalDatabase(),
+      ConnectionManager.forRemoteDatabase(),
+      // queries are already sourced from logs
+      { disableQueryLoader: true }
     );
     await remote.syncFrom(options.sourcePostgresUrl);
     await remote.optimizer.finish;
