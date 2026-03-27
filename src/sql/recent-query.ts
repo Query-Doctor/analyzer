@@ -75,6 +75,22 @@ export class RecentQuery {
    */
   private static readonly MAX_ANALYZABLE_QUERY_SIZE = 50_000;
 
+  static fromLogEntry(query: string, hash: QueryHash, seenAt: number = Date.now()) {
+    return RecentQuery.analyze(
+      {
+        query,
+        formattedQuery: query,
+        username: "",
+        meanTime: 0,
+        calls: "1",
+        rows: "0",
+        topLevel: true,
+      },
+      hash,
+      seenAt,
+    );
+  }
+
   static async analyze(
     data: RawRecentQuery,
     hash: QueryHash,

@@ -15,9 +15,9 @@ import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
 
 async function runInCI(
-  postgresUrl: Connectable,
+  targetPostgresUrl: Connectable,
+  sourcePostgresUrl: Connectable,
   logPath: string,
-  statisticsPath?: string,
   maxCost?: number,
 ) {
   const siteApiEndpoint = env.SITE_API_ENDPOINT;
@@ -31,8 +31,8 @@ async function runInCI(
       : DEFAULT_CONFIG;
 
   const runner = await Runner.build({
-    postgresUrl,
-    statisticsPath,
+    targetPostgresUrl,
+    sourcePostgresUrl,
     logPath,
     maxCost,
     ignoredQueryHashes: config.ignoredQueryHashes,
@@ -85,8 +85,8 @@ async function runInCI(
       log.info(
         "main",
         `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
-          `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
-          `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
+        `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
+        `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
       );
     }
   }
@@ -153,14 +153,18 @@ async function main() {
       core.setFailed("POSTGRES_URL environment variable is not set");
       process.exit(1);
     }
+    if (!env.SOURCE_DATABASE_URL) {
+      core.setFailed("SOURCE_DATABASE_URL environment variable is not set");
+      process.exit(1);
+    }
     if (!env.LOG_PATH) {
       core.setFailed("LOG_PATH environment variable is not set");
       process.exit(1);
     }
     await runInCI(
       Connectable.fromString(env.POSTGRES_URL),
+      Connectable.fromString(env.SOURCE_DATABASE_URL),
       env.LOG_PATH,
-      env.STATISTICS_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,
     );
   } else {
