@@ -10,6 +10,8 @@ test("returns parsed config from successful response", async () => {
     minimumCost: 100,
     regressionThreshold: 0.5,
     ignoredQueryHashes: ["abc123"],
+    acknowledgedQueryHashes: [],
+    comparisonBranch: undefined,
   };
   vi.spyOn(globalThis, "fetch").mockResolvedValue(
     Response.json(config, { status: 200 }),
