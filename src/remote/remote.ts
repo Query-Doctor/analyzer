@@ -76,6 +76,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     /** The manager for ONLY the source db connections */
     private readonly sourceManager: ConnectionManager = ConnectionManager
       .forRemoteDatabase(),
+    private readonly options: { disableQueryLoader: boolean } = { disableQueryLoader: false }
   ) {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
@@ -211,7 +212,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * there isn't already an in-flight request
    */
   private async pollQueriesOnce() {
-    if (this.queryLoader && !this.isPolling) {
+    if (this.queryLoader && !this.isPolling && !this.options.disableQueryLoader) {
       try {
         this.isPolling = true;
         await this.queryLoader.poll();
@@ -390,7 +391,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
       log.error("Query loader exited", "remote");
       this.queryLoader = undefined;
     });
-    this.queryLoader.start();
+    if (!this.options.disableQueryLoader) {
+      this.queryLoader.start();
+    }
   }
 
   async cleanup(): Promise<void> {
