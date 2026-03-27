@@ -60,9 +60,11 @@ runs:
     - name: Start PostgreSQL
       shell: bash
       run: |
+        PORT=$(shuf -i 10000-65000 -n 1)
+        echo "PG_PORT=$PORT" >> $GITHUB_ENV
         docker run -d \
           --name query-doctor-postgres \
-          -p 5432:5432 \
+          -p $PORT:5432 \
           ghcr.io/query-doctor/postgres:pg-${{ inputs.postgres-version }}
         until docker exec query-doctor-postgres pg_isready -U postgres; do
           sleep 1
@@ -78,4 +80,4 @@ runs:
         CI: "true"
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
         SITE_API_ENDPOINT: ${{ env.SITE_API_ENDPOINT }}
-        POSTGRES_URL: postgresql://postgres@localhost:5432/postgres
+        POSTGRES_URL: postgresql://postgres@localhost:${{ env.PG_PORT }}/postgres
