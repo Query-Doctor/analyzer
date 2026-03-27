@@ -108,7 +108,6 @@ export class Runner {
       if (loglevel !== "LOG" || !queryString.startsWith("plan:")) {
         continue;
       }
-      total++;
       const planString: string = queryString.split("plan:")[1].trim();
       const json = preprocessEncodedJson(planString);
       if (!json) {
@@ -135,6 +134,7 @@ export class Runner {
         continue;
       }
 
+      total++;
       const recentQuery = await RecentQuery.fromLogEntry(query, hash);
       recentQueries.push(recentQuery)
     }

@@ -1,7 +1,28 @@
 import { test, expect, describe } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import n from "nunjucks";
 import { formatCost, queryPreview, buildViewModel } from "./github.ts";
-import type { ReportContext } from "../reporter.ts";
+import { isQueryLong, renderExplain, type ReportContext } from "../reporter.ts";
 import type { RunComparison } from "../site-api.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const successTemplate = readFileSync(join(__dirname, "success.md.j2"), "utf-8");
+
+n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
+
+function renderTemplate(ctx: ReportContext) {
+  const viewModel = buildViewModel(ctx);
+  return n.renderString(successTemplate, {
+    ...ctx,
+    ...viewModel,
+    isQueryLong,
+    renderExplain,
+    formatCost,
+  });
+}
 
 describe("formatCost", () => {
   test("formats small numbers without commas", () => {
@@ -299,4 +320,23 @@ describe("buildViewModel", () => {
     expect(vm.preExistingRecommendations).toHaveLength(0);
   });
 
+});
+
+describe("template rendering", () => {
+  test("renders queryStats.total as the query count", () => {
+    const ctx = makeContext({
+      queryStats: { total: 5, matched: 3, optimized: 1, errored: 0 },
+      comparison: makeComparison(),
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("5 queries analyzed");
+  });
+
+  test("renders queryStats.total in no-comparison mode", () => {
+    const ctx = makeContext({
+      queryStats: { total: 3, matched: 1, optimized: 0, errored: 0 },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("3 queries analyzed");
+  });
 });
