@@ -1,27 +1,9 @@
 import * as core from "@actions/core";
-import * as prettier from "prettier";
-import prettierPluginSql from "prettier-plugin-sql";
 import csv from "fast-csv";
-import { Readable } from "node:stream";
-import { statSync, readFileSync } from "node:fs";
+import { statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fingerprint } from "@libpg-query/parser";
 import { preprocessEncodedJson } from "./sql/json.ts";
-import {
-  Analyzer,
-  ExportedStats,
-  IndexedTable,
-  IndexOptimizer,
-  type IndexRecommendation,
-  type Nudge,
-  type SQLCommenterTag,
-  type TableReference,
-  OptimizeResult,
-  type Postgres,
-  PostgresQueryBuilder,
-  Statistics,
-  StatisticsMode,
-} from "@query-doctor/core";
 import { ExplainedLog } from "./sql/pg_log.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
@@ -29,52 +11,43 @@ import {
   type ReportContext,
   type ReportIndexRecommendation,
   type ReportQueryCostWarning,
-  type ReportStatistics,
 } from "./reporters/reporter.ts";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "./config.ts";
-const bgBrightMagenta = (s: string) => `\x1b[105m${s}\x1b[0m`;
-const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const blue = (s: string) => `\x1b[34m${s}\x1b[0m`;
 import { env } from "./env.ts";
-import { connectToSource } from "./sql/postgresjs.ts";
-import { parse } from "@libpg-query/parser";
 import { Connectable } from "./sync/connectable.ts";
+import { Remote } from "./remote/remote.ts";
+import { ConnectionManager } from "./sync/connection-manager.ts";
+import { RecentQuery } from "./sql/recent-query.ts";
+import { QueryHash } from "./sql/recent-query.ts";
+import type { OptimizedQuery } from "./sql/recent-query.ts";
 
 export class Runner {
-  private readonly seenQueries = new Set<string>();
-  public readonly queryStats: ReportStatistics = {
-    total: 0,
-    errored: 0,
-    matched: 0,
-    optimized: 0,
-  };
   constructor(
-    private readonly db: Postgres,
-    private readonly optimizer: IndexOptimizer,
-    private readonly existingIndexes: IndexedTable[],
-    private readonly stats: Statistics,
+    private readonly remote: Remote,
     private readonly logPath: string,
     private readonly maxCost?: number,
     private readonly ignoredQueryHashes: Set<string> = new Set(),
   ) { }
 
   static async build(options: {
-    postgresUrl: Connectable;
+    targetPostgresUrl: Connectable;
+    sourcePostgresUrl: Connectable;
     statisticsPath?: string;
     maxCost?: number;
     logPath: string;
     ignoredQueryHashes?: string[];
   }) {
-    const db = connectToSource(options.postgresUrl);
-    const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
-    const stats = await Statistics.fromPostgres(db, statisticsMode);
-    const existingIndexes = await stats.getExistingIndexes();
-    const optimizer = new IndexOptimizer(db, stats, existingIndexes);
+    const remote = new Remote(
+      options.targetPostgresUrl,
+      ConnectionManager.forLocalDatabase(),
+      ConnectionManager.forRemoteDatabase(),
+      // queries are already sourced from logs
+      { disableQueryLoader: true }
+    );
+    await remote.syncFrom(options.sourcePostgresUrl);
+    await remote.optimizer.finish;
     return new Runner(
-      db,
-      optimizer,
-      existingIndexes,
-      stats,
+      remote,
       options.logPath,
       options.maxCost,
       new Set(options.ignoredQueryHashes ?? []),
@@ -82,7 +55,7 @@ export class Runner {
   }
 
   async close() {
-    await (this.db as unknown as { close(): Promise<void> }).close();
+    await this.remote.cleanup();
   }
 
   async run(config: AnalyzerConfig = DEFAULT_CONFIG) {
@@ -107,14 +80,14 @@ export class Runner {
         headers: false,
       })
       .on("error", (err) => {
+        console.error("Got a pgbadger error", err);
         error = err;
       });
 
-    const recommendations: ReportIndexRecommendation[] = [];
-    const queriesPastThreshold: ReportQueryCostWarning[] = [];
-    const allResults: QueryProcessResult[] = [];
+    let total = 0;
 
     console.time("total");
+    const recentQueries: RecentQuery[] = [];
     for await (const chunk of stream) {
       const [
         _timestamp,
@@ -135,6 +108,7 @@ export class Runner {
       if (loglevel !== "LOG" || !queryString.startsWith("plan:")) {
         continue;
       }
+      total++;
       const planString: string = queryString.split("plan:")[1].trim();
       const json = preprocessEncodedJson(planString);
       if (!json) {
@@ -151,30 +125,66 @@ export class Runner {
         );
         continue;
       }
-      const result = await this.processQuery(parsed);
-      if (result.kind !== "invalid") {
-        allResults.push(result);
+
+      const query = parsed.query;
+      const hash = QueryHash.parse(await fingerprint(query));
+      if (this.ignoredQueryHashes.has(hash)) {
+        continue;
       }
-      switch (result.kind) {
-        case "error":
-          this.queryStats.errored++;
-          break;
-        case "cost_past_threshold":
-          queriesPastThreshold.push(result.warning);
-          break;
-        case "recommendation":
-          recommendations.push(result.recommendation);
-          break;
-        case "no_improvement":
-        case "zero_cost_plan":
-        case "invalid":
-          break;
+      if (parsed.isIntrospection) {
+        continue;
+      }
+
+      const recentQuery = await RecentQuery.fromLogEntry(query, hash);
+      recentQueries.push(recentQuery)
+    }
+    console.log("Finished pgbadger stream");
+    await this.remote.optimizer.addQueries(recentQueries);
+
+    await this.remote.optimizer.finish;
+
+    const optimizedQueries = this.remote.optimizer.getQueries();
+
+    console.log(
+      `Matched ${this.remote.optimizer.validQueriesProcessed} queries out of ${total}`,
+    );
+
+    const recommendations: ReportIndexRecommendation[] = [];
+    const queriesPastThreshold: ReportQueryCostWarning[] = [];
+    const allResults: OptimizedQuery[] = [];
+
+    for (const q of optimizedQueries) {
+      if (this.ignoredQueryHashes.has(q.hash)) {
+        continue;
+      }
+      allResults.push(q);
+      const { optimization } = q;
+      if (optimization.state === "improvements_available") {
+        recommendations.push({
+          fingerprint: q.hash,
+          formattedQuery: q.formattedQuery,
+          baseCost: optimization.cost,
+          baseExplainPlan: optimization.explainPlan,
+          optimizedCost: optimization.optimizedCost,
+          existingIndexes: optimization.indexesUsed,
+          proposedIndexes: optimization.indexRecommendations.map((r) => r.definition),
+          explainPlan: optimization.optimizedExplainPlan,
+        });
+      } else if (
+        optimization.state === "no_improvement_found" &&
+        typeof this.maxCost === "number" &&
+        optimization.cost > this.maxCost
+      ) {
+        queriesPastThreshold.push({
+          fingerprint: q.hash,
+          formattedQuery: q.formattedQuery,
+          baseCost: optimization.cost,
+          explainPlan: optimization.explainPlan,
+          maxCost: this.maxCost,
+        });
       }
     }
-    await new Promise<void>((resolve) => child.on("close", () => resolve()));
-    console.log(
-      `Matched ${this.queryStats.matched} queries out of ${this.queryStats.total}`,
-    );
+
     const filteredRecommendations =
       config.minimumCost > 0
         ? recommendations.filter((r) => r.baseCost > config.minimumCost)
@@ -183,12 +193,10 @@ export class Runner {
       config.minimumCost > 0
         ? queriesPastThreshold.filter((w) => w.baseCost > config.minimumCost)
         : queriesPastThreshold;
-    const statistics = deriveIndexStatistics(filteredRecommendations);
-    const timeElapsed = Date.now() - startDate.getTime();
+
     if (config.minimumCost > 0) {
       const filtered =
-        recommendations.length -
-        filteredRecommendations.length +
+        recommendations.length - filteredRecommendations.length +
         (queriesPastThreshold.length - filteredThresholdWarnings.length);
       if (filtered > 0) {
         console.log(
@@ -196,11 +204,19 @@ export class Runner {
         );
       }
     }
+
+    const statistics = deriveIndexStatistics(filteredRecommendations);
+    const timeElapsed = Date.now() - startDate.getTime();
     const reportContext: ReportContext = {
-      statisticsMode: this.stats.mode,
+      statisticsMode: this.remote.optimizer.statisticsMode,
       recommendations: filteredRecommendations,
       queriesPastThreshold: filteredThresholdWarnings,
-      queryStats: Object.freeze(this.queryStats),
+      queryStats: Object.freeze({
+        total,
+        matched: this.remote.optimizer.validQueriesProcessed,
+        optimized: filteredRecommendations.length,
+        errored: optimizedQueries.filter((q) => q.optimization.state === "error").length,
+      }),
       statistics,
       error,
       metadata: { logSize, timeElapsed },
@@ -214,317 +230,6 @@ export class Runner {
     console.log(`Generating report (${reporter.provider()})`);
     await reporter.report(reportContext);
   }
-
-  async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {
-    this.queryStats.total++;
-    const { query } = log;
-    const queryFingerprint = await fingerprint(query);
-    if (this.ignoredQueryHashes.has(queryFingerprint)) {
-      if (env.DEBUG) {
-        console.log("Skipping ignored query", queryFingerprint);
-      }
-      return { kind: "invalid" };
-    }
-    if (log.isIntrospection) {
-      if (env.DEBUG) {
-        console.log("Skipping introspection query", queryFingerprint);
-      }
-      return { kind: "invalid" };
-    }
-    if (this.seenQueries.has(queryFingerprint)) {
-      if (env.DEBUG) {
-        console.log("Skipping duplicate query", queryFingerprint);
-      }
-      return { kind: "invalid" };
-    }
-    this.seenQueries.add(queryFingerprint);
-
-    const analyzer = new Analyzer(parse);
-    const formattedQuery = await this.formatQuery(query);
-    const { indexesToCheck, ansiHighlightedQuery, referencedTables, nudges, tags } =
-      await analyzer.analyze(formattedQuery);
-
-    const selectsCatalog = referencedTables.find((ref) =>
-      ref.table.startsWith("pg_"),
-    );
-    if (selectsCatalog) {
-      if (env.DEBUG) {
-        console.log(
-          "Skipping query that selects from catalog tables",
-          selectsCatalog,
-          queryFingerprint,
-        );
-      }
-      return { kind: "invalid" };
-    }
-    const indexCandidates = analyzer.deriveIndexes(
-      this.stats.ownMetadata,
-      indexesToCheck,
-      referencedTables,
-    );
-    if (indexCandidates.length === 0) {
-      if (env.DEBUG) {
-        console.log(ansiHighlightedQuery);
-        console.log("No index candidates found", queryFingerprint);
-      }
-      if (typeof this.maxCost === "number" && log.plan.cost > this.maxCost) {
-        return {
-          kind: "cost_past_threshold",
-          rawQuery: query,
-          nudges,
-          tags,
-          referencedTables,
-          warning: {
-            fingerprint: queryFingerprint,
-            formattedQuery,
-            baseCost: log.plan.cost,
-            explainPlan: log.plan.json,
-            maxCost: this.maxCost,
-          },
-        };
-      }
-    }
-    return core.group<QueryProcessResult>(
-      `query:${queryFingerprint}`,
-      async (): Promise<QueryProcessResult> => {
-        console.time(`timing`);
-        this.printLegend();
-        console.log(ansiHighlightedQuery);
-        // TODO: give concrete type
-        let out: OptimizeResult;
-        this.queryStats.matched++;
-        try {
-          const builder = new PostgresQueryBuilder(query);
-          out = await this.optimizer.run(builder, indexCandidates);
-        } catch (err) {
-          console.error(err);
-          console.error(
-            `Something went wrong while running this query. Skipping`,
-          );
-          // this.queryStats.errored++;
-          console.timeEnd(`timing`);
-          return {
-            kind: "error",
-            error: err as Error,
-            fingerprint: queryFingerprint,
-            rawQuery: query,
-            formattedQuery,
-            nudges,
-            tags,
-            referencedTables,
-          };
-        }
-        if (out.kind === "ok") {
-          const existingIndexesForQuery = Array.from(out.existingIndexes)
-            .map((index) => {
-              const existing = this.existingIndexes.find(
-                (e) => e.index_name === index,
-              );
-              if (existing) {
-                return `${existing.schema_name}.${existing.table_name}(${existing.index_columns
-                  .map((c) => `"${c.name}" ${c.order}`)
-                  .join(", ")})`;
-              }
-            })
-            .filter((i) => i !== undefined);
-          if (out.newIndexes.size > 0) {
-            const costReductionPct = out.baseCost > 0
-              ? ((out.baseCost - out.finalCost) / out.baseCost) * 100
-              : 0;
-            if (Math.round(costReductionPct) <= 0) {
-              console.log(
-                `Skipping recommendation with ${costReductionPct.toFixed(1)}% cost reduction (rounds to 0%)`,
-              );
-              console.timeEnd(`timing`);
-              return {
-                kind: "no_improvement",
-                fingerprint: queryFingerprint,
-                rawQuery: query,
-                formattedQuery,
-                cost: out.baseCost,
-                existingIndexes: existingIndexesForQuery,
-                nudges,
-                tags,
-                referencedTables,
-                explainPlan: out.baseExplainPlan,
-              };
-            }
-            this.queryStats.optimized++;
-            const newIndexRecommendations = Array.from(out.newIndexes)
-              .map((n) => out.triedIndexes.get(n))
-              .filter((n) => n !== undefined);
-            const newIndexes = newIndexRecommendations.map((n) => n.definition);
-            console.log(`New indexes: ${newIndexes.join(", ")}`);
-            return {
-              kind: "recommendation",
-              rawQuery: query,
-              nudges,
-              tags,
-              referencedTables,
-              indexRecommendations: newIndexRecommendations,
-              recommendation: {
-                fingerprint: queryFingerprint,
-                formattedQuery,
-                baseCost: out.baseCost,
-                baseExplainPlan: out.baseExplainPlan,
-                optimizedCost: out.finalCost,
-                existingIndexes: existingIndexesForQuery,
-                proposedIndexes: newIndexes,
-                explainPlan: out.explainPlan,
-              },
-            };
-          } else {
-            console.log("No new indexes found");
-            if (
-              typeof this.maxCost === "number" &&
-              out.finalCost > this.maxCost
-            ) {
-              console.log(
-                "Query cost is too high",
-                out.finalCost,
-                this.maxCost,
-              );
-              return {
-                kind: "cost_past_threshold",
-                rawQuery: query,
-                nudges,
-                tags,
-                referencedTables,
-                warning: {
-                  fingerprint: queryFingerprint,
-                  formattedQuery,
-                  baseCost: out.baseCost,
-                  optimization: {
-                    newCost: out.finalCost,
-                    existingIndexes: existingIndexesForQuery,
-                    proposedIndexes: [],
-                  },
-                  explainPlan: out.explainPlan,
-                  maxCost: this.maxCost,
-                },
-              };
-            }
-            return {
-              kind: "no_improvement",
-              fingerprint: queryFingerprint,
-              rawQuery: query,
-              formattedQuery,
-              cost: out.baseCost,
-              existingIndexes: existingIndexesForQuery,
-              nudges,
-              tags,
-              referencedTables,
-              explainPlan: out.baseExplainPlan,
-            };
-          }
-        } else if (out.kind === "zero_cost_plan") {
-          console.log("Zero cost plan found");
-          console.log(out);
-          console.timeEnd(`timing`);
-          return {
-            kind: "zero_cost_plan",
-            explainPlan: out.explainPlan,
-            fingerprint: queryFingerprint,
-            rawQuery: query,
-            formattedQuery,
-            nudges,
-            tags,
-            referencedTables,
-          };
-        }
-        console.timeEnd(`timing`);
-        console.error(out);
-        throw new Error(`Unexpected output: ${out}`);
-      },
-    );
-  }
-
-  private async formatQuery(query: string): Promise<string> {
-    try {
-      return await prettier.format(query, {
-        parser: "sql",
-        plugins: [prettierPluginSql],
-        language: "postgresql",
-        keywordCase: "upper",
-      });
-    } catch {
-      return query;
-    }
-  }
-
-  private printLegend() {
-    console.log(`--Legend--------------------------`);
-    console.log(`| ${bgBrightMagenta(" column ")} | Candidate            |`);
-    console.log(`| ${yellow(" column ")} | Ignored              |`);
-    console.log(`| ${blue(" column ")} | Temp table reference |`);
-    console.log(`-----------------------------------`);
-    console.log();
-  }
-
-  private static decideStatisticsMode(path?: string): StatisticsMode {
-    if (path) {
-      const data = Runner.readStatisticsFile(path);
-      return Statistics.statsModeFromExport(data);
-    } else {
-      return Statistics.defaultStatsMode;
-    }
-  }
-  private static readStatisticsFile(path: string): ExportedStats[] {
-    const data = readFileSync(path);
-    const json = JSON.parse(new TextDecoder().decode(data));
-    return ExportedStats.array().parse(json);
-  }
 }
 
-export type QueryProcessResult =
-  | {
-    kind: "invalid";
-  }
-  | {
-    kind: "cost_past_threshold";
-    rawQuery: string;
-    nudges: Nudge[];
-    tags: SQLCommenterTag[];
-    referencedTables: TableReference[];
-    warning: ReportQueryCostWarning;
-  }
-  | {
-    kind: "recommendation";
-    rawQuery: string;
-    nudges: Nudge[];
-    tags: SQLCommenterTag[];
-    referencedTables: TableReference[];
-    indexRecommendations: IndexRecommendation[];
-    recommendation: ReportIndexRecommendation;
-  }
-  | {
-    kind: "no_improvement";
-    fingerprint: string;
-    rawQuery: string;
-    formattedQuery: string;
-    cost: number;
-    existingIndexes: string[];
-    nudges: Nudge[];
-    tags: SQLCommenterTag[];
-    referencedTables: TableReference[];
-    explainPlan?: object;
-  }  | {
-    kind: "error";
-    error: Error;
-    fingerprint: string;
-    rawQuery: string;
-    formattedQuery: string;
-    nudges: Nudge[];
-    tags: SQLCommenterTag[];
-    referencedTables: TableReference[];
-  }
-  | {
-    kind: "zero_cost_plan";
-    explainPlan: object;
-    fingerprint: string;
-    rawQuery: string;
-    formattedQuery: string;
-    nudges: Nudge[];
-    tags: SQLCommenterTag[];
-    referencedTables: TableReference[];
-  };
+export type QueryProcessResult = OptimizedQuery;

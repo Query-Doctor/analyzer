@@ -100,6 +100,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this._finish.promise;
   }
 
+  get statisticsMode(): StatisticsMode {
+    return this.target?.statistics.mode ?? QueryOptimizer.defaultStatistics;
+  }
+
   getDisabledIndexes(): PgIdentifier[] {
     return [...this.disabledIndexes];
   }
