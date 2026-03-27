@@ -43,8 +43,11 @@ jobs:
 
       - name: Run local GitHub Action
         uses: ./
+        with:
+          # TODO: support pg 16 explicitly
+          postgres-version: 17
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          POSTGRES_URL: postgres://query_doctor@localhost:5432/testing
+          SOURCE_POSTGRES_URL: postgres://query_doctor@localhost:5432/testing
           LOG_PATH: /var/log/postgresql/postgres.log
           SITE_API_ENDPOINT: ${{ vars.SITE_API_ENDPOINT }}
