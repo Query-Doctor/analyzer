@@ -150,8 +150,19 @@ test("planner estimates 10,000 rows with 10,000 rows seeded", async () => {
     INSERT INTO widgets (user_id, name)
       SELECT gen_random_uuid(), 'widget_' || i
       FROM generate_series(1, 10000) AS i;
-    ANALYZE;
   `);
+
+  const beforeAnalyze = await db.exec<{ relpages: number; reltuples: number }>(
+    `SELECT relpages, reltuples::int FROM pg_class WHERE relname = 'widgets' AND relkind = 'r'`,
+  );
+  console.log(`10K: BEFORE ANALYZE: relpages=${beforeAnalyze[0].relpages}, reltuples=${beforeAnalyze[0].reltuples}`);
+
+  await db.exec("ANALYZE widgets");
+
+  const afterAnalyze = await db.exec<{ relpages: number; reltuples: number }>(
+    `SELECT relpages, reltuples::int FROM pg_class WHERE relname = 'widgets' AND relkind = 'r'`,
+  );
+  console.log(`10K: AFTER ANALYZE: relpages=${afterAnalyze[0].relpages}, reltuples=${afterAnalyze[0].reltuples}`);
 
   const mode = await buildStatsFromDatabase(db);
   const stats = await Statistics.fromPostgres(db, mode);
@@ -183,6 +194,7 @@ test("planner estimates 10,000 rows even with 50,000 rows seeded", async () => {
   const plan = await optimizer.testQueryWithStats(builder);
 
   const estimatedRows = (plan.Plan as Record<string, unknown>)["Plan Rows"];
+  console.log(`10K: planner estimatedRows=${estimatedRows}`);
   expect(estimatedRows).toBe(10_000);
 });
 
@@ -192,10 +204,24 @@ test("BUG: fromAssumption(relpages=1) inflates estimates with real data", async 
     INSERT INTO widgets (user_id, name)
       SELECT gen_random_uuid(), 'widget_' || i
       FROM generate_series(1, 10000) AS i;
-    ANALYZE;
   `);
 
+  const beforeAnalyze = await db.exec<{ relpages: number; reltuples: number }>(
+    `SELECT relpages, reltuples::int FROM pg_class WHERE relname = 'widgets' AND relkind = 'r'`,
+  );
+  console.log(`BUG: BEFORE ANALYZE: relpages=${beforeAnalyze[0].relpages}, reltuples=${beforeAnalyze[0].reltuples}`);
+
+  await db.exec("ANALYZE widgets");
+
+  const afterAnalyze = await db.exec<{ relpages: number; reltuples: number }>(
+    `SELECT relpages, reltuples::int FROM pg_class WHERE relname = 'widgets' AND relkind = 'r'`,
+  );
+  console.log(`BUG: AFTER ANALYZE: relpages=${afterAnalyze[0].relpages}, reltuples=${afterAnalyze[0].reltuples}`);
+
   const brokenMode = Statistics.defaultStatsMode;
+  if (brokenMode.kind === "fromAssumption") {
+    console.log(`BUG: override writes: reltuples=${brokenMode.reltuples}, relpages=${brokenMode.relpages}`);
+  }
   const stats = await Statistics.fromPostgres(db, brokenMode);
   const existingIndexes = await stats.getExistingIndexes();
   const optimizer = new IndexOptimizer(db, stats, existingIndexes);
@@ -204,7 +230,12 @@ test("BUG: fromAssumption(relpages=1) inflates estimates with real data", async 
   const plan = await optimizer.testQueryWithStats(builder);
 
   const estimatedRows = (plan.Plan as Record<string, unknown>)["Plan Rows"];
-  expect(estimatedRows).toBeGreaterThan(100_000);
+  console.log(`BUG: planner estimatedRows=${estimatedRows}`);
+
+  // With relpages=74 on disk and the override setting relpages=1,
+  // PostgreSQL computes: density = 10000/1 = 10000 tuples/page,
+  // then estimates tuples = 74 * 10000 = 740,000 instead of 10,000.
+  expect(estimatedRows).toBe(740_000);
 });
 
 test("leaves columns null so ANALYZE pg_statistic entries persist", async () => {
