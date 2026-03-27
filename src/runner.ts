@@ -39,6 +39,7 @@ import { env } from "./env.ts";
 import { connectToSource } from "./sql/postgresjs.ts";
 import { parse } from "@libpg-query/parser";
 import { Connectable } from "./sync/connectable.ts";
+import { buildStatsFromDatabase } from "./build-stats.ts";
 
 export class Runner {
   private readonly seenQueries = new Set<string>();
@@ -66,7 +67,14 @@ export class Runner {
     ignoredQueryHashes?: string[];
   }) {
     const db = connectToSource(options.postgresUrl);
-    const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
+    // Run ANALYZE before reading statistics so pg_statistic (column-level
+    // stats like n_distinct) is populated deterministically from the current
+    // data.  Without this, autovacuum may or may not have analyzed tables,
+    // causing the same query to produce different EXPLAIN costs across runs.
+    await db.exec("ANALYZE");
+    const statisticsMode = options.statisticsPath
+      ? Runner.decideStatisticsMode(options.statisticsPath)
+      : await buildStatsFromDatabase(db);
     const stats = await Statistics.fromPostgres(db, statisticsMode);
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(db, stats, existingIndexes);
@@ -461,19 +469,12 @@ export class Runner {
     console.log();
   }
 
-  private static decideStatisticsMode(path?: string): StatisticsMode {
-    if (path) {
-      const data = Runner.readStatisticsFile(path);
-      return Statistics.statsModeFromExport(data);
-    } else {
-      return Statistics.defaultStatsMode;
-    }
-  }
-  private static readStatisticsFile(path: string): ExportedStats[] {
+  private static decideStatisticsMode(path: string): StatisticsMode {
     const data = readFileSync(path);
     const json = JSON.parse(new TextDecoder().decode(data));
-    return ExportedStats.array().parse(json);
+    return Statistics.statsModeFromExport(ExportedStats.array().parse(json));
   }
+
 }
 
 export type QueryProcessResult =
