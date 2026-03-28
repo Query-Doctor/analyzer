@@ -1,9 +1,11 @@
 import { test, expect, describe } from "vitest";
 import {
+  buildQueries,
   compareRuns,
   type CiQueryPayload,
   type PreviousRun,
 } from "./site-api.ts";
+import type { QueryProcessResult } from "../runner.ts";
 
 function makeQuery(hash: string, cost: number = 100): CiQueryPayload {
   return {
@@ -30,6 +32,99 @@ function makePreviousRun(queries: CiQueryPayload[]): PreviousRun {
     queries,
   };
 }
+
+describe("buildQueries", () => {
+  test("filters out invalid results", () => {
+    const results: QueryProcessResult[] = [
+      {
+        kind: "no_improvement",
+        fingerprint: "hash-a",
+        rawQuery: "SELECT 1",
+        formattedQuery: "SELECT 1",
+        cost: 10,
+        existingIndexes: [],
+        nudges: [],
+        tags: [],
+        referencedTables: [],
+      },
+      { kind: "invalid" },
+      {
+        kind: "no_improvement",
+        fingerprint: "hash-b",
+        rawQuery: "SELECT 2",
+        formattedQuery: "SELECT 2",
+        cost: 20,
+        existingIndexes: [],
+        nudges: [],
+        tags: [],
+        referencedTables: [],
+      },
+    ];
+
+    const queries = buildQueries(results);
+    expect(queries).toHaveLength(2);
+    expect(queries.map((q) => q.hash)).toEqual(["hash-a", "hash-b"]);
+  });
+
+  test("filters out ignored query hashes", () => {
+    const results: QueryProcessResult[] = [
+      {
+        kind: "no_improvement",
+        fingerprint: "hash-a",
+        rawQuery: "SELECT 1",
+        formattedQuery: "SELECT 1",
+        cost: 10,
+        existingIndexes: [],
+        nudges: [],
+        tags: [],
+        referencedTables: [],
+      },
+      {
+        kind: "no_improvement",
+        fingerprint: "hash-b",
+        rawQuery: "SELECT 2",
+        formattedQuery: "SELECT 2",
+        cost: 20,
+        existingIndexes: [],
+        nudges: [],
+        tags: [],
+        referencedTables: [],
+      },
+    ];
+
+    const queries = buildQueries(results, {
+      ignoredQueryHashes: ["hash-a"],
+      acknowledgedQueryHashes: [],
+      regressionThreshold: 10,
+      minimumCost: 0,
+    });
+    expect(queries).toHaveLength(1);
+    expect(queries[0].hash).toBe("hash-b");
+  });
+
+  test("count reflects deduplicated output, not raw input length", () => {
+    const results: QueryProcessResult[] = [
+      {
+        kind: "no_improvement",
+        fingerprint: "hash-a",
+        rawQuery: "SELECT 1",
+        formattedQuery: "SELECT 1",
+        cost: 10,
+        existingIndexes: [],
+        nudges: [],
+        tags: [],
+        referencedTables: [],
+      },
+      { kind: "invalid" },
+      { kind: "invalid" },
+      { kind: "invalid" },
+    ];
+
+    const queries = buildQueries(results);
+    // 4 results in, but only 1 valid query out
+    expect(queries).toHaveLength(1);
+  });
+});
 
 describe("compareRuns", () => {
   describe("new query detection via previousRun", () => {

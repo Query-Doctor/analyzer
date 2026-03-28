@@ -216,7 +216,6 @@ export class Runner {
   }
 
   async processQuery(log: ExplainedLog): Promise<QueryProcessResult> {
-    this.queryStats.total++;
     const { query } = log;
     const queryFingerprint = await fingerprint(query);
     if (this.ignoredQueryHashes.has(queryFingerprint)) {
@@ -257,6 +256,7 @@ export class Runner {
       }
       return { kind: "invalid" };
     }
+    this.queryStats.total++;
     const indexCandidates = analyzer.deriveIndexes(
       this.stats.ownMetadata,
       indexesToCheck,
