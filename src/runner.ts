@@ -39,6 +39,7 @@ import { env } from "./env.ts";
 import { connectToSource } from "./sql/postgresjs.ts";
 import { parse } from "@libpg-query/parser";
 import { Connectable } from "./sync/connectable.ts";
+import { buildStatsFromDatabase } from "./build-stats.ts";
 
 export class Runner {
   private readonly seenQueries = new Set<string>();
@@ -66,7 +67,16 @@ export class Runner {
     ignoredQueryHashes?: string[];
   }) {
     const db = connectToSource(options.postgresUrl);
-    const statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
+    let statisticsMode: StatisticsMode;
+    if (options.statisticsPath) {
+      statisticsMode = Runner.decideStatisticsMode(options.statisticsPath);
+    } else {
+      // Run ANALYZE so pg_class.relpages and pg_statistic reflect the
+      // current data.  Without this, relpages can be 0 after fresh
+      // inserts and column stats depend on autovacuum timing.
+      await db.exec("ANALYZE");
+      statisticsMode = await buildStatsFromDatabase(db);
+    }
     const stats = await Statistics.fromPostgres(db, statisticsMode);
     const existingIndexes = await stats.getExistingIndexes();
     const optimizer = new IndexOptimizer(db, stats, existingIndexes);
@@ -461,19 +471,12 @@ export class Runner {
     console.log();
   }
 
-  private static decideStatisticsMode(path?: string): StatisticsMode {
-    if (path) {
-      const data = Runner.readStatisticsFile(path);
-      return Statistics.statsModeFromExport(data);
-    } else {
-      return Statistics.defaultStatsMode;
-    }
-  }
-  private static readStatisticsFile(path: string): ExportedStats[] {
+  private static decideStatisticsMode(path: string): StatisticsMode {
     const data = readFileSync(path);
     const json = JSON.parse(new TextDecoder().decode(data));
-    return ExportedStats.array().parse(json);
+    return Statistics.statsModeFromExport(ExportedStats.array().parse(json));
   }
+
 }
 
 export type QueryProcessResult =
