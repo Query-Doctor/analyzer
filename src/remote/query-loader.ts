@@ -16,6 +16,7 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
   private stopped = false;
   private readonly interval: number;
   private readonly maxErrors: number;
+  private timer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly sourceManager: ConnectionManager,
@@ -62,6 +63,10 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
    */
   stop() {
     this.stopped = true;
+    if (this.timer !== undefined) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
   }
 
   private scheduleNextPoll() {
@@ -69,7 +74,8 @@ export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
       return;
     }
 
-    setTimeout(() => {
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
       if (this.stopped) {
         return;
       }
