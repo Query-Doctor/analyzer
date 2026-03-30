@@ -36,7 +36,7 @@ type RemoteEvents = {
 export class Remote extends EventEmitter<RemoteEvents> {
   static readonly baseDbName = PgIdentifier.fromString("postgres");
   private static readonly optimizingDbPrefix = "optimizing_db";
-  static defaultOptimizingDbPrefix = PgIdentifier.fromString(`${Remote.optimizingDbPrefix}_0`)
+  static defaultOptimizingDbPrefix = PgIdentifier.fromString(Remote.optimizingDbPrefix)
 
   /* Threshold that we determine is "too few rows" for Postgres to start using indexes
    * and not defaulting to table scan.
@@ -58,6 +58,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private generation = 0;
   /** The URL of the current generation optimizing db */
   private optimizingDbUDRL: Connectable;
+
+  get optimizingDb(): Connectable {
+    return this.optimizingDbUDRL;
+  }
 
   private isPolling = false;
   private queryLoader?: QueryLoader;
@@ -213,18 +217,20 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
   }
 
+  private generationDbName(generation: number): PgIdentifier {
+    return generation === 0
+      ? Remote.defaultOptimizingDbPrefix
+      : PgIdentifier.fromString(`${Remote.optimizingDbPrefix}_${generation}`);
+  }
+
   private async resetDatabase(): Promise<void> {
     const prevGeneration = this.generation;
     const nextGeneration = prevGeneration + 1;
-    const nextDbName = PgIdentifier.fromString(
-      `${Remote.optimizingDbPrefix}_${nextGeneration}`,
-    );
+    const nextDbName = this.generationDbName(nextGeneration);
     log.info(`Creating new generation database: ${nextDbName}`, "remote");
     const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
     await baseDb.exec(`create database ${nextDbName};`);
-    const prevDbName = PgIdentifier.fromString(
-      `${Remote.optimizingDbPrefix}_${prevGeneration}`,
-    );
+    const prevDbName = this.generationDbName(prevGeneration);
     this.generation = nextGeneration;
     this.optimizingDbUDRL = this.optimizingDbUDRL.withDatabaseName(nextDbName);
     this.optimizer.updateConnectable(this.optimizingDbUDRL);
