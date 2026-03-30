@@ -7,7 +7,6 @@ import { Pool } from "pg";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { normalizeQuery } from "./test-utils.ts";
 
-import { PgIdentifier } from "@query-doctor/core";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 
 const TEST_TARGET_CONTAINER_NAME = "postgres:17";
@@ -94,7 +93,7 @@ test("syncs correctly", async () => {
       expect(indexNames).toEqual(expect.arrayContaining(["testing_1234"]));
 
       const pool = new Pool({
-        connectionString: target.withDatabaseName(Remote.defaultOptimizingDbPrefix).toString(),
+        connectionString: remote.optimizingDb.toString(),
       });
 
       const indexesAfter =
@@ -203,10 +202,8 @@ test("raw timescaledb syncs correctly", async () => {
     try {
       await using remote = new Remote(targetConn, manager);
 
-      const t = manager.getOrCreateConnection(
-        targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
-      );
       await remote.syncFrom(sourceConn);
+      const t = manager.getOrCreateConnection(remote.optimizingDb);
       const indexesAfter = await t.exec(
         "select indexname from pg_indexes where schemaname = 'public'",
       );
@@ -349,10 +346,8 @@ test("timescaledb with continuous aggregates sync correctly", async () => {
     try {
       await using remote = new Remote(targetConn, manager);
 
-      const t = manager.getOrCreateConnection(
-        targetConn.withDatabaseName(PgIdentifier.fromString("optimizing_db")),
-      );
       await remote.syncFrom(sourceConn);
+      const t = manager.getOrCreateConnection(remote.optimizingDb);
       const queries = remote.optimizer.getQueries();
       const queryStrings = queries.map((q) => normalizeQuery(q.query));
 
