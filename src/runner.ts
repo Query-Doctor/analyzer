@@ -144,6 +144,15 @@ export class Runner {
     await this.remote.optimizer.finish;
 
     const optimizedQueries = this.remote.optimizer.getQueries();
+    const existingIndexes = this.remote.optimizer.getExistingIndexes();
+
+    const resolveIndexNames = (names: string[]) =>
+      names.map((name) => {
+        const idx = existingIndexes.find((e) => e.index_name === name);
+        return idx
+          ? `${idx.schema_name}.${idx.table_name}(${idx.index_columns.map((c) => `"${c.name}" ${c.order}`).join(", ")})`
+          : name;
+      });
 
     console.log(
       `Matched ${this.remote.optimizer.validQueriesProcessed} queries out of ${total}`,
@@ -157,8 +166,14 @@ export class Runner {
       if (this.ignoredQueryHashes.has(q.hash)) {
         continue;
       }
-      allResults.push(q);
       const { optimization } = q;
+      if (
+        optimization.state === "improvements_available" ||
+        optimization.state === "no_improvement_found"
+      ) {
+        optimization.indexesUsed = resolveIndexNames(optimization.indexesUsed);
+      }
+      allResults.push(q);
       if (optimization.state === "improvements_available") {
         recommendations.push({
           fingerprint: q.hash,

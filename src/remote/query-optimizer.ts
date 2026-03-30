@@ -49,6 +49,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private readonly queries = new Map<QueryHash, OptimizedQuery>();
   private readonly disabledIndexes = new DisabledIndexes();
 
+  private existingIndexes: IndexedTable[] = [];
   private target?: Target;
   private semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
   private _finish = Promise.withResolvers<void>();
@@ -104,6 +105,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this.target?.statistics.mode ?? QueryOptimizer.defaultStatistics;
   }
 
+  getExistingIndexes(): IndexedTable[] {
+    return this.existingIndexes;
+  }
+
   getDisabledIndexes(): PgIdentifier[] {
     return [...this.disabledIndexes];
   }
@@ -132,8 +137,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const pg = this.manager.getOrCreateConnection(this.connectable);
     const ownStats = await Statistics.dumpStats(pg, version, "full");
     const statistics = new Statistics(pg, version, ownStats, statsMode);
-    const existingIndexes = await statistics.getExistingIndexes();
-    const filteredIndexes = this.filterDisabledIndexes(existingIndexes);
+    this.existingIndexes = await statistics.getExistingIndexes();
+    const filteredIndexes = this.filterDisabledIndexes(this.existingIndexes);
     const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
       trace: false,
     });
