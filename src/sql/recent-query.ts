@@ -113,10 +113,10 @@ export class RecentQuery {
     const formattedQuery = await RecentQuery.formatQuery(
       data.query,
     );
-    const analysis = await analyzer.analyze(formattedQuery);
+    const analysis = await analyzer.analyze(data.query, formattedQuery);
     const query = this.rewriteQuery(analysis.queryWithoutTags);
     return new RecentQuery(
-      { ...data, query, formattedQuery },
+      { ...data, query, formattedQuery: analysis.formattedQueryWithoutTags ?? formattedQuery },
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,

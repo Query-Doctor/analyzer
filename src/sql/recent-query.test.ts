@@ -187,6 +187,12 @@ test("analyze produces a RecentQuery with formatted query and analysis", async (
   expect(rq.tableReferences.some((ref) => ref.table === "users")).toBe(true);
 });
 
+test("analyze strips sqlcommenter tags from formattedQuery", async () => {
+  const query = "SELECT id FROM users /*traceparent='00-abc123'*/";
+  const rq = await RecentQuery.analyze(makeRawQuery({ query }), testHash, 2000);
+  expect(rq.formattedQuery).toBe("SELECT\n  id\nFROM\n  users ");
+});
+
 test("analyze throws on unparseable SQL", async () => {
   const data = makeRawQuery({ query: "THIS IS NOT VALID SQL AT ALL !!!" });
   await expect(
