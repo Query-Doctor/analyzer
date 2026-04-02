@@ -144,7 +144,8 @@ export class RecentQuery {
         language: "postgresql",
         keywordCase: "upper",
       });
-    } catch {
+    } catch (error) {
+      console.error(`[prettier] Failed to format query: ${error}`);
       return query;
     } finally {
       RecentQuery.prettierMutex.release();
