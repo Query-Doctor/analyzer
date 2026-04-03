@@ -84,8 +84,6 @@ export class Runner {
         error = err;
       });
 
-    let total = 0;
-
     console.time("total");
     const recentQueries: RecentQuery[] = [];
     for await (const chunk of stream) {
@@ -134,7 +132,6 @@ export class Runner {
         continue;
       }
 
-      total++;
       const recentQuery = await RecentQuery.fromLogEntry(query, hash);
       recentQueries.push(recentQuery)
     }
@@ -155,7 +152,7 @@ export class Runner {
       });
 
     console.log(
-      `Matched ${this.remote.optimizer.validQueriesProcessed} queries out of ${total}`,
+      `Matched ${this.remote.optimizer.validQueriesProcessed} queries`,
     );
 
     const recommendations: ReportIndexRecommendation[] = [];
@@ -219,6 +216,9 @@ export class Runner {
         );
       }
     }
+
+    const uploadableStates = new Set(["improvements_available", "no_improvement_found", "error"]);
+    const total = allResults.filter((q) => uploadableStates.has(q.optimization.state)).length;
 
     const statistics = deriveIndexStatistics(filteredRecommendations);
     const timeElapsed = Date.now() - startDate.getTime();
