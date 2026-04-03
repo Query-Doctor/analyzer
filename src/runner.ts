@@ -217,8 +217,7 @@ export class Runner {
       }
     }
 
-    const uploadableStates = new Set(["improvements_available", "no_improvement_found", "error"]);
-    const total = allResults.filter((q) => uploadableStates.has(q.optimization.state)).length;
+    const total = countUploadableQueries(allResults);
 
     const statistics = deriveIndexStatistics(filteredRecommendations);
     const timeElapsed = Date.now() - startDate.getTime();
@@ -245,6 +244,12 @@ export class Runner {
     console.log(`Generating report (${reporter.provider()})`);
     await reporter.report(reportContext);
   }
+}
+
+export const UPLOADABLE_STATES = new Set(["improvements_available", "no_improvement_found", "error"]);
+
+export function countUploadableQueries(results: OptimizedQuery[]): number {
+  return results.filter((q) => UPLOADABLE_STATES.has(q.optimization.state)).length;
 }
 
 export type QueryProcessResult = OptimizedQuery;
