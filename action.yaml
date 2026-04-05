@@ -61,8 +61,8 @@ runs:
       uses: actions/cache@v4
       id: pg-client-cache
       with:
-        path: /usr/lib/postgresql
-        key: pg-client-${{ runner.os }}-18
+        path: /usr/lib/postgresql/${{ inputs.postgres-version }}
+        key: pg-client-${{ runner.os }}-${{ inputs.postgres-version }}
 
     - name: Install postgresql-client
       shell: bash
@@ -72,16 +72,15 @@ runs:
         curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
         echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
         sudo apt-get update
-        sudo apt-get install -y postgresql-client-18 || sudo apt-get install -y postgresql-client-17
+        sudo apt-get install -y postgresql-client-${{ inputs.postgres-version }}
 
     - name: Start PostgreSQL
       shell: bash
       run: |
         PORT=$(shuf -i 10000-65000 -n 1)
         echo "PG_PORT=$PORT" >> $GITHUB_ENV
-        PG_CLIENT_VERSION=$(ls /usr/lib/postgresql | sort -rn | head -1)
-        echo "PG_DUMP_BINARY=/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin/pg_dump" >> $GITHUB_ENV
-        echo "PG_RESTORE_BINARY=/usr/lib/postgresql/${PG_CLIENT_VERSION}/bin/pg_restore" >> $GITHUB_ENV
+        echo "PG_DUMP_BINARY=/usr/lib/postgresql/${{ inputs.postgres-version }}/bin/pg_dump" >> $GITHUB_ENV
+        echo "PG_RESTORE_BINARY=/usr/lib/postgresql/${{ inputs.postgres-version }}/bin/pg_restore" >> $GITHUB_ENV
         docker run -d \
           --name query-doctor-postgres \
           -p $PORT:5432 \
