@@ -20,7 +20,7 @@ import { ConnectionManager } from "./sync/connection-manager.ts";
 import { RecentQuery } from "./sql/recent-query.ts";
 import { QueryHash } from "./sql/recent-query.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
-import { ExportedStats, StatisticsMode } from "@query-doctor/core";
+import { ExportedStats } from "@query-doctor/core";
 import { readFile } from "node:fs/promises";
 
 export class Runner {
@@ -80,7 +80,6 @@ export class Runner {
       stats: {
         kind: "fromAssumption",
         reltuples: 10_000_000,
-        relpages: 200_000
       }
     }
   }

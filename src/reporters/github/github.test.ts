@@ -107,7 +107,7 @@ function makeRecommendation(overrides: {
 
 function makeContext(overrides: Partial<ReportContext> = {}): ReportContext {
   return {
-    statisticsMode: { kind: "fromAssumption", reltuples: 10000, relpages: 1000 },
+    statisticsMode: { kind: "fromAssumption", reltuples: 10000 },
     recommendations: [],
     queriesPastThreshold: [],
     queryStats: { total: 28, matched: 10, optimized: 2, errored: 0 },
