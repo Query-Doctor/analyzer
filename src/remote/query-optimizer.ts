@@ -43,7 +43,6 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private static readonly MAX_CONCURRENCY = 1;
   private static readonly defaultStatistics: StatisticsMode = {
     kind: "fromAssumption",
-    relpages: 1,
     reltuples: 10_000,
   };
   private readonly queries = new Map<QueryHash, OptimizedQuery>();
