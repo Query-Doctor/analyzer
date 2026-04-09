@@ -84,15 +84,22 @@ test("controller syncs correctly", async () => {
           columns: [{
             columnName: "a",
             stats: null,
+            attlen: null,
           }, {
             columnName: "b",
             stats: null,
+            attlen: null,
           }],
           indexes: [{
             indexName: "testing_index",
             relpages: 2,
             reltuples: 10000,
             relallvisible: 1,
+            amname: "btree",
+            columns: [{
+              attlen: 8
+            }],
+            fillfactor: 0.9,
           }],
         }],
       });
@@ -157,15 +164,20 @@ test("controller syncs correctly", async () => {
           columns: [{
             columnName: "a",
             stats: null,
+            attlen: 8,
           }, {
             columnName: "b",
             stats: null,
+            attlen: 8,
           }],
           indexes: [{
             indexName: "testing_index",
             relpages: 2,
             reltuples: 10000,
             relallvisible: 1,
+            amname: "btree",
+            columns: [{ attlen: 8 }],
+            fillfactor: 0.9,
           }],
         }],
       });
@@ -223,14 +235,17 @@ test("disabling an index removes it from indexesUsed and recommends it", async (
         reltuples: 10_000_000,
         relallvisible: 1,
         columns: [
-          { columnName: "id", stats: null },
-          { columnName: "email", stats: null },
+          { columnName: "id", stats: null, attlen: null },
+          { columnName: "email", stats: null, attlen: null },
         ],
         indexes: [{
           indexName: "users_email_idx",
           relpages: 100,
           reltuples: 10_000_000,
           relallvisible: 1,
+          amname: "btree",
+          fillfactor: 0.9,
+          columns: [{ attlen: null }],
         }],
       }],
     };
@@ -392,11 +407,11 @@ test("hypertable optimization includes index recommendations", async () => {
             reltuples: 100_000,
             relallvisible: 1,
             columns: [
-              { columnName: "time", stats: null },
-              { columnName: "sensor_id", stats: null },
-              { columnName: "aqi", stats: null },
-              { columnName: "pm25_ugm3", stats: null },
-              { columnName: "pm10_ugm3", stats: null },
+              { columnName: "time", stats: null, attlen: null },
+              { columnName: "sensor_id", stats: null, attlen: null },
+              { columnName: "aqi", stats: null, attlen: null },
+              { columnName: "pm25_ugm3", stats: null, attlen: null },
+              { columnName: "pm10_ugm3", stats: null, attlen: null },
             ],
             indexes: [],
           },
@@ -407,9 +422,9 @@ test("hypertable optimization includes index recommendations", async () => {
             reltuples: 100,
             relallvisible: 1,
             columns: [
-              { columnName: "id", stats: null },
-              { columnName: "name", stats: null },
-              { columnName: "location_type", stats: null },
+              { columnName: "id", stats: null, attlen: null },
+              { columnName: "name", stats: null, attlen: null },
+              { columnName: "location_type", stats: null, attlen: null },
             ],
             indexes: [],
           },
@@ -490,8 +505,8 @@ test("timed out queries are retried with exponential backoff up to maxRetries", 
           reltuples: 1_000_000,
           relallvisible: 1,
           columns: [
-            { columnName: "id", stats: null },
-            { columnName: "data", stats: null },
+            { columnName: "id", stats: null, attlen: null },
+            { columnName: "data", stats: null, attlen: null },
           ],
           indexes: [],
         }],
@@ -577,15 +592,18 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
           reltuples: 100_000,
           relallvisible: 1,
           columns: [
-            { columnName: "id", stats: null },
-            { columnName: "created_at", stats: null },
-            { columnName: "status", stats: null },
+            { columnName: "id", stats: null, attlen: null },
+            { columnName: "created_at", stats: null, attlen: null },
+            { columnName: "status", stats: null, attlen: null },
           ],
           indexes: [{
             indexName: "orders_multi_asc",
             relpages: 50,
             reltuples: 100_000,
             relallvisible: 1,
+            amname: "btree",
+            fillfactor: 0.9,
+            columns: [{ attlen: null }, { attlen: null }],
           }],
         }],
       });
