@@ -15,11 +15,13 @@ import {
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "./config.ts";
 import { env } from "./env.ts";
 import { Connectable } from "./sync/connectable.ts";
-import { Remote } from "./remote/remote.ts";
+import { Remote, StatisticsStrategy } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { RecentQuery } from "./sql/recent-query.ts";
 import { QueryHash } from "./sql/recent-query.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
+import { ExportedStats, StatisticsMode } from "@query-doctor/core";
+import { readFile } from "node:fs/promises";
 
 export class Runner {
   constructor(
@@ -44,7 +46,9 @@ export class Runner {
       // queries are already sourced from logs
       { disableQueryLoader: true }
     );
-    await remote.syncFrom(options.sourcePostgresUrl);
+    await remote.syncFrom(options.sourcePostgresUrl,
+      await Runner.determineStatsMode(options.statisticsPath)
+    );
     await remote.optimizer.finish;
     return new Runner(
       remote,
@@ -52,6 +56,33 @@ export class Runner {
       options.maxCost,
       new Set(options.ignoredQueryHashes ?? []),
     );
+  }
+
+  // CI either always pulls data from a file or sets a default. Never pulls from source
+  static async determineStatsMode(statsPath?: string): Promise<StatisticsStrategy> {
+    // TODO: grab recent stats from API if they exist
+    if (statsPath) {
+      const file = await readFile(statsPath);
+      const rawStats = JSON.parse(file.toString())
+      const stats = ExportedStats.array().parse(rawStats);
+      return {
+        type: "static",
+        stats: {
+          kind: "fromStatisticsExport",
+          source: { kind: "path", path: statsPath },
+          stats
+        }
+      }
+    }
+
+    return {
+      type: "static",
+      stats: {
+        kind: "fromAssumption",
+        reltuples: 10_000_000,
+        relpages: 200_000
+      }
+    }
   }
 
   async close() {
