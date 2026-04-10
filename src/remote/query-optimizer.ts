@@ -457,15 +457,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     switch (result.kind) {
       case "ok": {
         const indexRecommendations = mapIndexRecommandations(result);
-        const percentageReduction = costDifferencePercentage(
-          result.baseCost,
-          result.finalCost,
-        );
         const indexesUsed = Array.from(result.existingIndexes);
-        const costReductionPercentage = Math.trunc(
-          Math.abs(percentageReduction),
-        );
-        if (costReductionPercentage < MINIMUM_COST_CHANGE_PERCENTAGE) {
+        const reduction = costReductionPercentage(result.baseCost, result.finalCost);
+        if (reduction < MINIMUM_COST_CHANGE_PERCENTAGE) {
           this.onNoImprovements(
             recent,
             result.baseCost,
@@ -484,7 +478,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             state: "improvements_available",
             cost: result.baseCost,
             optimizedCost: result.finalCost,
-            costReductionPercentage,
+            costReductionPercentage: reduction,
             indexRecommendations,
             indexesUsed,
             explainPlan: result.baseExplainPlan,
@@ -558,16 +552,12 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const indexRecommendations = Array.from(result.newIndexes)
       .map((n) => result.triedIndexes.get(n))
       .filter((n) => n !== undefined);
-    const percentageReduction = costDifferencePercentage(
-      result.baseCost,
-      result.finalCost,
-    );
-    const costReductionPercentage = Math.trunc(Math.abs(percentageReduction));
+    const reduction = costReductionPercentage(result.baseCost, result.finalCost);
     return {
       state: "improvements_available",
       cost: result.baseCost,
       optimizedCost: result.finalCost,
-      costReductionPercentage,
+      costReductionPercentage: reduction,
       indexRecommendations,
       indexesUsed,
       explainPlan,
@@ -650,4 +640,12 @@ export function costDifferencePercentage(
   newVal: number,
 ): PercentageDifference {
   return ((newVal - oldVal) / oldVal) * 100;
+}
+
+/**
+ * The % at which cost was reduced. Returns a negative number
+ * if the cost increased
+ */
+export function costReductionPercentage(oldVal: number, newVal: number): number {
+  return Math.trunc(-costDifferencePercentage(oldVal, newVal));
 }
