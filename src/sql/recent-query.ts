@@ -8,6 +8,7 @@ import {
   PostgresQueryBuilder,
   PssRewriter,
   SQLCommenterTag,
+  type StatementType,
   type TableReference,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
@@ -46,6 +47,7 @@ export class RecentQuery {
     readonly hash: QueryHash,
     readonly seenAt: number,
     analysisSkipped = false,
+    statementType?: StatementType,
   ) {
     this.username = data.username;
     this.query = data.query;
@@ -57,7 +59,9 @@ export class RecentQuery {
     this.analysisSkipped = analysisSkipped;
 
     this.isSystemQuery = RecentQuery.isSystemQuery(tableReferences);
-    this.isSelectQuery = RecentQuery.isSelectQuery(data);
+    this.isSelectQuery = statementType !== undefined
+      ? statementType === "select"
+      : RecentQuery.isSelectQuery(data);
     this.isIntrospection = RecentQuery.isIntrospection(data);
     this.isTargetlessSelectQuery = this.isSelectQuery
       ? RecentQuery.isTargetlessSelectQuery(tableReferences)
@@ -123,6 +127,8 @@ export class RecentQuery {
       analysis.nudges,
       hash,
       seenAt,
+      false,
+      analysis.statementType,
     );
   }
 
@@ -147,7 +153,7 @@ export class RecentQuery {
   }
 
   static isSelectQuery(data: RawRecentQuery): boolean {
-    return /select/i.test(data.query);
+    return /^\s*select/i.test(data.query);
   }
 
   static isSystemQuery(referencedTables: TableReference[]): boolean {

@@ -46,6 +46,30 @@ test("isSelectQuery returns false for non-SELECT statements", () => {
   ).toBe(false);
 });
 
+test("isSelectQuery returns false for DML containing SELECT subqueries", () => {
+  expect(
+    RecentQuery.isSelectQuery(
+      makeRawQuery({
+        query: 'UPDATE "public"."oban_jobs" SET "state" = $1 FROM (SELECT id FROM t) s WHERE id = s.id',
+      }),
+    ),
+  ).toBe(false);
+  expect(
+    RecentQuery.isSelectQuery(
+      makeRawQuery({
+        query: "INSERT INTO archive SELECT * FROM users",
+      }),
+    ),
+  ).toBe(false);
+  expect(
+    RecentQuery.isSelectQuery(
+      makeRawQuery({
+        query: "DELETE FROM users WHERE EXISTS (SELECT 1 FROM banned)",
+      }),
+    ),
+  ).toBe(false);
+});
+
 // --- isSystemQuery ---
 
 test("isSystemQuery returns true for pg_ tables", () => {
@@ -192,4 +216,46 @@ test("analyze throws on unparseable SQL", async () => {
   await expect(
     RecentQuery.analyze(data, testHash, 3000),
   ).rejects.toThrow();
+});
+
+// --- statementType-based isSelectQuery via analyze ---
+
+test("analyze sets isSelectQuery=true for SELECT", async () => {
+  const data = makeRawQuery({ query: "SELECT * FROM users" });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.isSelectQuery).toBe(true);
+});
+
+test("analyze sets isSelectQuery=true for CTE with SELECT", async () => {
+  const data = makeRawQuery({
+    query: "WITH cte AS (SELECT id FROM users) SELECT * FROM cte",
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.isSelectQuery).toBe(true);
+});
+
+test("analyze sets isSelectQuery=false for UPDATE even with SELECT subquery", async () => {
+  const data = makeRawQuery({
+    query:
+      'UPDATE "public"."jobs" SET "state" = $1 FROM (SELECT id FROM "public"."jobs" WHERE state = $2 LIMIT 10) AS s1 WHERE "jobs".id = s1.id',
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.isSelectQuery).toBe(false);
+});
+
+test("analyze sets isSelectQuery=false for INSERT ... SELECT", async () => {
+  const data = makeRawQuery({
+    query: "INSERT INTO archive SELECT * FROM users WHERE active = false",
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.isSelectQuery).toBe(false);
+});
+
+test("analyze sets isSelectQuery=false for DELETE with EXISTS subquery", async () => {
+  const data = makeRawQuery({
+    query:
+      "DELETE FROM users WHERE EXISTS (SELECT 1 FROM banned WHERE banned.user_id = users.id)",
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.isSelectQuery).toBe(false);
 });
