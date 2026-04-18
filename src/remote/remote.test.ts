@@ -2,6 +2,7 @@ import { test, expect, vi, afterEach } from "vitest";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { Connectable } from "../sync/connectable.ts";
 import { Remote } from "./remote.ts";
+import { RemoteController } from "./remote-controller.ts";
 import { Pool } from "pg";
 
 import { ConnectionManager } from "../sync/connection-manager.ts";
@@ -427,6 +428,186 @@ test("schema loader detects changes after database modification", async () => {
         typeof diff.path === "string" && diff.path.includes("indexes")
       );
       expect(addedIndexDiff?.op, "Should detect index addition").toEqual("add");
+
+      await sourcePg.end();
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+});
+
+type StatusResult = {
+  status: string;
+  schema: { type: string; value: { tables: { tableName: { toString(): string } }[] } };
+  deltas: { type: string; value: unknown[] } | { type: string; value: string };
+};
+
+type DeltaOp = {
+  op: string;
+  path: string;
+  value?: { type?: string; tableName?: string };
+};
+
+function getTableNames(status: StatusResult): string[] {
+  return status.schema.value.tables.map((t) => t.tableName.toString());
+}
+
+function getDeltaOps(status: StatusResult): DeltaOp[] {
+  if (status.deltas.type !== "ok") {
+    throw new Error(`Expected deltas type "ok", got "${status.deltas.type}"`);
+  }
+  return status.deltas.value as DeltaOp[];
+}
+
+function getTableAddOps(deltas: DeltaOp[]): DeltaOp[] {
+  return deltas.filter((d) => d.op === "add" && d.path.startsWith("/tables/"));
+}
+
+function getAddedTableNames(deltas: DeltaOp[]): string[] {
+  return getTableAddOps(deltas)
+    .map((d) => String(d.value?.tableName))
+    .filter((name) => name !== "undefined");
+}
+
+test("getStatus returns latest schema after tables are added post-sync", async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              create table initial_table(id int);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const manager = ConnectionManager.forLocalDatabase();
+      await using remote = new Remote(target, manager);
+      const controller = new RemoteController(remote);
+
+      // Initial sync captures only initial_table
+      await controller.onFullSync(source);
+
+      const sourcePg = new Pool({ connectionString: source.toString() });
+
+      // Add many tables after the initial sync
+      const createStatements = Array.from(
+        { length: 50 },
+        (_, i) => `create table new_table_${i}(id int);`,
+      ).join("\n");
+      await sourcePg.query(createStatements);
+
+      // getStatus() triggers a poll which should refresh the schema
+      const status = await controller.getStatus() as StatusResult;
+
+      expect(status.schema.type).toEqual("ok");
+
+      const tableNames = getTableNames(status);
+
+      // Should contain both the original table and all new tables
+      expect(tableNames).toContain("initial_table");
+      for (let i = 0; i < 50; i++) {
+        expect(tableNames, `Should contain new_table_${i}`).toContain(`new_table_${i}`);
+      }
+
+      // onFullSync() internally calls remote.getStatus() which triggers
+      // the first poll and establishes the SchemaLoader baseline. So this
+      // second poll detects the 50 new tables as deltas.
+      const deltas = getDeltaOps(status);
+      const addedNames = getAddedTableNames(deltas);
+      expect(addedNames.length, "Should have 50 table-add deltas").toEqual(50);
+      for (let i = 0; i < 50; i++) {
+        expect(addedNames, `Deltas should include new_table_${i}`).toContain(`new_table_${i}`);
+      }
+      // Every delta should be an "add" op on /tables/*
+      expect(getTableAddOps(deltas).length).toEqual(deltas.length);
+
+      await sourcePg.end();
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+});
+
+test("schema and deltas stay consistent across multiple polls", async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create extension pg_stat_statements;
+              create table original(id int);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      const manager = ConnectionManager.forLocalDatabase();
+      await using remote = new Remote(target, manager);
+      const controller = new RemoteController(remote);
+      const sourcePg = new Pool({ connectionString: source.toString() });
+
+      await controller.onFullSync(source);
+
+      // --- Poll 1: no source changes since onFullSync's internal poll, deltas empty ---
+      const status1 = await controller.getStatus() as StatusResult;
+      expect(status1.schema.type).toEqual("ok");
+      expect(getTableNames(status1)).toContain("original");
+      expect(getDeltaOps(status1), "No changes since sync: deltas should be empty").toEqual([]);
+
+      // --- Add a table ---
+      await sourcePg.query("create table added_first(id int);");
+
+      // --- Poll 2: schema includes new table, deltas show exactly what was added ---
+      const status2 = await controller.getStatus() as StatusResult;
+      expect(status2.schema.type).toEqual("ok");
+      const names2 = getTableNames(status2);
+      expect(names2).toContain("original");
+      expect(names2).toContain("added_first");
+      const deltas2 = getDeltaOps(status2);
+      const added2 = getAddedTableNames(deltas2);
+      expect(added2, "Delta should contain exactly the added table").toEqual(["added_first"]);
+      // No other ops besides the table add
+      expect(getTableAddOps(deltas2).length).toEqual(deltas2.length);
+
+      // --- Poll 3: no changes, deltas empty, schema unchanged ---
+      const status3 = await controller.getStatus() as StatusResult;
+      expect(status3.schema.type).toEqual("ok");
+      const names3 = getTableNames(status3);
+      expect(names3).toContain("original");
+      expect(names3).toContain("added_first");
+      expect(names3).toHaveLength(names2.length);
+      expect(getDeltaOps(status3), "No changes since last poll: deltas should be empty").toEqual([]);
+
+      // --- Add another table ---
+      await sourcePg.query("create table added_second(id int);");
+
+      // --- Poll 4: deltas show only the second table, not the first ---
+      const status4 = await controller.getStatus() as StatusResult;
+      expect(status4.schema.type).toEqual("ok");
+      const names4 = getTableNames(status4);
+      expect(names4).toContain("original");
+      expect(names4).toContain("added_first");
+      expect(names4).toContain("added_second");
+      const deltas4 = getDeltaOps(status4);
+      const added4 = getAddedTableNames(deltas4);
+      expect(added4, "Delta should contain only the second added table").toEqual(["added_second"]);
+      expect(getTableAddOps(deltas4).length).toEqual(deltas4.length);
 
       await sourcePg.end();
     } finally {

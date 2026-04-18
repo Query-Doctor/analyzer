@@ -9,6 +9,11 @@ export class SchemaLoader {
   ) {}
 
   private readonly differ = new SchemaDiffer();
+  private latestSchema?: FullSchema;
+
+  getLatestSchema(): FullSchema | undefined {
+    return this.latestSchema;
+  }
 
   async poll() {
     const connector = this.sourceManager.getConnectorFor(this.connectable);
@@ -19,6 +24,7 @@ export class SchemaLoader {
   }
 
   update(fullSchema: FullSchema) {
+    this.latestSchema = fullSchema;
     return this.differ.put(this.connectable, fullSchema);
   }
 }

@@ -89,9 +89,17 @@ export class RemoteController {
     if (!this.syncResponse) {
       return { status: this.syncStatus };
     }
-    const { schema, meta } = this.syncResponse;
+    const { schema: initialSchema, meta } = this.syncResponse;
     const { queries, diffs, disabledIndexes, pgStatStatementsNotInstalled } =
       await this.remote.getStatus();
+
+    // After the poll above, SchemaLoader has the latest schema from the
+    // source DB. Use it instead of the potentially stale initial sync
+    // schema, so newly created tables are reflected immediately.
+    const latestSchema = this.remote.getLatestSchema();
+    const schema = latestSchema
+      ? { type: "ok" as const, value: latestSchema }
+      : initialSchema;
 
     let deltas: DeltasResult;
     if (diffs.status === "fulfilled") {
