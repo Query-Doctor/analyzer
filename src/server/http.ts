@@ -183,6 +183,12 @@ export async function createServer(
         const result = await remoteController.onFullSync(body.data.db);
         return reply.status(result.status).send(result.body);
       });
+    } else {
+      fastify.post("/postgres", async (_request, reply) => {
+        log.info(`[POST] /postgres (re-sync from SOURCE_DATABASE_URL)`, "http");
+        const result = await remoteController.onFullSync(sourceDb);
+        return reply.status(result.status).send(result.body);
+      });
     }
 
     fastify.get("/postgres", async (request, reply) => {

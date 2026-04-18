@@ -178,6 +178,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
     };
   }
 
+  getLatestSchema(): FullSchema | undefined {
+    return this.schemaLoader?.getLatestSchema();
+  }
+
   async getStatus() {
     const queries = this.optimizer.getQueries();
     const disabledIndexes = this.optimizer.getDisabledIndexes();
