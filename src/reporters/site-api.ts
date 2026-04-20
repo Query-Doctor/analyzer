@@ -276,12 +276,17 @@ export async function postToSiteApi(
   }
 }
 
+export type PreviousRunResult =
+  | { kind: "found"; run: PreviousRun }
+  | { kind: "not-found" }
+  | { kind: "error"; reason: string };
+
 export async function fetchPreviousRun(
   endpoint: string,
   repo: string,
   branch?: string,
   excludeId?: string,
-): Promise<PreviousRun | null> {
+): Promise<PreviousRunResult> {
   const params = new URLSearchParams({ repo });
   if (branch) params.set("branch", branch);
   if (excludeId) params.set("excludeId", excludeId);
@@ -294,15 +299,15 @@ export async function fetchPreviousRun(
     });
     if (response.status === 404) {
       console.log("No previous run found");
-      return null;
+      return { kind: "not-found" };
     }
     if (!response.ok) {
       console.warn(`Failed to fetch previous run: ${response.status}`);
-      return null;
+      return { kind: "error", reason: `HTTP ${response.status}` };
     }
-    return (await response.json()) as PreviousRun;
+    return { kind: "found", run: (await response.json()) as PreviousRun };
   } catch (err) {
     console.warn(`Failed to fetch previous run: ${err}`);
-    return null;
+    return { kind: "error", reason: `${err}` };
   }
 }
