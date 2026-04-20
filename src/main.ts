@@ -74,19 +74,27 @@ async function runInCI(
   if (siteApiEndpoint && repo) {
     const comparisonBranch =
       config.comparisonBranch ?? process.env.GITHUB_BASE_REF ?? branch;
-    previousRun = await fetchPreviousRun(
+    const result = await fetchPreviousRun(
       siteApiEndpoint,
       repo,
       comparisonBranch,
       runId ?? undefined,
     );
     reportContext.comparisonBranch = comparisonBranch;
-    if (!previousRun) {
+    if (result.kind === "found") {
+      previousRun = result.run;
+    } else if (result.kind === "not-found") {
       log.info(
         "main",
         `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
         `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
         `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
+      );
+    } else {
+      log.warn(
+        "main",
+        `Failed to fetch baseline for branch "${comparisonBranch}" (${result.reason}). ` +
+        `Comparison will be skipped. This is likely a transient Site API issue — re-run the check to retry.`,
       );
     }
   }
