@@ -62,8 +62,8 @@ export type ReportMetadata = {
 declare const s: unique symbol;
 
 export interface ReportStatistics {
-  /** Number of unique, non-filtered queries analyzed */
-  total: number;
+  /** Number of unique queries analyzed and uploaded to the site */
+  analyzed: number;
   /** Number of queries that matched the query pattern */
   matched: number;
   /** Number of queries that had an index recommendation */

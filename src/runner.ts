@@ -22,6 +22,7 @@ import { QueryHash } from "./sql/recent-query.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
 import { ExportedStats } from "@query-doctor/core";
 import { readFile } from "node:fs/promises";
+import { buildQueries } from "./reporters/site-api.ts";
 
 export class Runner {
   constructor(
@@ -182,7 +183,7 @@ export class Runner {
       });
 
     console.log(
-      `Matched ${this.remote.optimizer.validQueriesProcessed} queries`,
+      `Matched ${this.remote.optimizer.validQueriesProcessed} unique queries out of ${recentQueries.length} log entries`,
     );
 
     const recommendations: ReportIndexRecommendation[] = [];
@@ -247,7 +248,7 @@ export class Runner {
       }
     }
 
-    const total = countUploadableQueries(allResults);
+    const analyzed = buildQueries(allResults, config).length;
 
     const statistics = deriveIndexStatistics(filteredRecommendations);
     const timeElapsed = Date.now() - startDate.getTime();
@@ -256,7 +257,7 @@ export class Runner {
       recommendations: filteredRecommendations,
       queriesPastThreshold: filteredThresholdWarnings,
       queryStats: Object.freeze({
-        total,
+        analyzed,
         matched: this.remote.optimizer.validQueriesProcessed,
         optimized: filteredRecommendations.length,
         errored: optimizedQueries.filter((q) => q.optimization.state === "error").length,
@@ -274,12 +275,6 @@ export class Runner {
     console.log(`Generating report (${reporter.provider()})`);
     await reporter.report(reportContext);
   }
-}
-
-export const UPLOADABLE_STATES = new Set(["improvements_available", "no_improvement_found", "error"]);
-
-export function countUploadableQueries(results: OptimizedQuery[]): number {
-  return results.filter((q) => UPLOADABLE_STATES.has(q.optimization.state)).length;
 }
 
 export type QueryProcessResult = OptimizedQuery;

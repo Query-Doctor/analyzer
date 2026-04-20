@@ -1,64 +1,30 @@
 import { test, expect, describe } from "vitest";
-import { countUploadableQueries, UPLOADABLE_STATES } from "./runner.ts";
 import { buildQueries } from "./reporters/site-api.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
 
-function fakeQuery(state: string): OptimizedQuery {
+function fakeQuery(hash: string, state: string): OptimizedQuery {
   return {
+    hash,
+    query: "",
+    formattedQuery: "",
+    nudges: [],
+    tags: [],
+    tableReferences: [],
     optimization: { state },
-  } as OptimizedQuery;
+  } as unknown as OptimizedQuery;
 }
 
-describe("countUploadableQueries", () => {
-  test("counts improvements_available, no_improvement_found, and error", () => {
+describe("queryStats.analyzed source of truth", () => {
+  test("buildQueries().length counts exactly the queries reported to the site", () => {
     const results = [
-      fakeQuery("improvements_available"),
-      fakeQuery("no_improvement_found"),
-      fakeQuery("error"),
+      fakeQuery("a", "improvements_available"),
+      fakeQuery("b", "no_improvement_found"),
+      fakeQuery("c", "error"),
+      fakeQuery("d", "not_supported"),
+      fakeQuery("e", "timeout"),
+      fakeQuery("f", "waiting"),
+      fakeQuery("g", "optimizing"),
     ];
-    expect(countUploadableQueries(results)).toBe(3);
-  });
-
-  test("excludes not_supported, timeout, waiting, optimizing", () => {
-    const results = [
-      fakeQuery("not_supported"),
-      fakeQuery("timeout"),
-      fakeQuery("waiting"),
-      fakeQuery("optimizing"),
-    ];
-    expect(countUploadableQueries(results)).toBe(0);
-  });
-
-  test("counts only uploadable in a mixed set", () => {
-    const results = [
-      fakeQuery("improvements_available"),
-      fakeQuery("not_supported"),
-      fakeQuery("no_improvement_found"),
-      fakeQuery("timeout"),
-      fakeQuery("error"),
-      fakeQuery("waiting"),
-    ];
-    expect(countUploadableQueries(results)).toBe(3);
-  });
-});
-
-describe("UPLOADABLE_STATES matches buildQueries filter", () => {
-  test("buildQueries keeps exactly the same states as UPLOADABLE_STATES", () => {
-    const allStates = [
-      "improvements_available",
-      "no_improvement_found",
-      "error",
-      "not_supported",
-      "timeout",
-      "waiting",
-      "optimizing",
-    ];
-
-    for (const state of allStates) {
-      const results = [fakeQuery(state)];
-      const uploaded = buildQueries(results).length;
-      const counted = countUploadableQueries(results);
-      expect(counted, `state "${state}"`).toBe(uploaded);
-    }
+    expect(buildQueries(results).length).toBe(3);
   });
 });

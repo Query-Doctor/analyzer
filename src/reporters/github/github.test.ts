@@ -110,7 +110,7 @@ function makeContext(overrides: Partial<ReportContext> = {}): ReportContext {
     statisticsMode: { kind: "fromAssumption", reltuples: 10000 },
     recommendations: [],
     queriesPastThreshold: [],
-    queryStats: { total: 28, matched: 10, optimized: 2, errored: 0 },
+    queryStats: { analyzed: 28, matched: 10, optimized: 2, errored: 0 },
     statistics: [],
     metadata: { logSize: 1000, timeElapsed: 5000 },
     ...overrides,
@@ -323,18 +323,18 @@ describe("buildViewModel", () => {
 });
 
 describe("template rendering", () => {
-  test("renders queryStats.total as the query count", () => {
+  test("renders queryStats.analyzed as the query count", () => {
     const ctx = makeContext({
-      queryStats: { total: 5, matched: 3, optimized: 1, errored: 0 },
+      queryStats: { analyzed: 5, matched: 3, optimized: 1, errored: 0 },
       comparison: makeComparison(),
     });
     const output = renderTemplate(ctx);
     expect(output).toContain("5 queries analyzed");
   });
 
-  test("renders queryStats.total in no-comparison mode", () => {
+  test("renders queryStats.analyzed in no-comparison mode", () => {
     const ctx = makeContext({
-      queryStats: { total: 3, matched: 1, optimized: 0, errored: 0 },
+      queryStats: { analyzed: 3, matched: 1, optimized: 0, errored: 0 },
     });
     const output = renderTemplate(ctx);
     expect(output).toContain("3 queries analyzed");
