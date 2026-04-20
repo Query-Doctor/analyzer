@@ -11,7 +11,30 @@ import {
 } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
 import { ExportedStats, Statistics } from "@query-doctor/core";
-import type { Connectable } from "../sync/connectable.ts";
+import { type Connectable } from "../sync/connectable.ts";
+import { connectToSource } from "../sql/postgresjs.ts";
+
+async function resolveDockerHost(db: Connectable): Promise<Connectable> {
+  if (!db.isLocalhost()) {
+    return db;
+  }
+  const dockerDb = db.escapeDocker();
+  if (dockerDb.url.hostname === db.url.hostname) {
+    return db;
+  }
+  const pg = connectToSource(dockerDb);
+  try {
+    await pg.exec("SELECT 1");
+    log.info(`Resolved localhost to ${dockerDb.url.hostname} for docker escape`, "remote-controller");
+    return dockerDb;
+  } catch {
+    log.info(`${dockerDb.url.hostname} unreachable, falling back to ${db.url.hostname}`, "remote-controller");
+    return db;
+  } finally {
+    // @ts-expect-error | close is added in wrapPgPool
+    await pg.close();
+  }
+}
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -128,10 +151,11 @@ export class RemoteController {
   }
 
   async onFullSync(db: Connectable): Promise<HandlerResult> {
-    this.lastSourceDb = db;
+    const resolvedDb = await resolveDockerHost(db);
+    this.lastSourceDb = resolvedDb;
     try {
       this.syncStatus = SyncStatus.IN_PROGRESS;
-      this.syncResponse = await this.remote.syncFrom(db, {
+      this.syncResponse = await this.remote.syncFrom(resolvedDb, {
         type: "pullFromSource",
       });
       this.syncStatus = SyncStatus.COMPLETED;
