@@ -89,6 +89,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
   async syncFrom(
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
+    options?: {
+      events?: {
+        onGetQueries?: (queryCount: number) => void;
+        onDatabaseInfo?: (info: string) => void;
+      }
+    }
   ): Promise<
     {
       meta: { version?: string; inferredStatsStrategy?: InferredStatsStrategy };
@@ -111,9 +117,15 @@ export class Remote extends EventEmitter<RemoteEvents> {
       .allSettled([
         // This potentially creates a lot of connections to the source
         this.pipeSchema(this.optimizingDbUDRL, source),
-        this.getRecentQueries(source),
+        this.getRecentQueries(source).then(r => {
+          options?.events?.onGetQueries?.(r.length)
+          return r;
+        }),
         this.getFullSchema(source),
-        this.getDatabaseInfo(source),
+        this.getDatabaseInfo(source).then(r => {
+          options?.events?.onDatabaseInfo?.(r.serverVersion)
+          return r;
+        }),
       ]);
 
     if (restoreResult.status === "rejected") {
