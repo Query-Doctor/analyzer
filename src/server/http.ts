@@ -191,20 +191,14 @@ export async function createServer(
       });
     }
 
-    fastify.get("/postgres", async (request, reply) => {
+    fastify.get("/postgres", {
+      wsHandler: (socket) => {
+        remoteController.onWebsocketConnection(socket);
+      },
+    }, async (request, reply) => {
       log.info(`[GET] /postgres`, "http");
       const result = await remoteController.getStatus();
       return reply.send(result);
-    });
-
-    fastify.register(async function(app) {
-      app.get(
-        "/postgres/ws",
-        { websocket: true },
-        (socket, _request) => {
-          remoteController.onWebsocketConnection(socket);
-        },
-      );
     });
 
     fastify.post("/postgres/indexes", async (request, reply) => {

@@ -1,4 +1,4 @@
-import type { WebSocket } from "ws";
+import { WebSocket } from "ws";
 import { env } from "../env.ts";
 import { log } from "../log.ts";
 import { RemoteSyncRequest } from "./remote.dto.ts";
@@ -66,6 +66,8 @@ export class RemoteController {
   ) {
     this.hookUpWebsockets(remote);
   }
+
+  sendSyncLog = this.makeLoggingHandler("sync").bind(this)
 
   private hookUpWebsockets(remote: Remote) {
     const onQueryProcessed = this.eventOnQueryProcessed.bind(this);
@@ -151,14 +153,33 @@ export class RemoteController {
   }
 
   async onFullSync(db: Connectable): Promise<HandlerResult> {
-    const resolvedDb = await resolveDockerHost(db);
-    this.lastSourceDb = resolvedDb;
+    let resolvedDb: Connectable;
     try {
+      this.sendSyncLog("Reaching out to database...");
+      resolvedDb = await resolveDockerHost(db);
+      this.lastSourceDb = resolvedDb;
+      this.sendSyncLog(`Connected to ${resolvedDb.toString()}`);
+    } catch (error) {
+      this.sendSyncLog(`Could not resolve the connection string to a working database`);
+      throw error;
+    }
+    try {
+      this.sendSyncLog("Starting sync");
       this.syncStatus = SyncStatus.IN_PROGRESS;
       this.syncResponse = await this.remote.syncFrom(resolvedDb, {
         type: "pullFromSource",
+      }, {
+        events: {
+          onDatabaseInfo: (info) => {
+            this.sendSyncLog(info)
+          },
+          onGetQueries: (count) => {
+            this.sendSyncLog(`Found ${count} queries in the database.`)
+          }
+        }
       });
       this.syncStatus = SyncStatus.COMPLETED;
+      this.sendSyncLog("Successfully synced!");
       const { schema, meta } = this.syncResponse;
       const { queries, pgStatStatementsNotInstalled } = await this.remote
         .getStatus();
@@ -175,6 +196,7 @@ export class RemoteController {
       };
     } catch (error) {
       this.syncStatus = SyncStatus.FAILED;
+      this.sendSyncLog("Sync failed");
       console.error(error);
       return {
         status: 500,
@@ -294,9 +316,8 @@ export class RemoteController {
     });
   }
 
-  private makeLoggingHandler(process: "pg_restore" | "pg_dump") {
+  private makeLoggingHandler(process: "pg_restore" | "pg_dump" | (string & {})) {
     return (logLine: string) => {
-      console.log(logLine);
       this.sendToSocket({
         type: "log",
         process,
@@ -323,8 +344,10 @@ export class RemoteController {
   }
 
   private sendToSocket(data: unknown) {
-    if (this.socket?.readyState === 1 /* OPEN */) {
+    if (this.socket?.readyState === WebSocket.OPEN) {
       this.socket.send(JSON.stringify(data));
+    } else if (env.DEBUG) {
+      console.log("Failed to send data to websocket because it has state", this.socket?.readyState)
     }
   }
 }
