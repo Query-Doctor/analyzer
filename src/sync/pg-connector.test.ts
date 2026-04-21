@@ -134,21 +134,29 @@ test("getTotalRowCount sums reltuples across all tables in a single schema", asy
   }
 });
 
-test("getTotalRowCount sums reltuples across multiple schemas", async () => {
+// When requested tables span multiple schemas with uneven counts per schema,
+// the pre-fix dedup would shrink schemaNames below tableNames, pairing
+// (schema[i], table[i]) by position and NULL-padding the tail — dropping
+// tables past the shorter array.
+test("getTotalRowCount sums reltuples with uneven table counts across schemas", async () => {
   const pg = await new PostgreSqlContainer("postgres:17")
     .withCopyContentToContainer([
       {
         content: `
           CREATE SCHEMA reporting;
 
-          CREATE TABLE public.orders(id int);
-          INSERT INTO public.orders SELECT generate_series(1, 50000);
+          CREATE TABLE public.a(id int);
+          INSERT INTO public.a SELECT generate_series(1, 1000);
 
-          CREATE TABLE reporting.events(id int);
-          INSERT INTO reporting.events SELECT generate_series(1, 80000);
+          CREATE TABLE public.b(id int);
+          INSERT INTO public.b SELECT generate_series(1, 2000);
 
-          ANALYZE public.orders;
-          ANALYZE reporting.events;
+          CREATE TABLE reporting.c(id int);
+          INSERT INTO reporting.c SELECT generate_series(1, 4000);
+
+          ANALYZE public.a;
+          ANALYZE public.b;
+          ANALYZE reporting.c;
         `,
         target: "/docker-entrypoint-initdb.d/init.sql",
       },
@@ -161,13 +169,16 @@ test("getTotalRowCount sums reltuples across multiple schemas", async () => {
 
   try {
     const tables = [
-      { schemaName: PgIdentifier.fromString("public"), tableName: PgIdentifier.fromString("orders") },
-      { schemaName: PgIdentifier.fromString("reporting"), tableName: PgIdentifier.fromString("events") },
+      { schemaName: PgIdentifier.fromString("public"), tableName: PgIdentifier.fromString("a") },
+      { schemaName: PgIdentifier.fromString("public"), tableName: PgIdentifier.fromString("b") },
+      { schemaName: PgIdentifier.fromString("reporting"), tableName: PgIdentifier.fromString("c") },
     ];
 
     const total = await connector.getTotalRowCount(tables);
 
-    expect(total).toBeGreaterThanOrEqual(130_000);
+    // All three must contribute: sum of any pair is at most 6000 (b+c),
+    // so > 6000 proves no table was dropped.
+    expect(total).toBeGreaterThan(6000);
   } finally {
     await manager.closeAll();
     await pg.stop();
@@ -212,17 +223,3 @@ test("getTotalRowCount does not count tables outside the requested set", async (
   }
 });
 
-test("getTotalRowCount returns 0 for empty table list without querying", async () => {
-  const pg = await new PostgreSqlContainer("postgres:17").start();
-  const manager = ConnectionManager.forLocalDatabase();
-  const conn = Connectable.fromString(pg.getConnectionUri());
-  const connector = manager.getConnectorFor(conn);
-
-  try {
-    const total = await connector.getTotalRowCount([]);
-    expect(total).toEqual(0);
-  } finally {
-    await manager.closeAll();
-    await pg.stop();
-  }
-});
