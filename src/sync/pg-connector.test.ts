@@ -127,7 +127,7 @@ test("getTotalRowCount sums reltuples across all tables in a single schema", asy
 
     const total = await connector.getTotalRowCount(tables);
 
-    expect(total).toBeGreaterThanOrEqual(300_000);
+    expect(total).toBe(77 + 300_000);
   } finally {
     await manager.closeAll();
     await pg.stop();
@@ -176,9 +176,7 @@ test("getTotalRowCount sums reltuples with uneven table counts across schemas", 
 
     const total = await connector.getTotalRowCount(tables);
 
-    // All three must contribute: sum of any pair is at most 6000 (b+c),
-    // so > 6000 proves no table was dropped.
-    expect(total).toBeGreaterThan(6000);
+    expect(total).toBe(1000 + 2000 + 4000);
   } finally {
     await manager.closeAll();
     await pg.stop();
@@ -215,8 +213,7 @@ test("getTotalRowCount does not count tables outside the requested set", async (
 
     const total = await connector.getTotalRowCount(tables);
 
-    expect(total).toBeGreaterThanOrEqual(1000);
-    expect(total).toBeLessThan(500_000);
+    expect(total).toBe(1000);
   } finally {
     await manager.closeAll();
     await pg.stop();
@@ -271,11 +268,7 @@ test("getTotalRowCount matches composite (schema, table) pairs, not the cross-pr
 
     const total = await connector.getTotalRowCount(tables);
 
-    // Correct total: 100 + 200 = 300. Cartesian would also count public.y
-    // (50000) and reporting.x (80000). < 1000 cleanly rejects the cartesian
-    // shape, which could not produce a value this small given the non-requested
-    // tables.
-    expect(total).toBeLessThan(1000);
+    expect(total).toBe(100 + 200);
   } finally {
     await manager.closeAll();
     await pg.stop();
@@ -313,8 +306,7 @@ test("getTotalRowCount does not double-count when a table appears twice in the i
 
     const total = await connector.getTotalRowCount([pair, pair]);
 
-    expect(total).toBeGreaterThanOrEqual(5000);
-    expect(total).toBeLessThan(10000);
+    expect(total).toBe(5000);
   } finally {
     await manager.closeAll();
     await pg.stop();
