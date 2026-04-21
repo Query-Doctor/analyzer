@@ -429,20 +429,17 @@ ORDER BY
   ): Promise<number> {
     if (tables.length === 0) return 0;
 
-    const schemaNames = Array.from(
-      new Set(tables.map((t) => t.schemaName.toString())),
-    );
-    const tableNames = Array.from(
-      new Set(tables.map((t) => t.tableName.toString())),
-    );
+    const schemaNames = tables.map((t) => t.schemaName.toString());
+    const tableNames = tables.map((t) => t.tableName.toString());
 
     const results = await this.db.exec<{ total_rows: string }>(
       `SELECT COALESCE(SUM(c.reltuples), 0)::bigint as total_rows
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
-       JOIN unnest($1::text[], $2::text[]) AS t(schema_name, table_name)
-         ON n.nspname = t.schema_name AND c.relname = t.table_name
-       WHERE c.relkind IN ('r', 'm')`,
+       WHERE c.relkind IN ('r', 'm')
+         AND (n.nspname, c.relname) = ANY(
+           SELECT s, t FROM unnest($1::text[], $2::text[]) AS x(s, t)
+         )`,
       [schemaNames, tableNames],
     );
     return Number(results[0]?.total_rows ?? 0);
