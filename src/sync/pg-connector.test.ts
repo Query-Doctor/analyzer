@@ -223,3 +223,100 @@ test("getTotalRowCount does not count tables outside the requested set", async (
   }
 });
 
+// Guards against a cartesian re-implementation of the fix, e.g.
+//   n.nspname = ANY($1) AND c.relname = ANY($2)
+// With (public.x, public.y, reporting.x, reporting.y) all present and only
+// (public.x, reporting.y) requested, the cartesian form would wrongly count
+// public.y and reporting.x because both schemas are in $1 and both names are
+// in $2. Composite-pair matching must check the (schema, name) pair, not the
+// cross-product of the two arrays.
+test("getTotalRowCount matches composite (schema, table) pairs, not the cross-product", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCopyContentToContainer([
+      {
+        content: `
+          CREATE SCHEMA reporting;
+
+          CREATE TABLE public.x(id int);
+          INSERT INTO public.x SELECT generate_series(1, 100);
+
+          CREATE TABLE public.y(id int);
+          INSERT INTO public.y SELECT generate_series(1, 50000);
+
+          CREATE TABLE reporting.x(id int);
+          INSERT INTO reporting.x SELECT generate_series(1, 80000);
+
+          CREATE TABLE reporting.y(id int);
+          INSERT INTO reporting.y SELECT generate_series(1, 200);
+
+          ANALYZE public.x;
+          ANALYZE public.y;
+          ANALYZE reporting.x;
+          ANALYZE reporting.y;
+        `,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const connector = manager.getConnectorFor(conn);
+
+  try {
+    const tables = [
+      { schemaName: PgIdentifier.fromString("public"), tableName: PgIdentifier.fromString("x") },
+      { schemaName: PgIdentifier.fromString("reporting"), tableName: PgIdentifier.fromString("y") },
+    ];
+
+    const total = await connector.getTotalRowCount(tables);
+
+    // Correct total: 100 + 200 = 300. Cartesian would also count public.y
+    // (50000) and reporting.x (80000). < 1000 cleanly rejects the cartesian
+    // shape, which could not produce a value this small given the non-requested
+    // tables.
+    expect(total).toBeLessThan(1000);
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+// Guards against a re-implementation that swaps ANY(set) for a JOIN. A JOIN
+// against an unnest'd set of duplicates multiplies each catalog row by the
+// number of matching input pairs, double-counting reltuples. ANY(set) is a
+// boolean predicate and should count each pg_class row at most once.
+test("getTotalRowCount does not double-count when a table appears twice in the input", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCopyContentToContainer([
+      {
+        content: `
+          CREATE TABLE t(id int);
+          INSERT INTO t SELECT generate_series(1, 5000);
+
+          ANALYZE t;
+        `,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const connector = manager.getConnectorFor(conn);
+
+  try {
+    const pair = {
+      schemaName: PgIdentifier.fromString("public"),
+      tableName: PgIdentifier.fromString("t"),
+    };
+
+    const total = await connector.getTotalRowCount([pair, pair]);
+
+    expect(total).toBeGreaterThanOrEqual(5000);
+    expect(total).toBeLessThan(10000);
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
