@@ -12,6 +12,7 @@ import {
   OptimizeResult,
   PgIdentifier,
   PostgresExplainStage,
+  ComputedStats,
   PostgresQueryBuilder,
   PostgresTransaction,
   PostgresVersion,
@@ -102,6 +103,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   get statisticsMode(): StatisticsMode {
     return this.target?.statistics.mode ?? QueryOptimizer.defaultStatistics;
+  }
+
+  get computedStats(): ComputedStats | undefined {
+    return this.target?.statistics.computedStats;
   }
 
   getExistingIndexes(): IndexedTable[] {

@@ -141,6 +141,8 @@ export class RemoteController {
         : { type: "ok", value: queries },
       disabledIndexes: { type: "ok", value: disabledIndexes },
       deltas,
+      statisticsMode: this.remote.optimizer.statisticsMode,
+      computedStats: this.remote.optimizer.computedStats,
     };
   }
 
@@ -192,6 +194,8 @@ export class RemoteController {
           queries: pgStatStatementsNotInstalled
             ? this.pgStatStatementsNotInstalledError()
             : { type: "ok", value: queries },
+          statisticsMode: this.remote.optimizer.statisticsMode,
+          computedStats: this.remote.optimizer.computedStats,
         },
       };
     } catch (error) {

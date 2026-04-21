@@ -54,7 +54,7 @@ async function runInCI(
   // POST to Site API first so we get the run ID for the PR comment link
   let runId: string | null = null;
   if (siteApiEndpoint) {
-    runId = await postToSiteApi(siteApiEndpoint, queries);
+    runId = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
   }
 
   // Build the run URL and query base URL for the PR comment

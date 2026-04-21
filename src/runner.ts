@@ -254,6 +254,7 @@ export class Runner {
     const timeElapsed = Date.now() - startDate.getTime();
     const reportContext: ReportContext = {
       statisticsMode: this.remote.optimizer.statisticsMode,
+      computedStats: this.remote.optimizer.computedStats,
       recommendations: filteredRecommendations,
       queriesPastThreshold: filteredThresholdWarnings,
       queryStats: Object.freeze({

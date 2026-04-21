@@ -1,0 +1,9 @@
+services:
+  analyzer:
+    build: .
+    ports:
+      - 2345:2345
+    env_file:
+      - .env
+    volumes:
+      - ../query-doctor/packages/core/dist:/app/node_modules/@query-doctor/core/dist
