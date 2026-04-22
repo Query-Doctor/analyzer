@@ -8,6 +8,7 @@
     "start:dev": "node --import tsx --watch src/main.ts",
     "dev": "node --env-file=.env --import tsx --watch src/main.ts",
     "test": "vitest",
+    "bench": "vitest bench",
     "typecheck": "tsc --noEmit",
     "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs --packages=external && cp src/reporters/github/success.md.j2 src/sync/schema_dump.sql dist/"
   },
