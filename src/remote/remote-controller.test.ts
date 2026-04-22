@@ -42,6 +42,7 @@ test("controller syncs correctly", async () => {
       const pool = new Pool({
         connectionString: innerRemote.optimizingDb.toString(),
       });
+      pool.on("error", () => {});
       const tablesAfter =
         await pool.query("select tablename from pg_tables where schemaname = 'public'");
       expect(tablesAfter.rowCount).toEqual(1);
@@ -92,6 +93,7 @@ test("creating an index via endpoint adds it to the optimizing db", async () => 
       const pool = new Pool({
         connectionString: innerRemote.optimizingDb.toString(),
       });
+      pool.on("error", () => {});
 
       // Verify no indexes exist initially
       const indexesBefore =

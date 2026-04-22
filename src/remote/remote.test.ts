@@ -96,6 +96,8 @@ test("syncs correctly", async () => {
       const pool = new Pool({
         connectionString: remote.optimizingDb.toString(),
       });
+      // Swallow late idle-client FATALs (57P01) when the container stops after pool.end()
+      pool.on("error", () => {});
 
       const indexesAfter =
         await pool.query("select indexname from pg_indexes where schemaname = 'public'");
@@ -394,6 +396,7 @@ test("schema loader detects changes after database modification", async () => {
       await using remote = new Remote(target, manager);
 
       const sourcePg = new Pool({ connectionString: source.toString() });
+      sourcePg.on("error", () => {});
 
       await remote.syncFrom(source);
       await remote.optimizer.finish;
@@ -497,6 +500,7 @@ test("getStatus returns latest schema after tables are added post-sync", async (
       await controller.onFullSync(source);
 
       const sourcePg = new Pool({ connectionString: source.toString() });
+      sourcePg.on("error", () => {});
 
       // Add many tables after the initial sync
       const createStatements = Array.from(
@@ -561,6 +565,7 @@ test("schema and deltas stay consistent across multiple polls", async () => {
       await using remote = new Remote(target, manager);
       const controller = new RemoteController(remote);
       const sourcePg = new Pool({ connectionString: source.toString() });
+      sourcePg.on("error", () => {});
 
       await controller.onFullSync(source);
 
