@@ -14,6 +14,7 @@ import {
 import { parse } from "@libpg-query/parser";
 import z from "zod";
 import type { LiveQueryOptimization } from "../remote/optimization.ts";
+import { computeDisplayQuery } from "./display-query.ts";
 
 /**
  * Constructed by syncing with {@link SegmentedQueryCache.sync}
@@ -24,6 +25,7 @@ export class RecentQuery {
   private static rewriter = new PssRewriter();
 
   readonly formattedQuery: string;
+  readonly displayQuery?: string;
   readonly username: string;
   readonly query: string;
   readonly meanTime: number;
@@ -52,6 +54,7 @@ export class RecentQuery {
     this.username = data.username;
     this.query = data.query;
     this.formattedQuery = data.formattedQuery;
+    this.displayQuery = data.displayQuery;
     this.meanTime = data.meanTime;
     this.calls = data.calls;
     this.rows = data.rows;
@@ -119,8 +122,9 @@ export class RecentQuery {
     );
     const analysis = await analyzer.analyze(formattedQuery);
     const query = this.rewriteQuery(analysis.queryWithoutTags);
+    const displayQuery = await computeDisplayQuery(query);
     return new RecentQuery(
-      { ...data, query, formattedQuery },
+      { ...data, query, formattedQuery, displayQuery },
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
@@ -180,6 +184,7 @@ export type RawRecentQuery = {
   username: string;
   query: string;
   formattedQuery: string;
+  displayQuery?: string;
   meanTime: number;
   calls: string;
   rows: string;
