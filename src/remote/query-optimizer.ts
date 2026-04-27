@@ -1,4 +1,6 @@
 import EventEmitter from "node:events";
+import * as prettier from "prettier";
+import prettierPluginSql from "prettier-plugin-sql";
 import { OptimizedQuery, QueryHash, RecentQuery } from "../sql/recent-query.ts";
 import type { LiveQueryOptimization } from "./optimization.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
@@ -17,6 +19,8 @@ import {
   PostgresVersion,
   Statistics,
   StatisticsMode,
+  evaluateNudgeRewriteCosts,
+  bestRewriteImprovement,
 } from "@query-doctor/core";
 import { Connectable } from "../sync/connectable.ts";
 import { parse } from "@libpg-query/parser";
@@ -297,11 +301,52 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           break;
         }
         this._validQueriesProcessed++;
-        const optimization = await this.optimizeQuery(
+        let optimization = await this.optimizeQuery(
           optimized,
           this.target,
           { timeoutMs: this.calculateTimeoutRetryDelay(optimized) },
         );
+
+        // Evaluate rewrite costs and promote optimization state
+        if (optimized.nudges?.some((n) => n.rewrite) && "cost" in optimization) {
+          const updatedNudges = await evaluateNudgeRewriteCosts(
+            optimized.nudges,
+            optimization.cost,
+            (q) => this.target!.optimizer.explainCost(q),
+          );
+          if (updatedNudges) {
+            for (const nudge of updatedNudges) {
+              if (nudge.rewrite?.query) {
+                try {
+                  nudge.rewrite.query = await prettier.format(
+                    nudge.rewrite.query,
+                    {
+                      parser: "sql",
+                      plugins: [prettierPluginSql],
+                      language: "postgresql",
+                      keywordCase: "upper",
+                    },
+                  );
+                } catch {}
+              }
+            }
+            Object.assign(optimized, { nudges: updatedNudges });
+
+            const best = bestRewriteImprovement(updatedNudges);
+            if (best && optimization.state === "no_improvement_found") {
+              optimization = {
+                state: "improvements_available",
+                cost: optimization.cost,
+                optimizedCost: best.rewrittenCost,
+                costReductionPercentage: best.percentImprovement,
+                indexRecommendations: [],
+                indexesUsed: optimization.indexesUsed,
+                explainPlan: optimization.explainPlan,
+              };
+            }
+          }
+        }
+
         this.queriedSinceVacuum++;
         if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
           await this.vacuum();
