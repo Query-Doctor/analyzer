@@ -52,6 +52,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private target?: Target;
   private semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
   private _finish = Promise.withResolvers<void>();
+  private _inflight: Promise<void> = Promise.resolve();
 
   private _validQueriesProcessed = 0;
   private _invalidQueries = 0;
@@ -156,6 +157,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this._allQueries = 0;
     this._invalidQueries = 0;
     this._validQueriesProcessed = 0;
+  }
+
+  async drain(): Promise<void> {
+    this.stop();
+    await this._inflight;
   }
 
   async restart({ clearQueries } = { clearQueries: false }) {
@@ -297,21 +303,24 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
           break;
         }
         this._validQueriesProcessed++;
-        const optimization = await this.optimizeQuery(
-          optimized,
-          this.target,
-          { timeoutMs: this.calculateTimeoutRetryDelay(optimized) },
-        );
-        this.queriedSinceVacuum++;
-        if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
-          await this.vacuum();
-          this.queriedSinceVacuum = 0;
-        }
-
-        this.queries.set(
-          optimized.hash,
-          optimized.withOptimization(optimization),
-        );
+        // mark the latest inflight request so it can be awaited in drain()
+        this._inflight = (async () => {
+          const optimization = await this.optimizeQuery(
+            optimized,
+            this.target!,
+            { timeoutMs: this.calculateTimeoutRetryDelay(optimized) },
+          );
+          this.queriedSinceVacuum++;
+          if (this.queriedSinceVacuum > QueryOptimizer.vacuumThreshold) {
+            await this.vacuum();
+            this.queriedSinceVacuum = 0;
+          }
+          this.queries.set(
+            optimized.hash,
+            optimized.withOptimization(optimization),
+          );
+        })();
+        await this._inflight;
       }
     } finally {
       this.running = false;

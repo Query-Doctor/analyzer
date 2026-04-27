@@ -255,9 +255,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
     this.generation = nextGeneration;
     this.optimizingDbUDRL = this.optimizingDbUDRL.withDatabaseName(nextDbName);
     this.optimizer.updateConnectable(this.optimizingDbUDRL);
+    await this.optimizer.drain();
     // these cannot be run in the same `exec` block as that implicitly creates transactions
     await baseDb.exec(
-      `drop database if exists ${prevDbName} with (force);`,
+      `drop database if exists ${prevDbName};`,
     );
   }
 
