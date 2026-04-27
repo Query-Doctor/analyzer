@@ -316,10 +316,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
     if (totalRows < Remote.STATS_ROWS_THRESHOLD) {
       log.info(
-        `Total rows (${totalRows}) below threshold, using default 10k stats`,
+        `Total rows (${totalRows}) below threshold, using default stats`,
         "remote",
       );
-      return { mode: Statistics.defaultStatsMode, strategy: "10k" };
+      return { mode: Statistics.defaultStatsMode, strategy: "default" };
     }
 
     log.info(
@@ -438,7 +438,7 @@ export type StatisticsStrategy = {
   stats: StatisticsMode;
 };
 
-export type InferredStatsStrategy = "10k" | "fromSource" | "imported";
+export type InferredStatsStrategy = "default" | "fromSource" | "imported";
 
 type StatsResult = {
   mode: StatisticsMode;
