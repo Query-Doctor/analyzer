@@ -42,10 +42,7 @@ type Target = {
 
 export class QueryOptimizer extends EventEmitter<EventMap> {
   private static readonly MAX_CONCURRENCY = 1;
-  private static readonly defaultStatistics: StatisticsMode = {
-    kind: "fromAssumption",
-    reltuples: 10_000,
-  };
+  private static readonly defaultStatistics: StatisticsMode = Statistics.defaultStatsMode;
   private readonly queries = new Map<QueryHash, OptimizedQuery>();
   private readonly disabledIndexes = new DisabledIndexes();
 

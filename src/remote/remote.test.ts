@@ -250,7 +250,7 @@ test("infers '10k' stats strategy when row count is below threshold", async () =
       const result = await remote.syncFrom(source);
       await remote.optimizer.finish;
 
-      expect(result.meta.inferredStatsStrategy).toEqual("10k");
+      expect(result.meta.inferredStatsStrategy).toEqual("default");
       await remote.cleanup();
     } finally {
       await Promise.all([sourceDb.stop(), targetDb.stop()]);
