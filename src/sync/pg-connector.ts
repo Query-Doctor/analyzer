@@ -23,7 +23,6 @@ import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
-import { ConnectionManager } from "./connection-manager.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

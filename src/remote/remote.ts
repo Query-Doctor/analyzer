@@ -250,7 +250,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
     const nextDbName = this.generationDbName(nextGeneration);
     log.info(`Creating new generation database: ${nextDbName}`, "remote");
     const baseDb = this.manager.getOrCreateConnection(this.baseDbURL);
-    await baseDb.exec(`create database ${nextDbName};`);
+    try {
+      await baseDb.exec(`create database ${nextDbName};`);
+    } catch (err) {
+      // it's ok if the db already exists (previously crashed)
+    }
     const prevDbName = this.generationDbName(prevGeneration);
     this.generation = nextGeneration;
     this.optimizingDbUDRL = this.optimizingDbUDRL.withDatabaseName(nextDbName);
@@ -434,7 +438,7 @@ export type StatisticsStrategy = {
   stats: StatisticsMode;
 };
 
-export type InferredStatsStrategy = "10k" | "fromSource";
+export type InferredStatsStrategy = "10k" | "fromSource" | "imported";
 
 type StatsResult = {
   mode: StatisticsMode;
