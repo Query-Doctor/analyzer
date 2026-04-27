@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import type { IndexRecommendation, Nudge, SQLCommenterTag, TableReference } from "@query-doctor/core";
+import type { ComputedStats, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
 
@@ -11,6 +11,8 @@ interface CiRunPayload {
   prNumber?: number;
   runId: string;
   queries: CiQueryPayload[];
+  statisticsMode?: StatisticsMode;
+  computedStats?: ComputedStats;
 }
 
 export interface CiQueryPayload {
@@ -243,6 +245,8 @@ export function compareRuns(
 export async function postToSiteApi(
   endpoint: string,
   queries: CiQueryPayload[],
+  statisticsMode?: StatisticsMode,
+  computedStats?: ComputedStats,
 ): Promise<string | null> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
@@ -251,6 +255,8 @@ export async function postToSiteApi(
     prNumber: github.context.payload.pull_request?.number,
     runId: process.env.GITHUB_RUN_ID ?? "",
     queries,
+    statisticsMode,
+    computedStats,
   };
 
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs`;

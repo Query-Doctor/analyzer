@@ -1,4 +1,4 @@
-import type { IndexIdentifier, StatisticsMode } from "@query-doctor/core";
+import type { ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
 import type { RunComparison } from "./site-api.ts";
 
 export interface Reporter {
@@ -74,6 +74,7 @@ export interface ReportStatistics {
 
 export interface ReportContext {
   statisticsMode: StatisticsMode;
+  computedStats?: ComputedStats;
   recommendations: ReportIndexRecommendation[];
   queriesPastThreshold: ReportQueryCostWarning[];
   queryStats: Readonly<ReportStatistics>;
