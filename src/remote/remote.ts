@@ -331,7 +331,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
     const stats = await Statistics.dumpStats(
       pg,
       PostgresVersion.parse("17"),
-      "full",
     );
     return { kind: "fromStatisticsExport", source: { kind: "inline" }, stats };
   }
@@ -434,7 +433,7 @@ export type StatisticsStrategy = {
   stats: StatisticsMode;
 };
 
-export type InferredStatsStrategy = "10k" | "fromSource";
+export type InferredStatsStrategy = "10k" | "fromSource" | "imported";
 
 type StatsResult = {
   mode: StatisticsMode;

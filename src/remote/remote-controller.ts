@@ -10,7 +10,7 @@ import {
   ToggleIndexDto,
 } from "./remote-controller.dto.ts";
 import { ZodError } from "zod";
-import { ExportedStats, Statistics } from "@query-doctor/core";
+import { CombinedExport, ExportedStats, Statistics } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
 import { connectToSource } from "../sql/postgresjs.ts";
 
@@ -222,7 +222,10 @@ export class RemoteController {
   async onImportStats(body: unknown): Promise<HandlerResult> {
     let stats: ExportedStats[];
     try {
-      stats = ExportedStats.array().parse(body);
+      const combined = CombinedExport.safeParse(body);
+      stats = combined.success
+        ? combined.data.stats
+        : ExportedStats.array().parse(body);
     } catch (error) {
       if (error instanceof ZodError) {
         return {
@@ -232,7 +235,7 @@ export class RemoteController {
       }
       return {
         status: 400,
-        body: { type: "error", error: "invalid_body", message: "body must be an array of ExportedStats" },
+        body: { type: "error", error: "invalid_body", message: "body must be an array of ExportedStats or a CombinedExport object" },
       };
     }
 
@@ -240,6 +243,9 @@ export class RemoteController {
       await this.remote.applyStatistics(
         Statistics.statsModeFromExport(stats),
       );
+      if (this.syncResponse) {
+        this.syncResponse.meta.inferredStatsStrategy = "imported";
+      }
       return { status: 200, body: { success: true } };
     } catch (error) {
       console.error(error);
