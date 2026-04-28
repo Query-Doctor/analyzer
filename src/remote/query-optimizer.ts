@@ -135,7 +135,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   ): Promise<void> {
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(this.connectable);
-    const ownStats = await Statistics.dumpStats(pg, version, "full");
+    const ownStats = await Statistics.dumpStats(pg, version);
     const statistics = new Statistics(pg, version, ownStats, statsMode);
     this.existingIndexes = await statistics.getExistingIndexes();
     const filteredIndexes = this.filterDisabledIndexes(this.existingIndexes);

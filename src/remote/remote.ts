@@ -332,7 +332,6 @@ export class Remote extends EventEmitter<RemoteEvents> {
     const stats = await Statistics.dumpStats(
       pg,
       PostgresVersion.parse("17"),
-      "full",
     );
     return { kind: "fromStatisticsExport", source: { kind: "inline" }, stats };
   }

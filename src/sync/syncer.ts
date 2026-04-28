@@ -64,7 +64,7 @@ export class PostgresSyncer {
       { dependencies, serialized: serializedResult },
     ] = await Promise.all([
       withSpan("stats", () => {
-        return Statistics.dumpStats(sql, PostgresVersion.parse("17"), "full");
+        return Statistics.dumpStats(sql, PostgresVersion.parse("17"));
       })(),
       withSpan("getDatabaseInfo", () => {
         return connector.getDatabaseInfo();
