@@ -259,3 +259,43 @@ test("analyze sets isSelectQuery=false for DELETE with EXISTS subquery", async (
   const rq = await RecentQuery.analyze(data, testHash, 1000);
   expect(rq.isSelectQuery).toBe(false);
 });
+
+// --- displayQuery via analyze ---
+
+test("analyze populates displayQuery for wide SELECTs", async () => {
+  const data = makeRawQuery({
+    query:
+      'SELECT "u"."id", "u"."email", "u"."first_name", "u"."last_name", "u"."created_at", "u"."updated_at", "u"."stripe_customer_id" FROM "users" "u" WHERE "u"."id" = $1',
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  // Normalize whitespace because the analyzer prettier-formats the query
+  // before compacting; the site applies the same normalization on render.
+  const normalized = rq.displayQuery?.replace(/\s+/g, " ").trim();
+  expect(normalized).toBe(
+    `SELECT ... FROM "users" "u" WHERE "u"."id" = $1;`,
+  );
+});
+
+test("analyze leaves displayQuery undefined for narrow SELECTs", async () => {
+  const data = makeRawQuery({ query: "SELECT id FROM users WHERE id = $1" });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.displayQuery).toBeUndefined();
+});
+
+test("analyze leaves displayQuery undefined for non-SELECTs", async () => {
+  const data = makeRawQuery({
+    query:
+      "INSERT INTO archive SELECT a, b, c, d, e, f, g, h FROM users WHERE active = false",
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.displayQuery).toBeUndefined();
+});
+
+test("analyze leaves displayQuery undefined for UNION", async () => {
+  const data = makeRawQuery({
+    query:
+      "SELECT a, b, c, d, e, f, g FROM t UNION SELECT a, b, c, d, e, f, g FROM u",
+  });
+  const rq = await RecentQuery.analyze(data, testHash, 1000);
+  expect(rq.displayQuery).toBeUndefined();
+});

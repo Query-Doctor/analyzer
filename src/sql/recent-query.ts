@@ -3,6 +3,7 @@ import prettierPluginSql from "prettier-plugin-sql";
 import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
   Analyzer,
+  compactSelectList,
   DiscoveredColumnReference,
   Nudge,
   PostgresQueryBuilder,
@@ -13,6 +14,7 @@ import {
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
 import z from "zod";
+import { log } from "../log.ts";
 import type { LiveQueryOptimization } from "../remote/optimization.ts";
 
 /**
@@ -24,6 +26,7 @@ export class RecentQuery {
   private static rewriter = new PssRewriter();
 
   readonly formattedQuery: string;
+  readonly displayQuery?: string;
   readonly username: string;
   readonly query: string;
   readonly meanTime: number;
@@ -52,6 +55,7 @@ export class RecentQuery {
     this.username = data.username;
     this.query = data.query;
     this.formattedQuery = data.formattedQuery;
+    this.displayQuery = data.displayQuery;
     this.meanTime = data.meanTime;
     this.calls = data.calls;
     this.rows = data.rows;
@@ -119,8 +123,9 @@ export class RecentQuery {
     );
     const analysis = await analyzer.analyze(formattedQuery);
     const query = this.rewriteQuery(analysis.queryWithoutTags);
+    const displayQuery = await RecentQuery.computeDisplayQuery(query);
     return new RecentQuery(
-      { ...data, query, formattedQuery },
+      { ...data, query, formattedQuery, displayQuery },
       analysis.referencedTables,
       analysis.indexesToCheck,
       analysis.tags,
@@ -152,6 +157,20 @@ export class RecentQuery {
     }
   }
 
+  private static async computeDisplayQuery(
+    query: string,
+  ): Promise<string | undefined> {
+    try {
+      return compactSelectList(query, await parse(query));
+    } catch (error) {
+      log.debug(
+        `displayQuery: parse failed (${(error as Error).message})`,
+        "display-query",
+      );
+      return undefined;
+    }
+  }
+
   static isSelectQuery(data: RawRecentQuery): boolean {
     return /^\s*select/i.test(data.query);
   }
@@ -180,6 +199,7 @@ export type RawRecentQuery = {
   username: string;
   query: string;
   formattedQuery: string;
+  displayQuery?: string;
   meanTime: number;
   calls: string;
   rows: string;
