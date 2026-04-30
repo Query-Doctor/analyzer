@@ -166,6 +166,22 @@ export async function createServer(
     return reply.status(result.status).send(result.body);
   });
 
+  fastify.post("/postgres/extensions/pg_stat_statements", async (request, reply) => {
+    log.info(`[POST] /postgres/extensions/pg_stat_statements`, "http");
+    const body = RemoteSyncRequest.safeDecode(JSON.stringify(request.body));
+    if (!body.success) {
+      return reply.status(400).send(body.error);
+    }
+    try {
+      const db = await body.data.db.resolveDockerHost();
+      const connector = sourceConnectionManager.getConnectorFor(db);
+      const result = await connector.installPgStatStatements();
+      return reply.status(200).send({ success: true, ...result });
+    } catch (error) {
+      return reply.status(500).send(makeUnexpectedErrorResult(error).body);
+    }
+  });
+
   fastify.post("/postgres/live", async (request, reply) => {
     log.info(`[POST] /postgres/live`, "http");
     const result = await onSyncLiveQuery(request.body);
