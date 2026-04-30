@@ -12,29 +12,7 @@ import {
 import { ZodError } from "zod";
 import { CombinedExport, ExportedStats, Statistics } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
-import { connectToSource } from "../sql/postgresjs.ts";
 
-async function resolveDockerHost(db: Connectable): Promise<Connectable> {
-  if (!db.isLocalhost()) {
-    return db;
-  }
-  const dockerDb = db.escapeDocker();
-  if (dockerDb.url.hostname === db.url.hostname) {
-    return db;
-  }
-  const pg = connectToSource(dockerDb);
-  try {
-    await pg.exec("SELECT 1");
-    log.info(`Resolved localhost to ${dockerDb.url.hostname} for docker escape`, "remote-controller");
-    return dockerDb;
-  } catch {
-    log.info(`${dockerDb.url.hostname} unreachable, falling back to ${db.url.hostname}`, "remote-controller");
-    return db;
-  } finally {
-    // @ts-expect-error | close is added in wrapPgPool
-    await pg.close();
-  }
-}
 
 const SyncStatus = {
   NOT_STARTED: "notStarted",
@@ -158,7 +136,7 @@ export class RemoteController {
     let resolvedDb: Connectable;
     try {
       this.sendSyncLog("Reaching out to database...");
-      resolvedDb = await resolveDockerHost(db);
+      resolvedDb = await db.resolveDockerHost();
       this.lastSourceDb = resolvedDb;
       this.sendSyncLog(`Connected to ${resolvedDb.toString()}`);
     } catch (error) {
@@ -259,6 +237,29 @@ export class RemoteController {
           type: "error",
           error: env.HOSTED ? "Internal Server Error" : error,
           message: "Failed to import stats",
+        },
+      };
+    }
+  }
+
+  async onInstallPgStatStatements(rawBody: string): Promise<HandlerResult> {
+    const body = RemoteSyncRequest.safeDecode(rawBody);
+    if (!body.success) {
+      return { status: 400, body: body.error };
+    }
+
+    try {
+      const result = await this.remote.installPgStatStatements(body.data.db);
+      return { status: 200, body: { success: true, preloadUpdated: result.preloadUpdated } };
+    } catch (error) {
+      console.error(error);
+      if (error instanceof errors.PostgresError) {
+        return { status: error.statusCode, body: error.toJSON() };
+      }
+      return {
+        status: 500,
+        body: {
+          error: error instanceof Error ? error.message : "Unknown error",
         },
       };
     }

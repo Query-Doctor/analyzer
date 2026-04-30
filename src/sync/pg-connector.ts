@@ -596,6 +596,46 @@ ORDER BY
     }
   }
 
+  public async installPgStatStatements(): Promise<{ preloadUpdated: boolean }> {
+    let preloadUpdated = false;
+
+    const [preload] = await this.db.exec<{ setting: string }>(`
+      SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'; -- @qd_introspection
+    `);
+    const current = preload?.setting ?? "";
+    const libs = current.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!libs.includes("pg_stat_statements")) {
+      const updated = [...libs, "pg_stat_statements"].join(",");
+      try {
+        await this.db.exec(`ALTER SYSTEM SET shared_preload_libraries = '${updated}';`);
+        preloadUpdated = true;
+      } catch (err) {
+        throw new PostgresError(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    const [result] = await this.db.exec<{ exists: boolean }>(`
+      SELECT EXISTS(
+        SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'
+      ) AS exists; -- @qd_introspection
+    `);
+    if (!result?.exists) {
+      try {
+        await this.db.exec(`CREATE EXTENSION pg_stat_statements;`);
+      } catch (err) {
+        throw new PostgresError(err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    try {
+      await this.db.exec(`SELECT 1 FROM pg_stat_statements LIMIT 1; -- @qd_introspection`);
+    } catch (err) {
+      throw new PostgresError(err instanceof Error ? err.message : String(err));
+    }
+
+    return { preloadUpdated };
+  }
+
   public async checkPrivilege(): Promise<{
     username: string;
     isSuperuser: boolean;
