@@ -57,6 +57,12 @@ runs:
         sudo make install # Use sudo to install globally
         cd ${{ github.action_path }} # Return to action directory
 
+    - name: Prepare postgresql client directory
+      shell: bash
+      run: |
+        sudo mkdir -p /usr/lib/postgresql/${{ inputs.postgres-version }}
+        sudo chown -R $(whoami) /usr/lib/postgresql/${{ inputs.postgres-version }}
+
     - name: Cache postgresql-client
       uses: actions/cache@v4
       id: pg-client-cache
@@ -73,6 +79,7 @@ runs:
         echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
         sudo apt-get update
         sudo apt-get install -y postgresql-client-${{ inputs.postgres-version }}
+        sudo chown -R $(whoami) /usr/lib/postgresql/${{ inputs.postgres-version }}
 
     - name: Start PostgreSQL
       shell: bash
