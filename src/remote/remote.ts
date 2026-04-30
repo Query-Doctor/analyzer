@@ -368,6 +368,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
     this.optimizer.restart({ clearQueries: true });
   }
 
+  async installPgStatStatements(source: Connectable): Promise<{ preloadUpdated: boolean }> {
+    const connector = this.sourceManager.getConnectorFor(source);
+    return connector.installPgStatStatements();
+  }
+
   /**
    * Process a successful sync and run any potential cleanup functions
    */

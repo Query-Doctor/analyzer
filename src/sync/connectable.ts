@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { env } from "../env.ts";
 import { PgIdentifier } from "@query-doctor/core";
+import { connectToSource } from "../sql/postgresjs.ts";
+import { log } from "../log.ts";
 
 /**
  * Represents a valid connection to a database.
@@ -128,6 +130,28 @@ export class Connectable {
       url.hostname.includes("supabase.co") &&
       !url.hostname.includes("pooler.supabase.co")
     );
+  }
+
+  async resolveDockerHost(): Promise<Connectable> {
+    if (!this.isLocalhost()) {
+      return this;
+    }
+    const dockerDb = this.escapeDocker();
+    if (dockerDb.url.hostname === this.url.hostname) {
+      return this;
+    }
+    const pg = connectToSource(dockerDb);
+    try {
+      await pg.exec("SELECT 1");
+      log.info(`Resolved localhost to ${dockerDb.url.hostname} for docker escape`, "connectable");
+      return dockerDb;
+    } catch {
+      log.info(`${dockerDb.url.hostname} unreachable, falling back to ${this.url.hostname}`, "connectable");
+      return this;
+    } finally {
+      // @ts-expect-error | close is added in wrapPgPool
+      await pg.close();
+    }
   }
 
   toString() {
