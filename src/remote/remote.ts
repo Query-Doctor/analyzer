@@ -359,7 +359,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
     await this.optimizer.setStatistics(statsMode);
-    await this.optimizer.restart();
+    // don't block the reply by awaiting all optimizations
+    this.optimizer.restart();
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
