@@ -18,6 +18,7 @@ import {
   PostgresVersion,
   Statistics,
   StatisticsMode,
+  type ExportedStats,
 } from "@query-doctor/core";
 import { Connectable } from "../sync/connectable.ts";
 import { parse } from "@libpg-query/parser";
@@ -105,6 +106,10 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   get computedStats(): ComputedStats | undefined {
     return this.target?.statistics.computedStats;
+  }
+
+  get ownMetadata(): ExportedStats[] | undefined {
+    return this.target?.statistics.ownMetadata;
   }
 
   getExistingIndexes(): IndexedTable[] {

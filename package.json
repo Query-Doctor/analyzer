@@ -23,6 +23,7 @@
     "@pgsql/types": "^17.6.2",
     "@query-doctor/core": "^0.8.9",
     "async-sema": "^3.1.1",
+    "capnweb": "^0.7.0",
     "dedent": "^1.7.1",
     "fast-csv": "^5.0.5",
     "fastify": "^5.7.4",

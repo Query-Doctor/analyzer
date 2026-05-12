@@ -4,6 +4,8 @@ import {
   PostgresVersion,
   Statistics,
   StatisticsMode,
+  type ExtensionPresence,
+  type ExportedStats,
 } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
@@ -22,6 +24,10 @@ import { SchemaLoader } from "./schema-loader.ts";
 type RemoteEvents = {
   dumpLog: [line: string];
   restoreLog: [line: string];
+  extensionPresenceChanged: [presence: ExtensionPresence];
+  queriesPolled: [queries: RecentQuery[]];
+  schemaSynced: [schema: FullSchema];
+  statsApplied: [stats: ExportedStats[]];
 };
 
 /**
@@ -56,6 +62,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
    */
   private baseDbURL: Connectable;
   private generation = 0;
+  private lastSourceDb?: Connectable;
   /** The URL of the current generation optimizing db */
   private optimizingDbUDRL: Connectable;
 
@@ -86,6 +93,13 @@ export class Remote extends EventEmitter<RemoteEvents> {
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
   }
 
+  async resync(): Promise<ReturnType<Remote["syncFrom"]>> {
+    if (!this.lastSourceDb) {
+      throw new Error("No source database has been synced yet");
+    }
+    return this.syncFrom(this.lastSourceDb, { type: "pullFromSource" });
+  }
+
   async syncFrom(
     source: Connectable,
     statsStrategy: StatisticsStrategy = { type: "pullFromSource" },
@@ -105,6 +119,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       };
     }
   > {
+    this.lastSourceDb = source;
     await this.resetDatabase();
 
     // First batch: get schema and other info in parallel (needed for stats decision)
@@ -134,6 +149,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
     if (fullSchema.status === "fulfilled") {
       this.schemaLoader?.update(fullSchema.value);
+      this.emit("schemaSynced", fullSchema.value);
     }
 
     // Second: resolve stats strategy using table list from schema
@@ -162,6 +178,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
         type: "extension_not_installed",
         extensionName: recentQueries.reason.extensionNames[0],
       };
+      this.emit("extensionPresenceChanged", { type: "missing" });
     }
 
     await this.onSuccessfulSync(
@@ -359,6 +376,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
     await this.optimizer.setStatistics(statsMode);
+    const stats = this.optimizer.ownMetadata;
+    if (stats) {
+      this.emit("statsApplied", stats);
+    }
     // don't block the reply by awaiting all optimizations
     this.optimizer.restart();
   }
@@ -410,8 +431,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
         console.error(error);
       });
       this.pgStatStatementsStatus = PgStatStatementsStatus.Installed;
+      this.emit("extensionPresenceChanged", { type: "present", extensionName: "pg_stat_statements", needsRestart: false });
+      this.emit("queriesPolled", queries);
     }).on("pgStatStatementsNotInstalled", () => {
       this.pgStatStatementsStatus = PgStatStatementsStatus.NotInstalled;
+      this.emit("extensionPresenceChanged", { type: "missing" });
     });
     this.queryLoader.on("exit", () => {
       log.error("Query loader exited", "remote");

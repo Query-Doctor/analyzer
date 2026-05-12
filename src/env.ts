@@ -14,11 +14,15 @@ const envSchema = z.object({
   GITHUB_TOKEN: z.string().optional(),
   LOG_PATH: z.string().optional(),
   POSTGRES_URL: z.string().optional(),
-  SOURCE_DATABASE_URL: z.string().optional(),
+  SOURCE_DATABASE_URL: z.string({
+    error:
+      "SOURCE_DATABASE_URL is required. Set it to the connection string of the database you want to analyze.",
+  }),
   DEBUG: z.stringbool().default(false),
   STATISTICS_PATH: z.string().optional(),
 
-  SITE_API_ENDPOINT: z.url().optional(),
+  SITE_API_ENDPOINT: z.url().default("https://api.querydoctor.com"),
+  TOKEN: z.string().optional(),
   GITHUB_REPOSITORY: z.string().optional(),
 });
 

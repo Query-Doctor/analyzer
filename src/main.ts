@@ -13,6 +13,11 @@ import {
 } from "./reporters/site-api.ts";
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
+import { ApiClient, hookUpApiReporter } from "./remote/api-client.ts";
+import { Remote } from "./remote/remote.ts";
+import { ConnectionManager } from "./sync/connection-manager.ts";
+
+const INVALID_TOKEN_ERROR = "Unauthorized"
 
 async function runInCI(
   targetPostgresUrl: Connectable,
@@ -136,14 +141,38 @@ async function runOutsideCI() {
     "main",
   );
   if (!env.POSTGRES_URL) {
-    core.setFailed("POSTGRES_URL environment variable is not set");
-    process.exit(1);
+    throw new Error("POSTGRES_URL environment variable is not set. If you're seeing this inside Docker something has gone wrong");
+  }
+  if (!env.TOKEN) {
+    throw new Error("TOKEN environment variable is not set\nYou probably forgot to pass a `-e TOKEN=...` parameter to the docker container");
+  }
+  const remote = new Remote(
+    Connectable.fromString(env.POSTGRES_URL),
+    ConnectionManager.forLocalDatabase(),
+  );
+  try {
+    const client = await ApiClient.connect(env.SITE_API_ENDPOINT, env.TOKEN, { kind: "persistent" }, remote);
+    await client.ping();
+    log.info("Connected to the api", "main")
+    hookUpApiReporter(client, remote);
+    const endpoint = env.SITE_API_ENDPOINT;
+    const token = env.TOKEN;
+    client.onRpcBroken(() => {
+      ApiClient.connectWithReconnect(endpoint, token, { kind: "persistent" }, remote);
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === INVALID_TOKEN_ERROR) {
+        throw new Error("Your TOKEN was invalid. Make sure to go to your project settings to copy the right TOKEN value.")
+      }
+    }
+    throw new Error(`Failed to connect to ${env.SITE_API_ENDPOINT}\nIf you're using a custom SITE_API_ENDPOINT you need to double check your db\n${err}`);
   }
   const server = await createServer(
     env.HOST,
     env.PORT,
     Connectable.fromString(env.POSTGRES_URL),
-    env.SOURCE_DATABASE_URL ? Connectable.fromString(env.SOURCE_DATABASE_URL) : undefined,
+    Connectable.fromString(env.SOURCE_DATABASE_URL),
   );
 
   const shutdown = async () => {
@@ -160,10 +189,6 @@ async function main() {
   if (env.CI) {
     if (!env.POSTGRES_URL) {
       core.setFailed("POSTGRES_URL environment variable is not set");
-      process.exit(1);
-    }
-    if (!env.SOURCE_DATABASE_URL) {
-      core.setFailed("SOURCE_DATABASE_URL environment variable is not set");
       process.exit(1);
     }
     if (!env.LOG_PATH) {
