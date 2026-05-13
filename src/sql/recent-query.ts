@@ -13,6 +13,7 @@ import {
   type TableReference,
 } from "@query-doctor/core";
 import { parse } from "@libpg-query/parser";
+import { Sema } from "async-sema";
 import z from "zod";
 import { log } from "../log.ts";
 import type { LiveQueryOptimization } from "../remote/optimization.ts";
@@ -24,6 +25,7 @@ import type { LiveQueryOptimization } from "../remote/optimization.ts";
 export class RecentQuery {
   private static HARDCODED_LIMIT = 50;
   private static rewriter = new PssRewriter();
+  private static prettierMutex = new Sema(1);
 
   readonly formattedQuery: string;
   readonly displayQuery?: string;
@@ -145,6 +147,7 @@ export class RecentQuery {
   }
 
   private static async formatQuery(query: string): Promise<string> {
+    await RecentQuery.prettierMutex.acquire();
     try {
       return await prettier.format(query, {
         parser: "sql",
@@ -152,8 +155,11 @@ export class RecentQuery {
         language: "postgresql",
         keywordCase: "upper",
       });
-    } catch {
+    } catch (error) {
+      console.error(`[prettier] Failed to format query: ${error}`);
       return query;
+    } finally {
+      RecentQuery.prettierMutex.release();
     }
   }
 
