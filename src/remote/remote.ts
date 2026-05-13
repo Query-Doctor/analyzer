@@ -83,7 +83,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
     /** The manager for ONLY the source db connections */
     private readonly sourceManager: ConnectionManager = ConnectionManager
       .forRemoteDatabase(),
-    private readonly options: { disableQueryLoader: boolean } = { disableQueryLoader: false }
+    private readonly options: { disableQueryLoader: boolean } = { disableQueryLoader: false },
+    initialSourceDb?: Connectable,
   ) {
     super();
     this.baseDbURL = targetURL.withDatabaseName(Remote.baseDbName);
@@ -91,6 +92,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
       Remote.defaultOptimizingDbPrefix,
     );
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
+    if (initialSourceDb) {
+      this.lastSourceDb = initialSourceDb;
+    }
   }
 
   async resync(): Promise<ReturnType<Remote["syncFrom"]>> {

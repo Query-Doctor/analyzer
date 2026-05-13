@@ -24,7 +24,7 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
     });
   };
   const onSchemaSynced = (schema: Parameters<typeof api.pushSchema>[0]) => {
-    api.pushSchema(schema).catch((err) => {
+    api.pushSchema(JSON.parse(JSON.stringify(schema))).catch((err) => {
       log.error(`Failed to push schema: ${err}`, "api-client");
     });
   };
@@ -34,12 +34,15 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
     });
   };
   const onQueriesPolled = (queries: Parameters<typeof api.pushQuery>[0]) => {
-    api.pushQuery(queries).catch((err) => {
+    api.pushQuery(JSON.parse(JSON.stringify(queries))).catch((err) => {
       log.error(`Failed to push polled queries: ${err}`, "api-client");
     });
   };
   const pushOptimizedQuery = (query: OptimizedQuery) => {
-    api.pushQuery([query]).catch((err) => {
+    console.log('pushing optimization 2', query)
+    const q = [query.toJSON()]
+    console.log('pushing optimization', q)
+    api.pushQuery(q).catch((err) => {
       log.error(`Failed to push optimized query: ${err}`, "api-client");
     });
   };
@@ -94,42 +97,37 @@ export class ApiClient extends RpcTarget implements ClientApi {
         log.info(`Connected to the api`, this.#name);
         cleanup = hookUpApiReporter(api, remote);
         api.onRpcBroken((err) => {
-          log.error(`Connection broken: ${err}`, this.#name);
+          const delay = Math.min(failCount * 1000, this.#PING_MAX_BACKOFF_MS);
+          log.error(`Connection broken: ${err}, reconnecting in ${delay}ms`, this.#name);
           cleanup?.();
           cleanup = undefined;
-          const delay = Math.min(2 ** secs(failCount), this.#PING_MAX_BACKOFF_MS);
           setTimeout(() => attempt(failCount + 1), delay);
         });
       } catch (err) {
-        log.error(`Failed to connect: ${err}`, this.#name);
-        const delay = Math.min(2 ** secs(failCount), this.#PING_MAX_BACKOFF_MS);
+        if (err instanceof Error && err.message === "Unauthorized") {
+          log.error(`Invalid TOKEN, cannot connect to the api`, this.#name);
+          return;
+        }
+        const delay = Math.min(failCount * 1000, this.#PING_MAX_BACKOFF_MS);
+        log.error(`Failed to connect: ${err}, reconnecting in ${delay}ms`, this.#name);
         setTimeout(() => attempt(failCount + 1), delay);
       }
     };
     attempt(0);
   }
 
-  static schedulePingTimer(api: RpcStub<ServerApi>, failCount = 0) {
+  static schedulePingTimer(api: RpcStub<ServerApi>) {
     const timer = setInterval(() => {
-      api.ping().then(() => {
-        if (failCount > 0) {
-          log.info(`Reached the server again`, this.#name)
-          failCount = 0
-        }
-      }, err => {
+      api.ping().catch(err => {
+        console.error(err)
         log.error(`Could not ping the API server\n${err}`, this.#name)
         clearInterval(timer);
-        const delay = Math.min(2 ** secs(failCount), this.#PING_MAX_BACKOFF_MS);
-        setTimeout(() => {
-          ApiClient.schedulePingTimer(api, failCount + 1)
-        }, delay)
       });
     }, this.#PING_INTERVAL_MS);
   }
 
-  async repull(): Promise<unknown> {
+  async repull(): Promise<void> {
     await this.remote.resync();
-    return {};
   }
 
   async refreshQueries(): Promise<void> {
@@ -158,5 +156,3 @@ export class ApiClient extends RpcTarget implements ClientApi {
     log.warn("runQuery is not implemented", ApiClient.name);
   }
 }
-
-const secs = (ms: number) => ms * 1000;

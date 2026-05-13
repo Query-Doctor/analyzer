@@ -39,6 +39,7 @@ export class RecentQuery {
   readonly isIntrospection: boolean;
   readonly isTargetlessSelectQuery: boolean;
   readonly analysisSkipped: boolean;
+  optimization: LiveQueryOptimization;
 
   /** Use {@link RecentQuery.analyze} instead */
   constructor(
@@ -70,10 +71,37 @@ export class RecentQuery {
     this.isTargetlessSelectQuery = this.isSelectQuery
       ? RecentQuery.isTargetlessSelectQuery(tableReferences)
       : false;
+    this.optimization = { state: "waiting" };
   }
 
   withOptimization(optimization: LiveQueryOptimization): OptimizedQuery {
     return Object.assign(this, { optimization });
+  }
+
+  toJSON() {
+    // TODO: these fields should be calling toJSON recursively maybe?
+    return JSON.parse(JSON.stringify({
+      formattedQuery: this.formattedQuery,
+      displayQuery: this.displayQuery,
+      username: this.username,
+      query: this.query,
+      meanTime: this.meanTime,
+      calls: this.calls,
+      rows: this.rows,
+      topLevel: this.topLevel,
+      isSystemQuery: this.isSystemQuery,
+      isSelectQuery: this.isSelectQuery,
+      isIntrospection: this.isIntrospection,
+      isTargetlessSelectQuery: this.isTargetlessSelectQuery,
+      analysisSkipped: this.analysisSkipped,
+      tableReferences: this.tableReferences,
+      columnReferences: this.columnReferences,
+      tags: this.tags,
+      nudges: this.nudges,
+      hash: this.hash,
+      seenAt: this.seenAt,
+      optimization: this.optimization,
+    }));
   }
 
   /**

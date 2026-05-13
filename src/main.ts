@@ -146,33 +146,20 @@ async function runOutsideCI() {
   if (!env.TOKEN) {
     throw new Error("TOKEN environment variable is not set\nYou probably forgot to pass a `-e TOKEN=...` parameter to the docker container");
   }
+  const sourceDb = Connectable.fromString(env.SOURCE_DATABASE_URL)
   const remote = new Remote(
     Connectable.fromString(env.POSTGRES_URL),
     ConnectionManager.forLocalDatabase(),
+    ConnectionManager.forRemoteDatabase(),
+    { disableQueryLoader: false },
+    sourceDb,
   );
-  try {
-    const client = await ApiClient.connect(env.SITE_API_ENDPOINT, env.TOKEN, { kind: "persistent" }, remote);
-    await client.ping();
-    log.info("Connected to the api", "main")
-    hookUpApiReporter(client, remote);
-    const endpoint = env.SITE_API_ENDPOINT;
-    const token = env.TOKEN;
-    client.onRpcBroken(() => {
-      ApiClient.connectWithReconnect(endpoint, token, { kind: "persistent" }, remote);
-    });
-  } catch (err) {
-    if (err instanceof Error) {
-      if (err.message === INVALID_TOKEN_ERROR) {
-        throw new Error("Your TOKEN was invalid. Make sure to go to your project settings to copy the right TOKEN value.")
-      }
-    }
-    throw new Error(`Failed to connect to ${env.SITE_API_ENDPOINT}\nIf you're using a custom SITE_API_ENDPOINT you need to double check your db\n${err}`);
-  }
+  ApiClient.connectWithReconnect(env.SITE_API_ENDPOINT, env.TOKEN, { kind: "persistent" }, remote);
   const server = await createServer(
     env.HOST,
     env.PORT,
-    Connectable.fromString(env.POSTGRES_URL),
-    Connectable.fromString(env.SOURCE_DATABASE_URL),
+    remote,
+    sourceDb
   );
 
   const shutdown = async () => {
