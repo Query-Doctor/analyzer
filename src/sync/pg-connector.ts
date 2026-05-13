@@ -467,8 +467,6 @@ ORDER BY
   }
 
   private async getQuerySource(): Promise<QuerySourceExtension> {
-    if (this.querySource)
-      return this.querySource
     const results = await this.db.exec<{ schema: string; extension: string }>(`
       SELECT e.extname as extension, n.nspname as schema
       FROM pg_extension e
@@ -477,6 +475,7 @@ ORDER BY
     `);
     const firstResult = results[0];
     if (!firstResult) {
+      this.querySource = undefined;
       throw new ExtensionNotInstalledError([
         "pg_stat_statements",
         "pg_stat_monitor"

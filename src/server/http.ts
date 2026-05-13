@@ -117,7 +117,7 @@ async function onSyncLiveQuery(body: unknown) {
 export async function createServer(
   hostname: string,
   port: number,
-  targetDb?: Connectable,
+  targetDb?: Connectable | Remote,
   sourceDb?: Connectable,
 ): Promise<FastifyInstance> {
   const fastify = Fastify({ logger: false });
@@ -148,7 +148,9 @@ export async function createServer(
 
   const remoteController = targetDb
     ? new RemoteController(
-      new Remote(targetDb, optimizingDbConnectionManager),
+      targetDb instanceof Remote
+        ? targetDb
+        : new Remote(targetDb, optimizingDbConnectionManager),
     )
     : undefined;
 
