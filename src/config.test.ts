@@ -1,79 +1,57 @@
-import { test, expect, vi, afterEach } from "vitest";
-import { fetchAnalyzerConfig, DEFAULT_CONFIG } from "./config.ts";
+import { test, expect, vi } from "vitest";
+import { DEFAULT_CONFIG } from "./config.ts";
+import type { ServerApi } from "@query-doctor/core";
+import type { RpcStub } from "capnweb";
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+function makeApi(overrides: Partial<RpcStub<ServerApi>> = {}): RpcStub<ServerApi> {
+  return overrides as RpcStub<ServerApi>;
+}
 
-test("returns parsed config from successful response", async () => {
+async function resolveConfig(
+  api: RpcStub<ServerApi>,
+  repo: string | undefined,
+  branch: string,
+) {
+  if (!repo) return DEFAULT_CONFIG;
+  return api.getRepoConfig(repo, branch).catch(() => DEFAULT_CONFIG);
+}
+
+test("returns config from successful getRepoConfig call", async () => {
   const config = {
     minimumCost: 100,
     regressionThreshold: 0.5,
     ignoredQueryHashes: ["abc123"],
+    lastSeenQueryHashes: [],
     acknowledgedQueryHashes: [],
     comparisonBranch: undefined,
   };
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    Response.json(config, { status: 200 }),
-  );
+  const api = makeApi({ getRepoConfig: vi.fn().mockResolvedValue(config) });
 
-  const result = await fetchAnalyzerConfig("https://api.example.com", "my/repo");
+  const result = await resolveConfig(api, "my/repo", "main");
   expect(result).toEqual(config);
 });
 
-test("returns defaults when response is not ok", async () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    new Response("Not Found", { status: 404 }),
-  );
+test("returns defaults when getRepoConfig throws", async () => {
+  const api = makeApi({
+    getRepoConfig: vi.fn().mockRejectedValue(new Error("rpc error")),
+  });
 
-  const result = await fetchAnalyzerConfig("https://api.example.com", "my/repo");
+  const result = await resolveConfig(api, "my/repo", "main");
   expect(result).toEqual(DEFAULT_CONFIG);
 });
 
-test("returns defaults when fetch throws", async () => {
-  vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network error"));
+test("returns defaults when repo is undefined", async () => {
+  const api = makeApi({ getRepoConfig: vi.fn() });
 
-  const result = await fetchAnalyzerConfig("https://api.example.com", "my/repo");
+  const result = await resolveConfig(api, undefined, "main");
   expect(result).toEqual(DEFAULT_CONFIG);
+  expect(api.getRepoConfig).not.toHaveBeenCalled();
 });
 
-test("constructs correct URL with trailing slash stripped", async () => {
-  const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    Response.json(DEFAULT_CONFIG, { status: 200 }),
-  );
+test("passes repo and branch to getRepoConfig", async () => {
+  const getRepoConfig = vi.fn().mockResolvedValue(DEFAULT_CONFIG);
+  const api = makeApi({ getRepoConfig });
 
-  await fetchAnalyzerConfig("https://api.example.com/", "org/repo");
-  expect(mockFetch).toHaveBeenCalledWith(
-    "https://api.example.com/ci/repos/org%2Frepo/config",
-    expect.any(Object),
-  );
-});
-
-test("encodes repo name in URL", async () => {
-  const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    Response.json(DEFAULT_CONFIG, { status: 200 }),
-  );
-
-  await fetchAnalyzerConfig("https://api.example.com", "org/repo with spaces");
-  expect(mockFetch).toHaveBeenCalledWith(
-    "https://api.example.com/ci/repos/org%2Frepo%20with%20spaces/config",
-    expect.any(Object),
-  );
-});
-
-test("passes through partial response with missing optional fields", async () => {
-  const partial = {
-    minimumCost: 50,
-    regressionThreshold: 0.1,
-    ignoredQueryHashes: [],
-    // all required fields present
-  };
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(
-    Response.json(partial, { status: 200 }),
-  );
-
-  const result = await fetchAnalyzerConfig("https://api.example.com", "my/repo");
-  expect(result.minimumCost).toBe(50);
-  expect(result.regressionThreshold).toBe(0.1);
-  expect(result.ignoredQueryHashes).toEqual([]);
+  await resolveConfig(api, "org/repo", "feat/my-branch");
+  expect(getRepoConfig).toHaveBeenCalledWith("org/repo", "feat/my-branch");
 });

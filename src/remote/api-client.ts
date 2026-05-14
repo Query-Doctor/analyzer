@@ -1,6 +1,6 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import type { RpcStub } from "capnweb";
-import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi } from "@query-doctor/core";
+import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi, RecentQuery } from "@query-doctor/core";
 import type { ExportedStats } from "@query-doctor/core";
 import { PgIdentifier, Statistics } from "@query-doctor/core";
 import { log } from "../log.ts";
@@ -33,15 +33,13 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
       log.error(`Failed to push stats: ${err}`, "api-client");
     });
   };
-  const onQueriesPolled = (queries: Parameters<typeof api.pushQuery>[0]) => {
+  const onQueriesPolled = (queries: RecentQuery[]) => {
     api.pushQuery(JSON.parse(JSON.stringify(queries))).catch((err) => {
       log.error(`Failed to push polled queries: ${err}`, "api-client");
     });
   };
   const pushOptimizedQuery = (query: OptimizedQuery) => {
-    console.log('pushing optimization 2', query)
     const q = [query.toJSON()]
-    console.log('pushing optimization', q)
     api.pushQuery(q).catch((err) => {
       log.error(`Failed to push optimized query: ${err}`, "api-client");
     });
@@ -75,11 +73,12 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
 export class ApiClient extends RpcTarget implements ClientApi {
   static #name = "ApiClient"
   static #PING_INTERVAL_MS = 30_000;
-  static #PING_MAX_BACKOFF_MS = 300_000;
+  static #PING_MAX_BACKOFF_MS = 10_000;
 
   private constructor(private readonly remote: Remote) {
     super();
   }
+
 
   static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote): Promise<RpcStub<ServerApi>> {
     const wsEndpoint = `${endpoint}/relay`.replace(/^http/, "ws");
