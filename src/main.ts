@@ -12,10 +12,12 @@ import {
   postToSiteApi,
 } from "./reporters/site-api.ts";
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
-import { DEFAULT_CONFIG, fetchAnalyzerConfig } from "./config.ts";
+import { DEFAULT_CONFIG, type AnalyzerConfig } from "./config.ts";
 import { ApiClient, hookUpApiReporter } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
+import type { RpcStub } from "capnweb";
+import type { ServerApi } from "@query-doctor/core";
 
 const INVALID_TOKEN_ERROR = "Unauthorized"
 
@@ -30,10 +32,27 @@ async function runInCI(
   const branch =
     process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "";
 
-  const config =
-    siteApiEndpoint && repo
-      ? await fetchAnalyzerConfig(siteApiEndpoint, repo)
-      : DEFAULT_CONFIG;
+  const remote = new Remote(
+    targetPostgresUrl,
+    ConnectionManager.forLocalDatabase(),
+    ConnectionManager.forRemoteDatabase(),
+    { disableQueryLoader: true },
+  );
+
+  if (!env.TOKEN) {
+    throw new Error("CI mode cannot be run without a TOKEN variable provided")
+  }
+
+  let api = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote);
+
+  const config = repo
+    ? await api.getRepoConfig(repo, branch).catch(
+      (err) => {
+        log.warn(`Failed to fetch repo config via RPC: ${err}. Using defaults`, "main");
+        return DEFAULT_CONFIG;
+      },
+    )
+    : DEFAULT_CONFIG;
 
   const runner = await Runner.build({
     targetPostgresUrl,
@@ -41,6 +60,7 @@ async function runInCI(
     logPath,
     maxCost,
     ignoredQueryHashes: config.ignoredQueryHashes,
+    remote,
   });
   let allResults: QueryProcessResult[];
   let reportContext;

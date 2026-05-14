@@ -1,6 +1,7 @@
 import { test, expect, vi } from "vitest";
 
 test("returns original URL when HOSTED is false", async () => {
+  vi.stubEnv("SOURCE_DATABASE_URL", "postgres://localhost/test");
   vi.stubEnv("HOSTED", "false");
   vi.resetModules();
   const { sanitizePostgresUrl } = await import("./sanitize.ts");
@@ -9,6 +10,7 @@ test("returns original URL when HOSTED is false", async () => {
 });
 
 test("returns hashed URL when HOSTED is true", async () => {
+  vi.stubEnv("SOURCE_DATABASE_URL", "postgres://localhost/test");
   vi.stubEnv("HOSTED", "true");
   vi.resetModules();
   const { sanitizePostgresUrl } = await import("./sanitize.ts");
@@ -21,6 +23,7 @@ test("returns hashed URL when HOSTED is true", async () => {
 });
 
 test("same input produces same hash", async () => {
+  vi.stubEnv("SOURCE_DATABASE_URL", "postgres://localhost/test");
   vi.stubEnv("HOSTED", "true");
   vi.resetModules();
   const { sanitizePostgresUrl } = await import("./sanitize.ts");
@@ -29,6 +32,7 @@ test("same input produces same hash", async () => {
 });
 
 test("different inputs produce different hashes", async () => {
+  vi.stubEnv("SOURCE_DATABASE_URL", "postgres://localhost/test");
   vi.stubEnv("HOSTED", "true");
   vi.resetModules();
   const { sanitizePostgresUrl } = await import("./sanitize.ts");

@@ -39,8 +39,9 @@ export class Runner {
     maxCost?: number;
     logPath: string;
     ignoredQueryHashes?: string[];
+    remote?: Remote;
   }) {
-    const remote = new Remote(
+    const remote = options.remote ?? new Remote(
       options.targetPostgresUrl,
       ConnectionManager.forLocalDatabase(),
       ConnectionManager.forRemoteDatabase(),
