@@ -35,8 +35,12 @@ function createMockRecentQuery(query: string): RecentQuery {
     nudges: [],
     hash: "test_hash" as QueryHash,
     seenAt: Date.now(),
+    optimization: { state: "waiting" },
     withOptimization: function () {
       return this as OptimizedQuery;
+    },
+    toJSON() {
+      return {};
     },
   } as RecentQuery;
 }
