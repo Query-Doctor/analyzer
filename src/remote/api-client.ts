@@ -70,6 +70,11 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
   };
 }
 
+export interface ApiConnection {
+  api: RpcStub<ServerApi>;
+  dispose: () => void;
+}
+
 export class ApiClient extends RpcTarget implements ClientApi {
   static #name = "ApiClient"
   static #PING_INTERVAL_MS = 30_000;
@@ -80,19 +85,27 @@ export class ApiClient extends RpcTarget implements ClientApi {
   }
 
 
-  static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote): Promise<RpcStub<ServerApi>> {
+  static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote): Promise<ApiConnection> {
     const wsEndpoint = `${endpoint}/relay`.replace(/^http/, "ws");
     const unauthenticated = newWebSocketRpcSession<UnauthenticatedServerApi>(wsEndpoint);
     const api = await unauthenticated.authenticate(token, new this(remote), mode) as unknown as RpcStub<ServerApi>;
-    this.schedulePingTimer(api);
-    return api;
+    const stopPing = this.schedulePingTimer(api);
+    let disposed = false;
+    const dispose = () => {
+      if (disposed) return;
+      disposed = true;
+      stopPing();
+      try { api[Symbol.dispose](); } catch { /* already gone */ }
+      try { (unauthenticated as unknown as Disposable)[Symbol.dispose]?.(); } catch { /* already gone */ }
+    };
+    return { api, dispose };
   }
 
   static connectWithReconnect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote): void {
     let cleanup: (() => void) | undefined;
     const attempt = async (failCount: number) => {
       try {
-        const api = await this.connect(endpoint, token, mode, remote);
+        const { api, dispose } = await this.connect(endpoint, token, mode, remote);
         log.info(`Connected to the api`, this.#name);
         cleanup = hookUpApiReporter(api, remote);
         api.onRpcBroken((err) => {
@@ -100,6 +113,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
           log.error(`Connection broken: ${err}, reconnecting in ${delay}ms`, this.#name);
           cleanup?.();
           cleanup = undefined;
+          dispose();
           setTimeout(() => attempt(failCount + 1), delay);
         });
       } catch (err) {
@@ -115,7 +129,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
     attempt(0);
   }
 
-  static schedulePingTimer(api: RpcStub<ServerApi>) {
+  static schedulePingTimer(api: RpcStub<ServerApi>): () => void {
     const timer = setInterval(() => {
       api.ping().catch(err => {
         console.error(err)
@@ -123,6 +137,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
         clearInterval(timer);
       });
     }, this.#PING_INTERVAL_MS);
+    return () => clearInterval(timer);
   }
 
   async repull(): Promise<void> {
