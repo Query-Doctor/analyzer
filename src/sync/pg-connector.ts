@@ -475,7 +475,7 @@ ORDER BY
     `);
     const firstResult = results[0];
     if (!firstResult) {
-      this.querySource = undefined;
+      this.querySource = null;
       throw new ExtensionNotInstalledError([
         "pg_stat_statements",
         "pg_stat_monitor"
