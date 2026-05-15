@@ -467,11 +467,15 @@ ORDER BY
   }
 
   private async getQuerySource(): Promise<QuerySourceExtension> {
+    // The marker must sit before the terminating semicolon — Postgres strips
+    // trailing comments past `;` from the text that pg_stat_statements stores,
+    // which would let this query bypass the introspection filter in
+    // getRecentQueries() and surface after pg_stat_statements_reset().
     const results = await this.db.exec<{ schema: string; extension: string }>(`
       SELECT e.extname as extension, n.nspname as schema
       FROM pg_extension e
       JOIN pg_namespace n ON n.oid = e.extnamespace
-      WHERE e.extname IN ('pg_stat_statements', 'pg_stat_monitor');
+      WHERE e.extname IN ('pg_stat_statements', 'pg_stat_monitor') -- @qd_introspection
     `);
     const firstResult = results[0];
     if (!firstResult) {
