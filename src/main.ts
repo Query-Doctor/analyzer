@@ -43,113 +43,117 @@ async function runInCI(
     throw new Error("CI mode cannot be run without a TOKEN variable provided")
   }
 
-  let api = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote);
-
-  const config = repo
-    ? await api.getRepoConfig(repo, branch).catch(
-      (err) => {
-        log.warn(`Failed to fetch repo config via RPC: ${err}. Using defaults`, "main");
-        return DEFAULT_CONFIG;
-      },
-    )
-    : DEFAULT_CONFIG;
-
-  const runner = await Runner.build({
-    targetPostgresUrl,
-    sourcePostgresUrl,
-    logPath,
-    maxCost,
-    ignoredQueryHashes: config.ignoredQueryHashes,
-    remote,
-  });
-  let allResults: QueryProcessResult[];
-  let reportContext;
+  const { api, dispose: disposeApi } = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote);
 
   try {
-    log.info("main", "Running in CI mode. Skipping server creation");
-    const results = await runner.run(config);
-    allResults = results.allResults;
-    reportContext = results.reportContext;
-  } finally {
-    await runner.close();
-  }
+    const config = repo
+      ? await api.getRepoConfig(repo, branch).catch(
+        (err) => {
+          log.warn(`Failed to fetch repo config via RPC: ${err}. Using defaults`, "main");
+          return DEFAULT_CONFIG;
+        },
+      )
+      : DEFAULT_CONFIG;
 
-  const queries = buildQueries(allResults, config);
+    const runner = await Runner.build({
+      targetPostgresUrl,
+      sourcePostgresUrl,
+      logPath,
+      maxCost,
+      ignoredQueryHashes: config.ignoredQueryHashes,
+      remote,
+    });
+    let allResults: QueryProcessResult[];
+    let reportContext;
 
-  // POST to Site API first so we get the run ID for the PR comment link
-  let runId: string | null = null;
-  if (siteApiEndpoint) {
-    runId = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
-  }
+    try {
+      log.info("main", "Running in CI mode. Skipping server creation");
+      const results = await runner.run(config);
+      allResults = results.allResults;
+      reportContext = results.reportContext;
+    } finally {
+      await runner.close();
+    }
 
-  // Build the run URL and query base URL for the PR comment
-  if (siteApiEndpoint && runId) {
-    // SITE_API_ENDPOINT is e.g. https://api.querydoctor.com
-    // The app lives at https://app.querydoctor.com — derive from the API URL
-    const appUrl =
-      process.env.SITE_APP_URL ??
-      siteApiEndpoint.replace(/\/api\/?$/, "").replace("api.", "app.");
-    const baseUrl = appUrl.replace(/\/$/, "");
-    reportContext.runUrl = `${baseUrl}/ixr/ci/${runId}`;
-    reportContext.queryBaseUrl = baseUrl;
-  }
+    const queries = buildQueries(allResults, config);
 
-  // Fetch previous run for comparison
-  let previousRun = null;
-  if (siteApiEndpoint && repo) {
-    const comparisonBranch =
-      config.comparisonBranch ?? process.env.GITHUB_BASE_REF ?? branch;
-    const result = await fetchPreviousRun(
-      siteApiEndpoint,
-      repo,
-      comparisonBranch,
-      runId ?? undefined,
-    );
-    reportContext.comparisonBranch = comparisonBranch;
-    if (result.kind === "found") {
-      previousRun = result.run;
-    } else if (result.kind === "not-found") {
-      log.info(
-        "main",
-        `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
-        `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
-        `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
+    // POST to Site API first so we get the run ID for the PR comment link
+    let runId: string | null = null;
+    if (siteApiEndpoint) {
+      runId = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
+    }
+
+    // Build the run URL and query base URL for the PR comment
+    if (siteApiEndpoint && runId) {
+      // SITE_API_ENDPOINT is e.g. https://api.querydoctor.com
+      // The app lives at https://app.querydoctor.com — derive from the API URL
+      const appUrl =
+        process.env.SITE_APP_URL ??
+        siteApiEndpoint.replace(/\/api\/?$/, "").replace("api.", "app.");
+      const baseUrl = appUrl.replace(/\/$/, "");
+      reportContext.runUrl = `${baseUrl}/ixr/ci/${runId}`;
+      reportContext.queryBaseUrl = baseUrl;
+    }
+
+    // Fetch previous run for comparison
+    let previousRun = null;
+    if (siteApiEndpoint && repo) {
+      const comparisonBranch =
+        config.comparisonBranch ?? process.env.GITHUB_BASE_REF ?? branch;
+      const result = await fetchPreviousRun(
+        siteApiEndpoint,
+        repo,
+        comparisonBranch,
+        runId ?? undefined,
       );
-    } else {
-      log.warn(
-        "main",
-        `Failed to fetch baseline for branch "${comparisonBranch}" (${result.reason}). ` +
-        `Comparison will be skipped. This is likely a transient Site API issue — re-run the check to retry.`,
+      reportContext.comparisonBranch = comparisonBranch;
+      if (result.kind === "found") {
+        previousRun = result.run;
+      } else if (result.kind === "not-found") {
+        log.info(
+          "main",
+          `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
+          `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
+          `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
+        );
+      } else {
+        log.warn(
+          "main",
+          `Failed to fetch baseline for branch "${comparisonBranch}" (${result.reason}). ` +
+          `Comparison will be skipped. This is likely a transient Site API issue — re-run the check to retry.`,
+        );
+      }
+    }
+    if (previousRun) {
+      reportContext.comparison = compareRuns(
+        queries,
+        previousRun,
+        config.regressionThreshold,
+        config.minimumCost,
+        config.acknowledgedQueryHashes,
       );
     }
-  }
-  if (previousRun) {
-    reportContext.comparison = compareRuns(
-      queries,
-      previousRun,
-      config.regressionThreshold,
-      config.minimumCost,
-      config.acknowledgedQueryHashes,
-    );
-  }
 
-  console.log("Creating report...")
-  // Generate PR comment with comparison data
-  await runner.report(reportContext);
+    console.log("Creating report...")
+    // Generate PR comment with comparison data
+    await runner.report(reportContext);
 
-  // Block PR if regressions exceed thresholds
-  if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
-    const messages = reportContext.comparison.regressed.map((q) => {
-      const preview = queryPreview(q.formattedQuery);
-      const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
-      const link = reportContext.runUrl
-        ? `\n    ${reportContext.runUrl}/${q.hash}`
-        : "";
-      return `  - ${preview}: ${cost}${link}`;
-    });
-    core.setFailed(
-      `${reportContext.comparison.regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
-    );
+    // Block PR if regressions exceed thresholds
+    if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
+      const messages = reportContext.comparison.regressed.map((q) => {
+        const preview = queryPreview(q.formattedQuery);
+        const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
+        const link = reportContext.runUrl
+          ? `\n    ${reportContext.runUrl}/${q.hash}`
+          : "";
+        return `  - ${preview}: ${cost}${link}`;
+      });
+      core.setFailed(
+        `${reportContext.comparison.regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
+      );
+    }
+  } finally {
+    disposeApi();
   }
 }
 
