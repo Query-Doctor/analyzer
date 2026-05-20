@@ -12,19 +12,17 @@ import {
   postToSiteApi,
 } from "./reporters/site-api.ts";
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
-import { DEFAULT_CONFIG, type AnalyzerConfig } from "./config.ts";
-import { ApiClient, hookUpApiReporter } from "./remote/api-client.ts";
+import { DEFAULT_CONFIG } from "./config.ts";
+import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
-import type { RpcStub } from "capnweb";
-import type { ServerApi } from "@query-doctor/core";
-
-const INVALID_TOKEN_ERROR = "Unauthorized"
+import { PgbadgerSource } from "./sql/pgbadger.ts";
+import type { RecentQuerySource } from "./sql/recent-query.ts";
 
 async function runInCI(
   targetPostgresUrl: Connectable,
   sourcePostgresUrl: Connectable,
-  logPath: string,
+  logPath: string | undefined,
   maxCost?: number,
 ) {
   const siteApiEndpoint = env.SITE_API_ENDPOINT;
@@ -32,10 +30,11 @@ async function runInCI(
   const branch =
     process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "";
 
+  const remoteDbManager = ConnectionManager.forRemoteDatabase()
   const remote = new Remote(
     targetPostgresUrl,
     ConnectionManager.forLocalDatabase(),
-    ConnectionManager.forRemoteDatabase(),
+    remoteDbManager,
     { disableQueryLoader: true },
   );
 
@@ -55,10 +54,14 @@ async function runInCI(
       )
       : DEFAULT_CONFIG;
 
+    const source: RecentQuerySource = logPath
+      ? new PgbadgerSource(logPath)
+      : remoteDbManager.getConnectorFor(sourcePostgresUrl);
+
     const runner = await Runner.build({
       targetPostgresUrl,
       sourcePostgresUrl,
-      logPath,
+      source,
       maxCost,
       ignoredQueryHashes: config.ignoredQueryHashes,
       remote,
@@ -200,10 +203,6 @@ async function main() {
   if (env.CI) {
     if (!env.POSTGRES_URL) {
       core.setFailed("POSTGRES_URL environment variable is not set");
-      process.exit(1);
-    }
-    if (!env.LOG_PATH) {
-      core.setFailed("LOG_PATH environment variable is not set");
       process.exit(1);
     }
     await runInCI(

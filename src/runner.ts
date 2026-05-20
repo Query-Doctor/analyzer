@@ -1,10 +1,6 @@
 import * as core from "@actions/core";
-import csv from "fast-csv";
-import { statSync } from "node:fs";
-import { spawn } from "node:child_process";
-import { fingerprint } from "@libpg-query/parser";
-import { preprocessEncodedJson } from "./sql/json.ts";
-import { ExplainedLog } from "./sql/pg_log.ts";
+import { PgbadgerSource } from "./sql/pgbadger.ts";
+import type { RecentQuerySource } from "./sql/recent-query.ts";
 import { GithubReporter } from "./reporters/github/github.ts";
 import {
   deriveIndexStatistics,
@@ -17,8 +13,6 @@ import { env } from "./env.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { Remote, StatisticsStrategy } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
-import { RecentQuery } from "./sql/recent-query.ts";
-import { QueryHash } from "./sql/recent-query.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
 import { ExportedStats } from "@query-doctor/core";
 import { readFile } from "node:fs/promises";
@@ -27,7 +21,7 @@ import { buildQueries } from "./reporters/site-api.ts";
 export class Runner {
   constructor(
     private readonly remote: Remote,
-    private readonly logPath: string,
+    private readonly source: RecentQuerySource,
     private readonly maxCost?: number,
     private readonly ignoredQueryHashes: Set<string> = new Set(),
   ) { }
@@ -37,7 +31,7 @@ export class Runner {
     sourcePostgresUrl: Connectable;
     statisticsPath?: string;
     maxCost?: number;
-    logPath: string;
+    source: RecentQuerySource;
     ignoredQueryHashes?: string[];
     remote?: Remote;
   }) {
@@ -45,7 +39,6 @@ export class Runner {
       options.targetPostgresUrl,
       ConnectionManager.forLocalDatabase(),
       ConnectionManager.forRemoteDatabase(),
-      // queries are already sourced from logs
       { disableQueryLoader: true }
     );
     await remote.syncFrom(options.sourcePostgresUrl,
@@ -54,7 +47,7 @@ export class Runner {
     await remote.optimizer.finish;
     return new Runner(
       remote,
-      options.logPath,
+      options.source,
       options.maxCost,
       new Set(options.ignoredQueryHashes ?? []),
     );
@@ -92,82 +85,15 @@ export class Runner {
 
   async run(config: AnalyzerConfig = DEFAULT_CONFIG) {
     const startDate = new Date();
-    const logSize = statSync(this.logPath).size;
-    console.log(`logPath=${this.logPath},fileSize=${logSize}`);
-    const args = [
-      "--dump-raw-csv",
-      "--no-progressbar",
-      "-f",
-      "stderr",
-      this.logPath,
-    ];
-    console.log(`pgbadger ${args.join(" ")}`);
-    const child = spawn("pgbadger", args, {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stderr!.pipe(process.stderr);
-    let error: Error | undefined;
-    const stream = csv
-      .parseStream(child.stdout!, {
-        headers: false,
-      })
-      .on("error", (err) => {
-        console.error("Got a pgbadger error", err);
-        error = err;
-      });
 
     console.time("total");
-    const recentQueries: RecentQuery[] = [];
-    for await (const chunk of stream) {
-      const [
-        _timestamp,
-        _username,
-        _dbname,
-        _pid,
-        _client,
-        _sessionid,
-        loglevel,
-        _sqlstate,
-        _duration,
-        queryString,
-        _parameters,
-        _appname,
-        _backendtype,
-        _queryid,
-      ] = chunk as string[];
-      if (loglevel !== "LOG" || !queryString.startsWith("plan:")) {
-        continue;
-      }
-      const planString: string = queryString.split("plan:")[1].trim();
-      const json = preprocessEncodedJson(planString);
-      if (!json) {
-        console.log("Skipping LOG that is not JSON", queryString);
-        continue;
-      }
-      let parsed: ExplainedLog;
-      try {
-        parsed = ExplainedLog.fromLog(json);
-      } catch (e) {
-        console.log(e);
-        console.log(
-          "Log line that looked like valid auto_explain was not valid json?",
-        );
-        continue;
-      }
-
-      const query = parsed.query;
-      const hash = QueryHash.parse(await fingerprint(query));
-      if (this.ignoredQueryHashes.has(hash)) {
-        continue;
-      }
-      if (parsed.isIntrospection) {
-        continue;
-      }
-
-      const recentQuery = await RecentQuery.fromLogEntry(query, hash);
-      recentQueries.push(recentQuery)
-    }
-    console.log("Finished pgbadger stream");
+    const recentQueries = await this.source.getRecentQueries();
+    const error = this.source instanceof PgbadgerSource
+      ? this.source.streamError
+      : undefined;
+    const totalRows = this.source instanceof PgbadgerSource
+      ? this.source.totalRows
+      : recentQueries.length;
     await this.remote.optimizer.addQueries(recentQueries);
 
     await this.remote.optimizer.finish;
@@ -184,7 +110,7 @@ export class Runner {
       });
 
     console.log(
-      `Matched ${this.remote.optimizer.validQueriesProcessed} unique queries out of ${recentQueries.length} log entries`,
+      `Matched ${this.remote.optimizer.validQueriesProcessed} unique queries out of ${totalRows} entries`,
     );
 
     const recommendations: ReportIndexRecommendation[] = [];
@@ -266,7 +192,10 @@ export class Runner {
       }),
       statistics,
       error,
-      metadata: { logSize, timeElapsed },
+      metadata: {
+        logSize: this.source instanceof PgbadgerSource ? this.source.logSize : -1,
+        timeElapsed,
+      },
     };
     console.timeEnd("total");
     return { reportContext, allResults };
