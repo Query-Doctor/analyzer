@@ -23,6 +23,7 @@ import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
+import type { RecentQuerySource } from "../sql/recent-query.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -86,7 +87,7 @@ export type ResetPgStatStatementsResult =
 /**
  * Use {@link ConnectionManager.getConnectorFor} to grab an instance of this class
  */
-export class PostgresConnector implements DatabaseConnector<PostgresTuple> {
+export class PostgresConnector implements DatabaseConnector<PostgresTuple>, RecentQuerySource {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
   private readonly tupleEstimates = new Map<TableName, number>();
   private querySource: QuerySourceExtension | null = null;

@@ -300,6 +300,7 @@ test("analyze leaves displayQuery undefined for UNION", async () => {
   expect(rq.displayQuery).toBeUndefined();
 });
 
+
 test("analyze strips sqlcommenter tags from formattedQuery", async () => {
   const data = makeRawQuery({ query: "select 1 /*a='1',b='2'*/" });
   const rq = await RecentQuery.analyze(data, testHash, 1000);
