@@ -145,7 +145,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
   }
 
   async refreshQueries(): Promise<void> {
-    await this.remote.resync();
+    await this.remote.pollQueriesOnce();
   }
 
   async updateStatistics(stats: ExportedStats[]): Promise<void> {

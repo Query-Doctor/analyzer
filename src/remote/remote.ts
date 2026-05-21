@@ -248,7 +248,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * Runs a single poll of pg_stat_statements if
    * there isn't already an in-flight request
    */
-  private async pollQueriesOnce() {
+  async pollQueriesOnce() {
     if (this.queryLoader && !this.isPolling && !this.options.disableQueryLoader) {
       try {
         this.isPolling = true;
