@@ -39,9 +39,17 @@ There are a couple assumptions about your CI pipeline we make for this to work.
    introspect. And that every table has at least 1 row in it as part of your db
    seed. We use the database to do extra work by testing your query against
    different index configurations with your production stats, but all of that
-   work is done in a transaction that’s always rolled back. Data is never
+   work is done in a transaction that's always rolled back. Data is never
    modified
-3. Your `postgres.conf` is configured with at least the following options.
+3. Your postgres is configured with at least one of the supported query sources.
+
+Using `pg_stat_statements` (simpler, works well with service containers):
+
+```bash
+shared_preload_libraries='pg_stat_statements'
+```
+
+Using `auto_explain` (captures full execution plans):
 
 ```bash
 shared_preload_libraries='auto_explain'
@@ -67,13 +75,13 @@ support for other CI platforms like Azure Pipelines.
 
 ### GitHub Actions
 
-`ubuntu` runners in GitHub already ships with postgres as part of the default
-image, so we try to leverage that. Because GitHub workflows does not support
-specifying arguments to services https://github.com/actions/runner/pull/1152, we
-can’t run postgres as a container. And trying to run postgres in docker directly
-causes network problems because it seems `--network=host` is also not supported
-in dind (docker-in-docker). So we instead copy an explicit setup to the existing
-postgres, which boots up 10x faster than docker anyway.
+There are two ways to run postgres in GitHub Actions: as a service container, or
+by configuring the postgres instance that ships with `ubuntu-latest` runners.
+
+#### Option A: Service container (recommended)
+
+This approach gives you full control over the postgres version and configuration
+via the `services` block. Pass postgres flags directly with `command:`.
 
 1. Set up the workflow trigger. Include both `pull_request` (for PR analysis) and
    `push` to your main branch (to establish a baseline for comparison).
@@ -85,7 +93,81 @@ on:
     branches: [main]
 ```
 
-2. Copy the setup script
+2. Add a postgres service with `pg_stat_statements` loaded and a health check.
+
+```yaml
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: myapp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        command: >-
+          postgres
+          -c shared_preload_libraries=pg_stat_statements
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enable pg_stat_statements
+        run: psql -h localhost -U postgres -d myapp_test -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"
+        env:
+          PGPASSWORD: postgres
+```
+
+3. Run your migrations and seed scripts, then your test suite.
+
+```yaml
+      - name: Migrate
+        run: pnpm run migrate && pnpm run seed
+        env:
+          POSTGRES_URL: postgres://postgres:postgres@localhost/myapp_test
+      - name: Run integration tests
+        run: pnpm run test:integration
+        env:
+          POSTGRES_URL: postgres://postgres:postgres@localhost/myapp_test
+```
+
+4. Run the analyzer.
+
+```yaml
+      - name: Run query-doctor/analyzer
+        uses: query-doctor/analyzer@main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SITE_API_ENDPOINT: https://api.querydoctor.com
+          SOURCE_DATABASE_URL: postgres://postgres:postgres@localhost/myapp_test
+          TOKEN: ${{ secrets.QUERY_DOCTOR_TOKEN }}
+```
+
+5. Add `pull-requests: write` permission to your job.
+
+```yaml
+jobs:
+  run:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+```
+
+#### Option B: System postgres on ubuntu-latest
+
+`ubuntu-latest` runners ship with postgres pre-installed. This skips the service
+container overhead but requires modifying the system config to load extensions.
+
+1. Set up the workflow trigger (same as above).
+
+2. Configure and start postgres.
 
 ```yaml
 jobs:
@@ -121,16 +203,9 @@ you can change `sudo -u postgres createuser -s -d -r -w me` to create a new user
 with a name of your choosing and `sudo -u postgres createdb testing` to create a
 db with a different name.
 
-3. Run your migrations and seed scripts. This is just an example showing that
-   the migrations should target the postgres instance that was set up with the
-   previous command
+3. Run your migrations and seed scripts.
 
 ```yaml
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      # ... previous steps ...
       - name: Migrate
         run: pnpm run migrate && pnpm run seed
         env:
@@ -139,32 +214,19 @@ jobs:
 
 4. Run your test suite against the same database. You can do this with any tool
    and use any query builder or ORM you like.
-5. Run the analyzer. `GITHUB_TOKEN` is needed to post a comment to your PR
-   reviewing the indexes found in your database. `SITE_API_ENDPOINT` is the
-   Query Doctor API endpoint used to fetch per-repo configuration.
+5. Run the analyzer.
+
 ```yaml
-jobs:
-  run:
-    runs-on: ubuntu-latest
-    steps:
-      # ... previous steps ...
-      - name: Migrate
-        run: pnpm run migrate && pnpm run seed
-        env:
-          POSTGRES_URL: postgres://me@localhost/testing
-      - name: Run integration tests
-        run: pnpm run test:integration
-        env:
-          POSTGRES_URL: postgres://me@localhost/testing
       - name: Run query-doctor/analyzer
-        uses: query-doctor/analyzer@v0
+        uses: query-doctor/analyzer@main
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SITE_API_ENDPOINT: https://api.querydoctor.com
-          POSTGRES_URL: postgres://me@localhost/testing
+          SOURCE_DATABASE_URL: postgres://me@localhost/testing
+          TOKEN: ${{ secrets.QUERY_DOCTOR_TOKEN }}
 ```
 
-6. Add `pull-request: write` permissions to your job to allow
+6. Add `pull-requests: write` permission to your job.
 
 ```yaml
 jobs:
