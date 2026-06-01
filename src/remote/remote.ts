@@ -11,7 +11,7 @@ import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { ExtensionNotInstalledError } from "../sync/errors.ts";
-import { type RecentQuery } from "../sql/recent-query.ts";
+import { type OptimizedQuery, type RecentQuery } from "../sql/recent-query.ts";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { type FullSchema } from "../sync/schema_differ.ts";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
@@ -28,6 +28,7 @@ type RemoteEvents = {
   queriesPolled: [queries: RecentQuery[]];
   schemaSynced: [schema: FullSchema];
   statsApplied: [stats: ExportedStats[]];
+  queryError: [error: Error, query: OptimizedQuery];
 };
 
 /**
@@ -95,6 +96,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     if (initialSourceDb) {
       this.lastSourceDb = initialSourceDb;
     }
+    this.optimizer.on("error", (error, query) => this.emit("queryError", error, query));
   }
 
   async resync(): Promise<ReturnType<Remote["syncFrom"]>> {

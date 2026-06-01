@@ -52,7 +52,7 @@ export class RemoteController {
     const onError = this.eventError.bind(this);
     remote.optimizer.on("noImprovements", onQueryProcessed);
     remote.optimizer.on("improvementsAvailable", onQueryProcessed);
-    remote.optimizer.on("error", onError);
+    remote.on("queryError", onError);
     remote.optimizer.on("timeout", onQueryProcessed);
     remote.optimizer.on("zeroCostPlan", onQueryProcessed);
     remote.on("dumpLog", this.makeLoggingHandler("pg_dump").bind(this));
