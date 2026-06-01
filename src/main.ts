@@ -42,7 +42,9 @@ async function runInCI(
     throw new Error("CI mode cannot be run without a TOKEN variable provided")
   }
 
-  const { api, dispose: disposeApi } = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote);
+  const { api, dispose: disposeApi } = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote, (err) => {
+    log.warn(`API connection broken during CI run: ${err}`, "main");
+  });
 
   try {
     const config = repo
