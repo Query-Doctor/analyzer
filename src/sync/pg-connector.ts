@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import type {
   CursorOptions,
   DatabaseConnector,
@@ -20,14 +17,11 @@ import {
   PostgresQueryBuilder,
 } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
-import { FullSchema, FullSchemaColumn } from "./schema_differ.ts";
+import { FullSchema, FullSchemaColumn } from "@query-doctor/core";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 import type { RecentQuerySource } from "../sql/recent-query.ts";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const schemaDumpSql = readFileSync(join(__dirname, "schema_dump.sql"), "utf-8");
 
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
@@ -49,7 +43,6 @@ type PostgresTuple = { data: Row; table: TableName };
 
 export type SerializeResult = {
   serialized: string;
-  schema: FullSchema;
   sampledRecords: Record<TableName, number>;
 };
 
@@ -295,8 +288,8 @@ ORDER BY
   async serialize(
     tables: TableRows<Row>,
     options: DependencyAnalyzerOptions,
+    schema: FullSchema,
   ): Promise<SerializeResult> {
-    const schema = await this.getSchema();
     const mkKey = (
       schema: PgIdentifier,
       table: PgIdentifier,
@@ -405,7 +398,6 @@ ORDER BY
     );
     out += `-- END:Sampled data\nSET session_replication_role = 'origin';\n\n`;
     return {
-      schema,
       serialized: out,
       sampledRecords,
     };
@@ -413,15 +405,6 @@ ORDER BY
 
   hash(value: PostgresTuple): Hash {
     return `${value.table}:${value.data[ctidSymbol]}` as Hash;
-  }
-
-  public async getSchema() {
-    // dumped schema has identifiers (table names, column names, etc) with capital letters quoted
-    const [results] = await withSpan(
-      "connector.getSchema",
-      () => this.db.exec<{ result: FullSchema }>(schemaDumpSql, []),
-    )();
-    return FullSchema.parse(results.result);
   }
 
   public async getTotalRowCount(

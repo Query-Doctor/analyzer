@@ -5,5 +5,4 @@
   packages = with pkgs; [
     git
   ];
-  languages.deno.enable = true;
 }

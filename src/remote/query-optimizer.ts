@@ -6,7 +6,8 @@ import { Sema } from "async-sema";
 import {
   Analyzer,
   dropIndex,
-  IndexedTable,
+  FullSchema,
+  FullSchemaIndex,
   IndexOptimizer,
   IndexRecommendation,
   OptimizeResult,
@@ -47,7 +48,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private readonly queries = new Map<QueryHash, OptimizedQuery>();
   private readonly disabledIndexes = new DisabledIndexes();
 
-  private existingIndexes: IndexedTable[] = [];
+  private existingIndexes: FullSchemaIndex[] = [];
   private target?: Target;
   private semaphore = new Sema(QueryOptimizer.MAX_CONCURRENCY);
   private _finish = Promise.withResolvers<void>();
@@ -112,7 +113,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this.target?.statistics.ownMetadata;
   }
 
-  getExistingIndexes(): IndexedTable[] {
+  getExistingIndexes(): FullSchemaIndex[] {
     return this.existingIndexes;
   }
 
@@ -128,10 +129,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   async start(
     allRecentQueries: RecentQuery[],
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
+    schema?: FullSchema,
   ): Promise<OptimizedQuery[]> {
     this.stop();
     const validQueries = this.appendQueries(allRecentQueries);
-    await this.setStatistics(statsMode);
+    await this.setStatistics(statsMode, schema);
     this._allQueries = this.queries.size;
     await this.work();
     return validQueries;
@@ -139,12 +141,13 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   async setStatistics(
     statsMode: StatisticsMode = QueryOptimizer.defaultStatistics,
+    schema?: FullSchema,
   ): Promise<void> {
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(this.connectable);
     const ownStats = await Statistics.dumpStats(pg, version);
     const statistics = new Statistics(pg, version, ownStats, statsMode);
-    this.existingIndexes = await statistics.getExistingIndexes();
+    this.existingIndexes = schema?.indexes ?? [];
     const filteredIndexes = this.filterDisabledIndexes(this.existingIndexes);
     const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
       trace: false,
@@ -391,11 +394,8 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     }
   }
 
-  private filterDisabledIndexes(indexes: IndexedTable[]): IndexedTable[] {
-    return indexes.filter((idx) => {
-      const indexName = PgIdentifier.fromString(idx.index_name);
-      return !this.disabledIndexes.has(indexName);
-    });
+  private filterDisabledIndexes(indexes: FullSchemaIndex[]): FullSchemaIndex[] {
+    return indexes.filter((idx) => !this.disabledIndexes.has(idx.indexName));
   }
 
   private checkQueryUnsupported(

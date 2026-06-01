@@ -1,5 +1,6 @@
 import { test, expect } from "vitest";
-import { SchemaDiffer, type FullSchema } from "./schema_differ.ts";
+import { SchemaDiffer } from "./schema_differ.ts";
+import type { FullSchema } from "@query-doctor/core";
 import { Connectable } from "./connectable.ts";
 
 function makeConnectable(url = "postgres://test:test@localhost:5432/test"): Connectable {

@@ -620,6 +620,44 @@ test("schema and deltas stay consistent across multiple polls", async () => {
     }
 });
 
+test("repull succeeds after initial sync", async () => {
+    const [sourceDb, targetDb] = await Promise.all([
+      new PostgreSqlContainer("postgres:17")
+        .withCopyContentToContainer([
+          {
+            content: `
+              create table testing(a int, b text);
+              create index "testing_idx" on testing(b);
+            `,
+            target: "/docker-entrypoint-initdb.d/init.sql",
+          },
+        ])
+        .start(),
+      testSpawnTarget(),
+    ]);
+
+    try {
+      const target = Connectable.fromString(targetDb.getConnectionUri());
+      const source = Connectable.fromString(sourceDb.getConnectionUri());
+
+      await using remote = new Remote(
+        target,
+        ConnectionManager.forLocalDatabase(),
+      );
+
+      await remote.syncFrom(source);
+      const result = await remote.syncFrom(source);
+
+      assertOk(result.schema);
+      const tableNames = result.schema.value.tables.map((t) =>
+        t.tableName.toString()
+      );
+      expect(tableNames).toContain("testing");
+    } finally {
+      await Promise.all([sourceDb.stop(), targetDb.stop()]);
+    }
+});
+
 test("returns extension error when pg_stat_statements is not installed", async () => {
     const [sourceDb, targetDb] = await Promise.all([
       new PostgreSqlContainer("postgres:17")

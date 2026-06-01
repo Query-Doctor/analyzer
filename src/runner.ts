@@ -103,9 +103,9 @@ export class Runner {
 
     const resolveIndexNames = (names: string[]) =>
       names.map((name) => {
-        const idx = existingIndexes.find((e) => e.index_name === name);
+        const idx = existingIndexes.find((e) => e.indexName.toString() === name);
         return idx
-          ? `${idx.schema_name}.${idx.table_name}(${idx.index_columns.map((c) => `"${c.name}" ${c.order}`).join(", ")})`
+          ? `${idx.schemaName}.${idx.tableName}(${idx.keyColumns.map((c) => `"${c.name}" ${c.order ?? "ASC"}`).join(", ")})`
           : name;
       });
 

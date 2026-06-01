@@ -1,4 +1,6 @@
 import {
+  dumpSchema,
+  FullSchema,
   PgIdentifier,
   type Postgres,
   PostgresVersion,
@@ -6,6 +8,7 @@ import {
   StatisticsMode,
   type ExtensionPresence,
   type ExportedStats,
+  FullSchemaTable,
 } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
@@ -13,7 +16,6 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { ExtensionNotInstalledError } from "../sync/errors.ts";
 import { type OptimizedQuery, type RecentQuery } from "../sql/recent-query.ts";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
-import { type FullSchema } from "../sync/schema_differ.ts";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { EventEmitter } from "node:events";
@@ -93,10 +95,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
       Remote.defaultOptimizingDbPrefix,
     );
     this.optimizer = new QueryOptimizer(manager, this.optimizingDbUDRL);
+    this.optimizer.on("error", (error, query) => this.emit("queryError", error, query));
     if (initialSourceDb) {
       this.lastSourceDb = initialSourceDb;
     }
-    this.optimizer.on("error", (error, query) => this.emit("queryError", error, query));
   }
 
   async resync(): Promise<ReturnType<Remote["syncFrom"]>> {
@@ -192,6 +194,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       source,
       queries,
       statsResult.mode,
+      fullSchema.status === "fulfilled" ? fullSchema.value : undefined,
     );
 
     return {
@@ -216,6 +219,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   getLatestSchema(): FullSchema | undefined {
     return this.schemaLoader?.getLatestSchema();
   }
+
 
   async getStatus() {
     const queries = this.optimizer.getQueries();
@@ -279,10 +283,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
       // it's ok if the db already exists (previously crashed)
     }
     const prevDbName = this.generationDbName(prevGeneration);
+    const prevOptimizingDb = this.optimizingDbUDRL;
     this.generation = nextGeneration;
     this.optimizingDbUDRL = this.optimizingDbUDRL.withDatabaseName(nextDbName);
     this.optimizer.updateConnectable(this.optimizingDbUDRL);
     await this.optimizer.drain();
+    await this.manager.close(prevOptimizingDb);
     // these cannot be run in the same `exec` block as that implicitly creates transactions
     await baseDb.exec(
       `drop database if exists ${prevDbName};`,
@@ -321,7 +327,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private async resolveStatistics(
     source: Connectable,
     strategy: StatisticsStrategy,
-    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
+    tables: FullSchemaTable[],
   ): Promise<StatsResult> {
     if (strategy.type === "static") {
       // Static strategy doesn't go through inference
@@ -332,7 +338,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   private async decideStatsStrategy(
     source: Connectable,
-    tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
+    tables: FullSchemaTable[],
   ): Promise<StatsResult> {
     const connector = this.sourceManager.getConnectorFor(source);
     const totalRows = await connector.getTotalRowCount(tables);
@@ -371,8 +377,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
   }
 
   private getFullSchema(source: Connectable): Promise<FullSchema> {
-    const connector = this.sourceManager.getConnectorFor(source);
-    return connector.getSchema();
+    const connector = this.sourceManager.getOrCreateConnection(source);
+    return dumpSchema(connector);
   }
 
   private getDatabaseInfo(source: Connectable) {
@@ -409,13 +415,14 @@ export class Remote extends EventEmitter<RemoteEvents> {
     source: Connectable,
     recentQueries: RecentQuery[],
     stats?: StatisticsMode,
+    schema?: FullSchema,
   ): Promise<void> {
     if (source.isSupabase()) {
       // https://gist.github.com/Xetera/067c613580320468e8367d9d6c0e06ad
       await postgres.exec("drop schema if exists extensions cascade");
     }
     this.startQueryLoader(source);
-    this.optimizer.start(recentQueries, stats);
+    this.optimizer.start(recentQueries, stats, schema);
   }
 
   private startQueryLoader(source: Connectable) {

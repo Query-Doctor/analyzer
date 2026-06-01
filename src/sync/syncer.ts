@@ -7,7 +7,7 @@ import { RecentQueriesResult } from "./pg-connector.ts";
 import { PostgresSchemaLink } from "./schema-link.ts";
 import { withSpan } from "../otel.ts";
 import { Connectable } from "./connectable.ts";
-import { ExportedStats, PostgresVersion, Statistics } from "@query-doctor/core";
+import { dumpSchema, ExportedStats, PostgresVersion, Statistics } from "@query-doctor/core";
 import { SchemaDiffer } from "./schema_differ.ts";
 import { ExtensionNotInstalledError } from "./errors.ts";
 import { ConnectionManager } from "./connection-manager.ts";
@@ -40,9 +40,7 @@ export type SyncResult = {
 export class PostgresSyncer {
   private readonly differ = new SchemaDiffer();
 
-  constructor(
-    private readonly manager: ConnectionManager,
-  ) {}
+  constructor(private readonly manager: ConnectionManager) { }
 
   /**
    * @throws {ExtensionNotInstalledError}
@@ -56,6 +54,8 @@ export class PostgresSyncer {
     const connector = this.manager.getConnectorFor(sql);
     const link = new PostgresSchemaLink(connectable, "pglite");
     const analyzer = new DependencyAnalyzer(connector, options);
+    const fullSchema = await withSpan("schema_dump", () => dumpSchema(sql))();
+
     const [
       stats,
       databaseInfo,
@@ -94,11 +94,9 @@ export class PostgresSyncer {
           excludedSchemas: link.excludedSchemas(),
         });
         const graph = await analyzer.buildGraph(dependencyList);
-        const dependencies = await analyzer.findAllDependencies(
-          graph,
-        );
+        const dependencies = await analyzer.findAllDependencies(graph);
         const serialized = await withSpan("serialize", () => {
-          return connector.serialize(dependencies.items, options);
+          return connector.serialize(dependencies.items, options, fullSchema);
         })();
         return { dependencies, serialized };
       })(),
@@ -113,7 +111,7 @@ export class PostgresSyncer {
       });
     }
 
-    this.differ.put(connectable, serializedResult.schema);
+    this.differ.put(connectable, fullSchema);
 
     const wrapped = schema + serializedResult.serialized;
 
@@ -134,10 +132,9 @@ export class PostgresSyncer {
    */
   async liveQuery(connectable: Connectable) {
     const connector = this.manager.getConnectorFor(connectable);
-    const [queries, schema] = await Promise.all([
-      connector.getRecentQueries(),
-      connector.getSchema(),
-    ]);
+    const queries = connector.getRecentQueries();
+    const conn = this.manager.getOrCreateConnection(connectable);
+    const schema = await dumpSchema(conn);
     const deltas = this.differ.put(connectable, schema);
     return { queries, deltas };
   }
