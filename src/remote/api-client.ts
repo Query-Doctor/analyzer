@@ -85,11 +85,19 @@ export class ApiClient extends RpcTarget implements ClientApi {
   }
 
 
-  static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote): Promise<ApiConnection> {
+  static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote, onBroken: (err: unknown) => void): Promise<ApiConnection> {
     const wsEndpoint = `${endpoint}/relay`.replace(/^http/, "ws");
     const unauthenticated = newWebSocketRpcSession<UnauthenticatedServerApi>(wsEndpoint);
     const api = await unauthenticated.authenticate(token, new this(remote), mode) as unknown as RpcStub<ServerApi>;
-    const stopPing = this.schedulePingTimer(api);
+    let broken = false;
+    const triggerBroken = (err: unknown) => {
+      if (broken) return;
+      broken = true;
+      stopPing();
+      onBroken(err);
+    };
+    const stopPing = this.schedulePingTimer(api, triggerBroken);
+    api.onRpcBroken(triggerBroken);
     let disposed = false;
     const dispose = () => {
       if (disposed) return;
@@ -105,10 +113,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
     let cleanup: (() => void) | undefined;
     const attempt = async (failCount: number) => {
       try {
-        const { api, dispose } = await this.connect(endpoint, token, mode, remote);
-        log.info(`Connected to the api`, this.#name);
-        cleanup = hookUpApiReporter(api, remote);
-        api.onRpcBroken((err) => {
+        const { api, dispose } = await this.connect(endpoint, token, mode, remote, (err) => {
           const delay = Math.min(failCount * 1000, this.#PING_MAX_BACKOFF_MS);
           log.error(`Connection broken: ${err}, reconnecting in ${delay}ms`, this.#name);
           cleanup?.();
@@ -116,6 +121,8 @@ export class ApiClient extends RpcTarget implements ClientApi {
           dispose();
           setTimeout(() => attempt(failCount + 1), delay);
         });
+        log.info(`Connected to the api`, this.#name);
+        cleanup = hookUpApiReporter(api, remote);
       } catch (err) {
         if (err instanceof Error && err.message === "Unauthorized") {
           log.error(`Invalid TOKEN, cannot connect to the api`, this.#name);
@@ -129,12 +136,12 @@ export class ApiClient extends RpcTarget implements ClientApi {
     attempt(0);
   }
 
-  static schedulePingTimer(api: RpcStub<ServerApi>): () => void {
+  static schedulePingTimer(api: RpcStub<ServerApi>, onFailed: (err: unknown) => void): () => void {
     const timer = setInterval(() => {
       api.ping().catch(err => {
-        console.error(err)
         log.error(`Could not ping the API server\n${err}`, this.#name)
         clearInterval(timer);
+        onFailed(err);
       });
     }, this.#PING_INTERVAL_MS);
     return () => clearInterval(timer);
