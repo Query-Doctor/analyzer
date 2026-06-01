@@ -448,6 +448,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       );
     } catch (error) {
       console.error("Error with optimization", error);
+      console.error("[query-optimizer] failed query:", recent.query);
       if (error instanceof TimeoutError) {
         return this.onTimeout(recent, options.timeoutMs);
       } else if (error instanceof Error) {

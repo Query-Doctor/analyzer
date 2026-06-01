@@ -45,12 +45,17 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
     });
   };
 
+  const onQueryError = (error: Error) => {
+    log.error(`Query error: ${error.message}`, "api-client");
+  };
+
   remote.on("extensionPresenceChanged", onExtensionPresenceChanged);
   remote.on("dumpLog", onDumpLog);
   remote.on("restoreLog", onRestoreLog);
   remote.on("schemaSynced", onSchemaSynced);
   remote.on("statsApplied", onStatsApplied);
   remote.on("queriesPolled", onQueriesPolled);
+  remote.on("queryError", onQueryError);
   remote.optimizer.on("noImprovements", pushOptimizedQuery);
   remote.optimizer.on("improvementsAvailable", pushOptimizedQuery);
   remote.optimizer.on("zeroCostPlan", pushOptimizedQuery);
@@ -63,6 +68,7 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
     remote.off("schemaSynced", onSchemaSynced);
     remote.off("statsApplied", onStatsApplied);
     remote.off("queriesPolled", onQueriesPolled);
+    remote.off("queryError", onQueryError);
     remote.optimizer.off("noImprovements", pushOptimizedQuery);
     remote.optimizer.off("improvementsAvailable", pushOptimizedQuery);
     remote.optimizer.off("zeroCostPlan", pushOptimizedQuery);
