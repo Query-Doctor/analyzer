@@ -19,3 +19,4 @@ devenv.local.yaml
 
 node_modules
 .env
+dist
