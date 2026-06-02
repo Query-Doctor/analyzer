@@ -15,6 +15,7 @@ import {
   PgIdentifier,
   Postgres,
   PostgresQueryBuilder,
+  dumpQueriesSql,
 } from "@query-doctor/core";
 import { SegmentedQueryCache } from "./seen-cache.ts";
 import { FullSchema, FullSchemaColumn } from "@query-doctor/core";
@@ -484,49 +485,16 @@ ORDER BY
   public async getRecentQueries(): Promise<RecentQuery[]> {
     const source = await this.getQuerySource();
     try {
-      if (source.extensionName.toString() === "pg_stat_statements") {
-        const results = await this.db.exec<RawRecentQuery>(`
-      SELECT
-        'unknown_user' as "username",
-        query,
-        mean_exec_time as "meanTime",
-        calls,
-        rows,
-        toplevel as "topLevel"
-      FROM ${source.schema}.pg_stat_statements
-      WHERE query not like '%pg_stat_statements%'
-        -- and dbid = (select oid from pg_database where datname = current_database())
-        and query not like '%@qd_introspection%'
-        -- excluding this makes sure we can use analyzer
-        -- in multi-tenant environments
-        and query != '<insufficient privilege>'
-        and query not ilike 'explain%'
-        -- and pg_user.usename not in (/* supabase */ 'supabase_admin', 'supabase_auth_admin', /* neon */ 'cloud_admin'); -- @qd_introspection
-      `); // we're excluding `pg_stat_statements` from the results since it's almost certainly unrelated
-
-        return await this.segmentedQueryCache.sync(
-          this.db,
-          results,
+      if (
+        source.extensionName.toString() === "pg_stat_statements" ||
+        source.extensionName.toString() === "pg_stat_monitor"
+      ) {
+        const sql = dumpQueriesSql(
+          source.schema.toString(),
+          source.extensionName.toString() as "pg_stat_statements" | "pg_stat_monitor",
         );
-      } else if (source.extensionName.toString() === "pg_stat_monitor") {
-        const results = await this.db.exec<RawRecentQuery>(`
-      SELECT
-        COALESCE(username, 'unknown_user') as "username",
-        query,
-        mean_exec_time as "meanTime",
-        calls,
-        rows,
-        toplevel as "topLevel"
-      FROM ${source.schema}.pg_stat_monitor
-      WHERE query not like '%pg_stat_monitor%'
-        and query not like '%@qd_introspection%'
-        and query not ilike 'explain%'
-      `); // we're excluding `pg_stat_monitor` from the results since it's almost certainly unrelated
-
-        return await this.segmentedQueryCache.sync(
-          this.db,
-          results,
-        );
+        const results = await this.db.exec<RawRecentQuery>(sql);
+        return await this.segmentedQueryCache.sync(this.db, results);
       }
     } catch (err) {
       if (
