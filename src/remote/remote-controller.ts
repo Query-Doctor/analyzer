@@ -143,9 +143,14 @@ export class RemoteController {
       this.sendSyncLog(`Could not resolve the connection string to a working database`);
       throw error;
     }
+    function logLine(line: string) {
+      console.log(line)
+    }
     try {
       this.sendSyncLog("Starting sync");
       this.syncStatus = SyncStatus.IN_PROGRESS;
+      this.remote.addListener("dumpLog", logLine)
+      this.remote.addListener("restoreLog", logLine)
       this.syncResponse = await this.remote.syncFrom(resolvedDb, {
         type: "pullFromSource",
       }, {
@@ -188,6 +193,9 @@ export class RemoteController {
           message: "Failed to sync database",
         },
       };
+    } finally {
+      this.remote.removeListener("dumpLog", logLine)
+      this.remote.removeListener("restoreLog", logLine)
     }
   }
 
