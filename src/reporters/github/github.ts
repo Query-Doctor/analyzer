@@ -21,6 +21,11 @@ import type { ImprovedQuery, RegressedQuery } from "../site-api.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
+// NOTE: The Site API exposes presentation-agnostic `signalKeys` (available in
+// the template via `runMetadata.signalKeys`), but we don't render per-signal
+// icons yet — the image assets don't exist. Rendering is deferred until the
+// Site follow-up that hosts them. See Query-Doctor/Site (analyzer#141 follow-up).
+
 interface DisplayRecommendation extends ReportIndexRecommendation {
   queryPreview: string;
 }
@@ -85,8 +90,18 @@ function addImprovementPreviews(
   }));
 }
 
+/** Per-query detail links keyed by query hash, sourced from the run metadata. */
+function buildQueryLinks(ctx: ReportContext): Record<string, string> {
+  const links: Record<string, string> = {};
+  for (const q of ctx.runMetadata?.queries ?? []) {
+    links[q.hash] = q.link;
+  }
+  return links;
+}
+
 export function buildViewModel(ctx: ReportContext) {
   const hasComparison = !!ctx.comparison;
+  const queryLinks = buildQueryLinks(ctx);
 
   if (!hasComparison) {
     return {
@@ -97,6 +112,7 @@ export function buildViewModel(ctx: ReportContext) {
       preExistingRecommendations: [] as DisplayRecommendation[],
       newQueryCount: 0,
       hasComparison: false,
+      queryLinks,
     };
   }
 
@@ -123,6 +139,7 @@ export function buildViewModel(ctx: ReportContext) {
     preExistingRecommendations,
     newQueryCount: ctx.comparison!.newQueries.length,
     hasComparison: true,
+    queryLinks,
   };
 }
 

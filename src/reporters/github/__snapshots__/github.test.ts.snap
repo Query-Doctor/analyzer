@@ -1,0 +1,47 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CI-signal metadata parity (analyzer#141) > linked repo: renders rollup line, per-query links, footer, run link, and docs link 1`] = `
+"### Query Doctor Analysis
+
+28 queries analyzed
+2 regressed · 1 improved · 3 new · 0 removed
+
+#### This PR improves queries
+
+- [<code>SELECT 2</code>](https://app.querydoctor.com/alice/proj/ci/9f3a1c20/improved-1)<br>cost 500 → 100 (80% reduction)
+
+#### This PR has regressions on queries
+
+- [<code>SELECT 1</code>](https://app.querydoctor.com/alice/proj/ci/9f3a1c20/regressed-1)<br>cost 120 → 170 (+42%)
+
+
+
+
+<sub>Using assumed statistics (10000 rows/table). For better results, <a href="https://docs.querydoctor.com/reference/statistics">sync production stats</a>.</sub>
+
+<sub>More detail → get_ci_run({ runId: "9f3a1c20" }) · <a href="https://app.querydoctor.com/alice/proj/ci/9f3a1c20">view run</a> · <a href="https://docs.querydoctor.com">docs</a></sub>
+"
+`;
+
+exports[`CI-signal metadata parity (analyzer#141) > unlinked repo: rollup + footer + docs only, no run link, no per-query links 1`] = `
+"### Query Doctor Analysis
+
+28 queries analyzed
+2 regressed · 1 improved · 3 new · 0 removed
+
+#### This PR improves queries
+
+- <code>SELECT 2</code><br>cost 500 → 100 (80% reduction)
+
+#### This PR has regressions on queries
+
+- <code>SELECT 1</code><br>cost 120 → 170 (+42%)
+
+
+
+
+<sub>Using assumed statistics (10000 rows/table). For better results, <a href="https://docs.querydoctor.com/reference/statistics">sync production stats</a>.</sub>
+
+<sub>More detail → get_ci_run({ runId: "9f3a1c20" }) · <a href="https://docs.querydoctor.com">docs</a></sub>
+"
+`;

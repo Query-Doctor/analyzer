@@ -82,22 +82,19 @@ async function runInCI(
 
     const queries = buildQueries(allResults, config);
 
-    // POST to Site API first so we get the run ID for the PR comment link
-    let runId: string | null = null;
+    // POST to Site API first so we get the run ID (for baseline exclusion) and
+    // the unified CI-signal metadata for the PR comment.
+    let runResult = null;
     if (siteApiEndpoint) {
-      runId = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
+      runResult = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
     }
+    const runId: string | null = runResult?.id ?? null;
 
-    // Build the run URL and query base URL for the PR comment
-    if (siteApiEndpoint && runId) {
-      // SITE_API_ENDPOINT is e.g. https://api.querydoctor.com
-      // The app lives at https://app.querydoctor.com — derive from the API URL
-      const appUrl =
-        process.env.SITE_APP_URL ??
-        siteApiEndpoint.replace(/\/api\/?$/, "").replace("api.", "app.");
-      const baseUrl = appUrl.replace(/\/$/, "");
-      reportContext.runUrl = `${baseUrl}/ixr/ci/${runId}`;
-      reportContext.queryBaseUrl = baseUrl;
+    // Run link and per-query links come straight from the API response. Both
+    // degrade gracefully: `url` is null and `queries` is empty for an unlinked repo.
+    if (runResult) {
+      reportContext.runUrl = runResult.url ?? undefined;
+      reportContext.runMetadata = runResult.metadata ?? undefined;
     }
 
     // Fetch previous run for comparison
@@ -145,12 +142,14 @@ async function runInCI(
 
     // Block PR if regressions exceed thresholds
     if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
+      const queryLinks = new Map(
+        (reportContext.runMetadata?.queries ?? []).map((q) => [q.hash, q.link]),
+      );
       const messages = reportContext.comparison.regressed.map((q) => {
         const preview = queryPreview(q.formattedQuery);
         const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
-        const link = reportContext.runUrl
-          ? `\n    ${reportContext.runUrl}/${q.hash}`
-          : "";
+        const queryLink = queryLinks.get(q.hash);
+        const link = queryLink ? `\n    ${queryLink}` : "";
         return `  - ${preview}: ${cost}${link}`;
       });
       core.setFailed(
