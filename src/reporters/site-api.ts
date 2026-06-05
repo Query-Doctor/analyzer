@@ -69,6 +69,36 @@ export interface PreviousRun {
   queries: CiQueryPayload[];
 }
 
+/**
+ * Unified CI-signal metadata returned by `POST /ci/runs` (Site #3067).
+ * The analyzer renders these fields verbatim so the PR comment speaks the same
+ * language as the Slack/webhook alert. See analyzer#141.
+ */
+export interface CiRunMetadata {
+  /** Structured roll-up counts. The rendered roll-up line must equal `rollupText`. */
+  rollup: { regressed: number; improved: number; new: number; removed: number };
+  /** The roll-up line — render verbatim (equals the alert's `formatRollup(...)`). */
+  rollupText: string;
+  /** The small "more detail" footer — render verbatim (equals `formatRunFooter(runId)`). */
+  footer: string;
+  /** A small `docs` link. May be null. */
+  docsUrl: string | null;
+  /** Presentation-agnostic icon keys for the four signal types. Map each to an image asset. */
+  signalKeys: { new: string; regressed: string; improved: string; index: string };
+  /** Per-query run-scoped detail links, keyed by query hash. Empty when the repo isn't linked. */
+  queries: Array<{ hash: string; link: string }>;
+}
+
+/**
+ * The `POST /ci/runs` response. `id` is always present; `url` is null and
+ * `metadata` is absent/degraded when the repo can't be resolved to a project.
+ */
+export interface CiRunResult {
+  id: string;
+  url: string | null;
+  metadata: CiRunMetadata | null;
+}
+
 export interface RunComparison {
   previousRunId: string;
   previousBranch: string;
@@ -247,7 +277,7 @@ export async function postToSiteApi(
   queries: CiQueryPayload[],
   statisticsMode?: StatisticsMode,
   computedStats?: ComputedStats,
-): Promise<string | null> {
+): Promise<CiRunResult | null> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "",
@@ -273,9 +303,17 @@ export async function postToSiteApi(
       console.warn(`Site API responded with ${response.status}: ${text}`);
       return null;
     }
-    const body = (await response.json()) as { id: string };
+    const body = (await response.json()) as {
+      id: string;
+      url?: string | null;
+      metadata?: CiRunMetadata | null;
+    };
     console.log(`Site API ingestion successful: ${JSON.stringify(body)}`);
-    return body.id;
+    return {
+      id: body.id,
+      url: body.url ?? null,
+      metadata: body.metadata ?? null,
+    };
   } catch (err) {
     console.warn(`Failed to POST to Site API: ${err}`);
     return null;

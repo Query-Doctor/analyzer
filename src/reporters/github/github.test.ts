@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import n from "nunjucks";
 import { formatCost, queryPreview, buildViewModel } from "./github.ts";
 import { isQueryLong, renderExplain, type ReportContext } from "../reporter.ts";
-import type { RunComparison } from "../site-api.ts";
+import type { CiRunMetadata, RunComparison } from "../site-api.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -338,5 +338,122 @@ describe("template rendering", () => {
     });
     const output = renderTemplate(ctx);
     expect(output).toContain("3 queries analyzed");
+  });
+});
+
+function makeMetadata(overrides: Partial<CiRunMetadata> = {}): CiRunMetadata {
+  return {
+    rollup: { regressed: 2, improved: 1, new: 3, removed: 0 },
+    rollupText: "2 regressed · 1 improved · 3 new · 0 removed",
+    footer: 'More detail → get_ci_run({ runId: "9f3a1c20" })',
+    docsUrl: "https://docs.querydoctor.com",
+    signalKeys: {
+      new: "signal.new",
+      regressed: "signal.regressed",
+      improved: "signal.improved",
+      index: "signal.index",
+    },
+    queries: [
+      { hash: "regressed-1", link: "https://app.querydoctor.com/alice/proj/ci/9f3a1c20/regressed-1" },
+      { hash: "improved-1", link: "https://app.querydoctor.com/alice/proj/ci/9f3a1c20/improved-1" },
+    ],
+    ...overrides,
+  };
+}
+
+describe("CI-signal metadata parity (analyzer#141)", () => {
+  const regressedComparison = makeComparison({
+    regressed: [
+      {
+        hash: "regressed-1",
+        query: "SELECT 1",
+        formattedQuery: "SELECT 1",
+        previousCost: 120,
+        currentCost: 170,
+        regressionPercentage: 42,
+      },
+    ],
+    improved: [
+      {
+        hash: "improved-1",
+        query: "SELECT 2",
+        formattedQuery: "SELECT 2",
+        previousCost: 500,
+        currentCost: 100,
+        improvementPercentage: 80,
+        previousIndexes: [],
+        currentIndexes: [],
+      },
+    ],
+  });
+
+  test("linked repo: renders rollup line, per-query links, footer, run link, and docs link", () => {
+    const ctx = makeContext({
+      comparison: regressedComparison,
+      runUrl: "https://app.querydoctor.com/alice/proj/ci/9f3a1c20",
+      runMetadata: makeMetadata(),
+    });
+    const output = renderTemplate(ctx);
+
+    // Roll-up line rendered verbatim (single source of truth — no re-derived grammar).
+    expect(output).toContain("2 regressed · 1 improved · 3 new · 0 removed");
+    // Footer rendered verbatim.
+    expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
+    // Per-query rows link via metadata.queries, not a re-derived /ixr/ route.
+    expect(output).toContain("https://app.querydoctor.com/alice/proj/ci/9f3a1c20/regressed-1");
+    expect(output).toContain("https://app.querydoctor.com/alice/proj/ci/9f3a1c20/improved-1");
+    expect(output).not.toContain("/ixr/");
+    // Run link and small docs link in the meta row.
+    expect(output).toContain('<a href="https://app.querydoctor.com/alice/proj/ci/9f3a1c20">view run</a>');
+    expect(output).toContain('<a href="https://docs.querydoctor.com">docs</a>');
+    // Per-signal icons aren't rendered yet (assets pending Site follow-up).
+    expect(output).not.toContain("<img");
+
+    expect(output).toMatchSnapshot();
+  });
+
+  test("unlinked repo: rollup + footer + docs only, no run link, no per-query links", () => {
+    const ctx = makeContext({
+      comparison: regressedComparison,
+      runUrl: undefined,
+      runMetadata: makeMetadata({ queries: [] }),
+    });
+    const output = renderTemplate(ctx);
+
+    // Shared elements still present.
+    expect(output).toContain("2 regressed · 1 improved · 3 new · 0 removed");
+    expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
+    expect(output).toContain('<a href="https://docs.querydoctor.com">docs</a>');
+    // No run link, no per-query links when the repo isn't linked.
+    expect(output).not.toContain("view run");
+    expect(output).not.toContain("https://app.querydoctor.com/alice/proj/ci");
+    // Query previews still render, just without anchors.
+    expect(output).toContain("<code>SELECT 1</code>");
+
+    expect(output).toMatchSnapshot();
+  });
+
+  test("no metadata (degraded API response): no rollup or footer row", () => {
+    const ctx = makeContext({
+      comparison: regressedComparison,
+      runMetadata: undefined,
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).not.toContain("regressed · ");
+    expect(output).not.toContain("get_ci_run");
+    expect(output).not.toContain("docs</a>");
+  });
+
+  test("null docsUrl: docs link omitted, footer still rendered", () => {
+    const ctx = makeContext({
+      comparison: regressedComparison,
+      runUrl: "https://app.querydoctor.com/alice/proj/ci/9f3a1c20",
+      runMetadata: makeMetadata({ docsUrl: null }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
+    expect(output).not.toContain(">docs</a>");
   });
 });
