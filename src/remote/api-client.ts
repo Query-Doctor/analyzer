@@ -165,6 +165,10 @@ export class ApiClient extends RpcTarget implements ClientApi {
     await this.remote.applyStatistics(Statistics.statsModeFromExport(stats));
   }
 
+  async resetStats(): Promise<void> {
+    await this.remote.applyStatistics(Statistics.defaultStatsMode);
+  }
+
   async hideIndex(indexName: string): Promise<void> {
     this.remote.optimizer.toggleIndex(PgIdentifier.fromString(indexName));
   }
