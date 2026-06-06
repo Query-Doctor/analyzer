@@ -456,4 +456,24 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
     expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
     expect(output).not.toContain(">docs</a>");
   });
+
+  test("degraded baseline (null rollup): roll-up line omitted, footer still rendered", () => {
+    // The Site API nulls rollup/rollupText when the comparison baseline read
+    // fails, but the baseline-independent footer/docs still ship. Omit the
+    // roll-up line entirely rather than render a blank line or "null".
+    const ctx = makeContext({
+      comparison: regressedComparison,
+      runUrl: "https://app.querydoctor.com/alice/proj/ci/9f3a1c20",
+      runMetadata: makeMetadata({ rollup: null, rollupText: null }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).not.toContain("regressed · ");
+    expect(output).not.toContain("null");
+    // Footer and run link are baseline-independent — they still render.
+    expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
+    expect(output).toContain(
+      '<a href="https://app.querydoctor.com/alice/proj/ci/9f3a1c20">view run</a>',
+    );
+  });
 });

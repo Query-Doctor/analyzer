@@ -75,10 +75,19 @@ export interface PreviousRun {
  * language as the Slack/webhook alert. See analyzer#141.
  */
 export interface CiRunMetadata {
-  /** Structured roll-up counts. The rendered roll-up line must equal `rollupText`. */
-  rollup: { regressed: number; improved: number; new: number; removed: number };
-  /** The roll-up line — render verbatim (equals the alert's `formatRollup(...)`). */
-  rollupText: string;
+  /**
+   * Structured roll-up counts. The rendered roll-up line must equal `rollupText`.
+   * `null` when the API couldn't resolve the comparison baseline (a degraded read,
+   * distinct from a genuine all-new first run) — omit the roll-up line in that case.
+   */
+  rollup: {
+    regressed: number;
+    improved: number;
+    new: number;
+    removed: number;
+  } | null;
+  /** The roll-up line — render verbatim (equals the alert's `formatRollup(...)`). `null` when {@link rollup} is. */
+  rollupText: string | null;
   /** The small "more detail" footer — render verbatim (equals `formatRunFooter(runId)`). */
   footer: string;
   /** A small `docs` link. May be null. */
