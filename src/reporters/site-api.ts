@@ -298,13 +298,27 @@ export async function postToSiteApi(
     computedStats,
   };
 
+  // POST /ci/runs authenticates the run with the project token and attributes
+  // it to that project. Without the header the Site API rejects the request as
+  // Unauthorized, so warn loudly rather than silently dropping the run.
+  const token = process.env.TOKEN;
+  if (!token) {
+    console.warn(
+      "TOKEN is not set — POST /ci/runs will be rejected as Unauthorized. " +
+        "Set TOKEN to your Query Doctor project token.",
+    );
+  }
+
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs`;
   console.log(`Posting CI run to ${url} (${queries.length} queries)`);
 
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
