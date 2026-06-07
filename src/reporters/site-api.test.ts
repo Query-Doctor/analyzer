@@ -1,6 +1,7 @@
-import { test, expect, describe } from "vitest";
+import { test, expect, describe, afterEach, vi } from "vitest";
 import {
   compareRuns,
+  postToSiteApi,
   type CiQueryPayload,
   type PreviousRun,
 } from "./site-api.ts";
@@ -182,5 +183,45 @@ describe("compareRuns", () => {
       expect(result.improved[0].hash).toBe("hash-b");
       expect(result.disappearedHashes).toEqual(["hash-e"]);
     });
+  });
+});
+
+describe("postToSiteApi authentication", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function stubOkFetch() {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "run-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function headersFrom(fetchMock: ReturnType<typeof vi.fn>): Headers {
+    return new Headers(fetchMock.mock.calls[0]![1]!.headers);
+  }
+
+  test("sends the project token as a Bearer Authorization header", async () => {
+    vi.stubEnv("TOKEN", "tok-abc123");
+    const fetchMock = stubOkFetch();
+
+    await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
+
+    expect(headersFrom(fetchMock).get("authorization")).toBe("Bearer tok-abc123");
+  });
+
+  test("omits the Authorization header when no token is set", async () => {
+    vi.stubEnv("TOKEN", "");
+    const fetchMock = stubOkFetch();
+
+    await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
+
+    expect(headersFrom(fetchMock).has("authorization")).toBe(false);
   });
 });
