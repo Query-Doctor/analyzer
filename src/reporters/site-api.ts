@@ -281,6 +281,38 @@ export function compareRuns(
   };
 }
 
+/**
+ * New queries that should block the CI gate (#3281). A new query has no
+ * baseline, so it can never be a regression and historically shipped green at
+ * any cost. We instead gate it on a *recommendation-backed* signal: the planner
+ * found a real index that collapses its cost. This keys on plan shape, not the
+ * raw modeled cost, so it survives the `fromAssumption` row-count inflation and
+ * naturally excludes test-only queries (which carry no index recommendation).
+ *
+ * Reuses the same `regressionThreshold` the existing gate already uses — no new
+ * knob: eligible when the query carries an index recommendation whose modeled
+ * cost reduction exceeds `regressionThreshold` percent, mirroring how a
+ * regression must exceed that same percentage. Acknowledged hashes are exempt,
+ * the same triage escape hatch regressions have; ignored hashes never reach here
+ * (they're dropped in {@link buildQueries}).
+ */
+export function gateEligibleNewQueries(
+  newQueries: CiQueryPayload[],
+  regressionThreshold: number,
+  acknowledgedQueryHashes: string[] = [],
+): CiQueryPayload[] {
+  const acknowledgedSet = new Set(acknowledgedQueryHashes);
+  return newQueries.filter((q) => {
+    if (acknowledgedSet.has(q.hash)) return false;
+    const opt = q.optimization;
+    return (
+      opt.state === "improvements_available" &&
+      opt.indexRecommendations.length > 0 &&
+      opt.costReductionPercentage > regressionThreshold
+    );
+  });
+}
+
 export async function postToSiteApi(
   endpoint: string,
   queries: CiQueryPayload[],
