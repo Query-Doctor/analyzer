@@ -9,6 +9,7 @@ import {
   buildQueries,
   compareRuns,
   fetchPreviousRun,
+  gateEligibleNewQueries,
   postToSiteApi,
 } from "./reporters/site-api.ts";
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
@@ -140,21 +141,57 @@ async function runInCI(
     // Generate PR comment with comparison data
     await runner.report(reportContext);
 
-    // Block PR if regressions exceed thresholds
-    if (reportContext.comparison && reportContext.comparison.regressed.length > 0) {
+    // Block PR if regressions exceed thresholds, or if a brand-new query ships
+    // with a high-confidence index recommendation (#3281). New queries have no
+    // baseline so they can never regress; the new-query gate catches the missing
+    // index at introduction, while it's still a one-line fix.
+    if (reportContext.comparison) {
       const queryLinks = new Map(
         (reportContext.runMetadata?.queries ?? []).map((q) => [q.hash, q.link]),
       );
-      const messages = reportContext.comparison.regressed.map((q) => {
-        const preview = queryPreview(q.formattedQuery);
-        const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
-        const queryLink = queryLinks.get(q.hash);
-        const link = queryLink ? `\n    ${queryLink}` : "";
-        return `  - ${preview}: ${cost}${link}`;
-      });
-      core.setFailed(
-        `${reportContext.comparison.regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
+      const linkFor = (hash: string) => {
+        const queryLink = queryLinks.get(hash);
+        return queryLink ? `\n    ${queryLink}` : "";
+      };
+
+      const blockingMessages: string[] = [];
+
+      const { regressed, newQueries } = reportContext.comparison;
+      if (regressed.length > 0) {
+        const messages = regressed.map((q) => {
+          const preview = queryPreview(q.formattedQuery);
+          const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
+          return `  - ${preview}: ${cost}${linkFor(q.hash)}`;
+        });
+        blockingMessages.push(
+          `${regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
+        );
+      }
+
+      const gateNewQueries = gateEligibleNewQueries(
+        newQueries,
+        config.regressionThreshold,
+        config.acknowledgedQueryHashes,
       );
+      if (gateNewQueries.length > 0) {
+        const messages = gateNewQueries.map((q) => {
+          const preview = queryPreview(q.formattedQuery);
+          // gateEligibleNewQueries only returns improvements_available entries.
+          const opt = q.optimization as Extract<
+            typeof q.optimization,
+            { state: "improvements_available" }
+          >;
+          const detail = `cost ${formatCost(opt.cost)}, index recommendation cuts it ${opt.costReductionPercentage.toFixed(1)}%`;
+          return `  - ${preview}: ${detail}${linkFor(q.hash)}`;
+        });
+        blockingMessages.push(
+          `${gateNewQueries.length} new quer${gateNewQueries.length === 1 ? "y" : "ies"} ship${gateNewQueries.length === 1 ? "s" : ""} with a high-impact index recommendation (acknowledge on the dashboard to allow):\n${messages.join("\n")}`,
+        );
+      }
+
+      if (blockingMessages.length > 0) {
+        core.setFailed(blockingMessages.join("\n\n"));
+      }
     }
   } finally {
     disposeApi();

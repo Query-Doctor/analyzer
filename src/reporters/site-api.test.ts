@@ -1,6 +1,7 @@
 import { test, expect, describe, afterEach, vi } from "vitest";
 import {
   compareRuns,
+  gateEligibleNewQueries,
   postToSiteApi,
   type CiQueryPayload,
   type PreviousRun,
@@ -223,5 +224,82 @@ describe("postToSiteApi authentication", () => {
     await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
 
     expect(headersFrom(fetchMock).has("authorization")).toBe(false);
+  });
+});
+
+describe("gateEligibleNewQueries", () => {
+  function withRecommendation(
+    hash: string,
+    costReductionPercentage: number,
+    hasIndexRecommendation = true,
+  ): CiQueryPayload {
+    return {
+      hash,
+      query: "SELECT * FROM t WHERE user_id = $1",
+      formattedQuery: "SELECT *\nFROM t\nWHERE user_id = $1",
+      optimization: {
+        state: "improvements_available",
+        cost: 407_000,
+        optimizedCost: 8.2,
+        costReductionPercentage,
+        indexRecommendations: hasIndexRecommendation
+          ? [
+            {
+              schema: "public",
+              table: "t",
+              columns: [{ schema: "public", table: "t", column: "user_id" }],
+              definition: "CREATE INDEX ON t (user_id)",
+            },
+          ]
+          : [],
+        indexesUsed: [],
+      },
+      nudges: [],
+      tags: [],
+      tableReferences: [],
+    };
+  }
+
+  test("flags a new query whose recommendation exceeds regressionThreshold", () => {
+    const result = gateEligibleNewQueries([withRecommendation("a", 99)], 90);
+
+    expect(result.map((q) => q.hash)).toEqual(["a"]);
+  });
+
+  test("with regressionThreshold 0 (flag-all), any real recommendation blocks", () => {
+    const result = gateEligibleNewQueries([withRecommendation("a", 99)], 0);
+
+    expect(result.map((q) => q.hash)).toEqual(["a"]);
+  });
+
+  test("ignores a recommendation at or below regressionThreshold", () => {
+    const result = gateEligibleNewQueries([withRecommendation("a", 40)], 90);
+
+    expect(result).toHaveLength(0);
+  });
+
+  test("ignores a query with no index recommendation (e.g. test-only query)", () => {
+    const result = gateEligibleNewQueries(
+      [withRecommendation("a", 99, false)],
+      90,
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  test("ignores a query with no available improvement", () => {
+    const result = gateEligibleNewQueries([makeQuery("a")], 90);
+
+    expect(result).toHaveLength(0);
+  });
+
+  test("acknowledged hashes are exempt", () => {
+    const result = gateEligibleNewQueries(
+      [withRecommendation("a", 99), withRecommendation("b", 99)],
+      90,
+      ["a"],
+    );
+
+    expect(result.map((q) => q.hash)).toEqual(["b"]);
   });
 });
