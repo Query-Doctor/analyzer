@@ -184,6 +184,41 @@ describe("buildViewModel", () => {
     expect(vm.newQueryCount).toBe(1);
   });
 
+  test("gate-eligible new queries split into displayBlockingRecommendations", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "blocking-new",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+          {
+            hash: "informational-new",
+            query: "SELECT 2",
+            formattedQuery: "SELECT 2",
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [
+        makeRecommendation({ fingerprint: "blocking-new" }),
+        makeRecommendation({ fingerprint: "informational-new" }),
+      ],
+      gateEligibleNewQueryHashes: ["blocking-new"],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.displayBlockingRecommendations.map((r) => r.fingerprint)).toEqual([
+      "blocking-new",
+    ]);
+    expect(vm.displayRecommendations.map((r) => r.fingerprint)).toEqual([
+      "informational-new",
+    ]);
+  });
+
   test("regressions surface in displayRegressed", () => {
     const ctx = makeContext({
       comparison: makeComparison({
@@ -338,6 +373,46 @@ describe("template rendering", () => {
     });
     const output = renderTemplate(ctx);
     expect(output).toContain("3 queries analyzed");
+  });
+
+  test("renders the blocking section for gate-eligible new queries", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "blocking-new",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [makeRecommendation({ fingerprint: "blocking-new" })],
+      gateEligibleNewQueryHashes: ["blocking-new"],
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("missing an index — blocking");
+  });
+
+  test("omits the blocking section when no new query is gate-eligible", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "info-new",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [makeRecommendation({ fingerprint: "info-new" })],
+    });
+    const output = renderTemplate(ctx);
+    expect(output).not.toContain("missing an index — blocking");
+    expect(output).toContain("introduces queries with recommendations");
   });
 });
 

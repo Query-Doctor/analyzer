@@ -83,6 +83,13 @@ export interface ReportContext {
   error?: Error;
   comparison?: RunComparison;
   comparisonBranch?: string;
+  /**
+   * Hashes of new queries that block the PR (#3281): they carry an index
+   * recommendation whose modeled cost reduction exceeds `regressionThreshold`.
+   * Lets the PR comment mark them as blocking, so the failed step is explained
+   * rather than a silent red X.
+   */
+  gateEligibleNewQueryHashes?: string[];
   /** The run page link (`metadata.url` from `POST /ci/runs`). Absent when the repo isn't linked. */
   runUrl?: string;
   /** Unified CI-signal metadata: roll-up line, footer, per-query links, docs link, icon keys. */

@@ -31,6 +31,17 @@
 {% endfor %}
 {% endif %}
 
+{% if displayBlockingRecommendations.length > 0 %}
+#### This PR introduces quer{{ "ies" if displayBlockingRecommendations.length != 1 else "y" }} missing an index — blocking
+
+New quer{{ "ies" if displayBlockingRecommendations.length != 1 else "y" }} that ship with a high-impact index recommendation block this PR. Add the recommended index, or acknowledge the query on the dashboard to allow it through.
+
+{% for r in displayBlockingRecommendations %}
+{% set link = queryLinks[r.fingerprint] %}
+- {% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
+{% endfor %}
+{% endif %}
+
 {% if displayAcknowledgedRegressed.length > 0 %}
 <details>
 <summary>{{ displayAcknowledgedRegressed.length }} acknowledged regression{{ "s" if displayAcknowledgedRegressed.length != 1 else "" }} (not blocking)</summary>

@@ -137,6 +137,18 @@ async function runInCI(
       );
     }
 
+    // Resolve which new queries block (#3281) before reporting, so the PR
+    // comment can mark them as blocking instead of leaving the failed step
+    // unexplained. The gate below reuses the same list.
+    const gateNewQueries = reportContext.comparison
+      ? gateEligibleNewQueries(
+        reportContext.comparison.newQueries,
+        config.regressionThreshold,
+        config.acknowledgedQueryHashes,
+      )
+      : [];
+    reportContext.gateEligibleNewQueryHashes = gateNewQueries.map((q) => q.hash);
+
     console.log("Creating report...")
     // Generate PR comment with comparison data
     await runner.report(reportContext);
@@ -156,7 +168,7 @@ async function runInCI(
 
       const blockingMessages: string[] = [];
 
-      const { regressed, newQueries } = reportContext.comparison;
+      const { regressed } = reportContext.comparison;
       if (regressed.length > 0) {
         const messages = regressed.map((q) => {
           const preview = queryPreview(q.formattedQuery);
@@ -168,11 +180,6 @@ async function runInCI(
         );
       }
 
-      const gateNewQueries = gateEligibleNewQueries(
-        newQueries,
-        config.regressionThreshold,
-        config.acknowledgedQueryHashes,
-      );
       if (gateNewQueries.length > 0) {
         const messages = gateNewQueries.map((q) => {
           const preview = queryPreview(q.formattedQuery);

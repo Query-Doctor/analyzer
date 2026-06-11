@@ -106,6 +106,7 @@ export function buildViewModel(ctx: ReportContext) {
   if (!hasComparison) {
     return {
       displayRecommendations: addPreviews(ctx.recommendations),
+      displayBlockingRecommendations: [] as DisplayRecommendation[],
       displayRegressed: [] as DisplayRegression[],
       displayAcknowledgedRegressed: [] as DisplayRegression[],
       displayImproved: [] as DisplayImprovement[],
@@ -119,9 +120,22 @@ export function buildViewModel(ctx: ReportContext) {
   const newQueryHashes = new Set(
     ctx.comparison!.newQueries.map((q) => q.hash),
   );
+  // New queries that block the PR (#3281): rendered as a distinct Action-Required
+  // section so the failed step is explained, not a silent red X.
+  const blockingNewQueryHashes = new Set(ctx.gateEligibleNewQueryHashes ?? []);
 
+  const newQueryRecommendations = ctx.recommendations.filter((r) =>
+    newQueryHashes.has(r.fingerprint),
+  );
+  const displayBlockingRecommendations = addPreviews(
+    newQueryRecommendations.filter((r) =>
+      blockingNewQueryHashes.has(r.fingerprint),
+    ),
+  );
   const displayRecommendations = addPreviews(
-    ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
+    newQueryRecommendations.filter(
+      (r) => !blockingNewQueryHashes.has(r.fingerprint),
+    ),
   );
   const preExistingRecommendations = addPreviews(
     ctx.recommendations.filter((r) => !newQueryHashes.has(r.fingerprint)),
@@ -133,6 +147,7 @@ export function buildViewModel(ctx: ReportContext) {
 
   return {
     displayRecommendations,
+    displayBlockingRecommendations,
     displayRegressed,
     displayAcknowledgedRegressed,
     displayImproved,
