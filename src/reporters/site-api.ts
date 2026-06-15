@@ -6,6 +6,12 @@ import type { OptimizedQuery } from "../sql/recent-query.ts";
 interface CiRunPayload {
   repo: string;
   branch: string;
+  /**
+   * The PR base branch (`GITHUB_BASE_REF`), forwarded so the Site roll-up
+   * resolves the same baseline the PR-comment body already used. Absent on
+   * push runs, where there is no base ref. See Query-Doctor/Site#3292.
+   */
+  baseBranch?: string;
   commitSha: string;
   commitMessage?: string;
   prNumber?: number;
@@ -322,6 +328,9 @@ export async function postToSiteApi(
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "",
+    // Forward the PR base ref so the Site roll-up compares against the same
+    // baseline as the PR-comment body. Empty/unset on push runs → omitted.
+    baseBranch: process.env.GITHUB_BASE_REF || undefined,
     commitSha: process.env.GITHUB_SHA ?? "",
     prNumber: github.context.payload.pull_request?.number,
     runId: process.env.GITHUB_RUN_ID ?? "",
