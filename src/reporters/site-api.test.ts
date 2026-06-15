@@ -227,6 +227,46 @@ describe("postToSiteApi authentication", () => {
   });
 });
 
+describe("postToSiteApi payload baseBranch", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  function stubOkFetch() {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "run-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function bodyFrom(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
+    return JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+  }
+
+  test("forwards GITHUB_BASE_REF as baseBranch on a PR run", async () => {
+    vi.stubEnv("GITHUB_BASE_REF", "main");
+    const fetchMock = stubOkFetch();
+
+    await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
+
+    expect(bodyFrom(fetchMock).baseBranch).toBe("main");
+  });
+
+  test("omits baseBranch on a push run where GITHUB_BASE_REF is unset", async () => {
+    vi.stubEnv("GITHUB_BASE_REF", "");
+    const fetchMock = stubOkFetch();
+
+    await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
+
+    expect(bodyFrom(fetchMock)).not.toHaveProperty("baseBranch");
+  });
+});
+
 describe("gateEligibleNewQueries", () => {
   function withRecommendation(
     hash: string,
