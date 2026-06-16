@@ -17,7 +17,7 @@ import {
   Reporter,
 } from "../reporter.ts";
 
-import type { ImprovedQuery, RegressedQuery } from "../site-api.ts";
+import type { CiQueryPayload, ImprovedQuery, RegressedQuery } from "../site-api.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
@@ -37,6 +37,13 @@ interface DisplayRegression extends RegressedQuery {
 interface DisplayImprovement extends ImprovedQuery {
   queryPreview: string;
   indexesChanged: boolean;
+}
+
+interface DisplayNewQuery {
+  hash: string;
+  queryPreview: string;
+  /** Pre-rendered "cost N" label, or "" when the query has no extractable cost. */
+  costLabel: string;
 }
 
 export function formatCost(cost: number): string {
@@ -90,6 +97,23 @@ function addImprovementPreviews(
   }));
 }
 
+function newQueryCost(q: CiQueryPayload): number | null {
+  if (q.optimization.state === "improvements_available") return q.optimization.cost;
+  if (q.optimization.state === "no_improvement_found") return q.optimization.cost;
+  return null;
+}
+
+function addNewQueryPreviews(newQueries: CiQueryPayload[]): DisplayNewQuery[] {
+  return newQueries.map((q) => {
+    const cost = newQueryCost(q);
+    return {
+      hash: q.hash,
+      queryPreview: queryPreview(q.formattedQuery),
+      costLabel: cost === null ? "" : `cost ${formatCost(cost)}`,
+    };
+  });
+}
+
 /** Per-query detail links keyed by query hash, sourced from the run metadata. */
 function buildQueryLinks(ctx: ReportContext): Record<string, string> {
   const links: Record<string, string> = {};
@@ -109,6 +133,7 @@ export function buildViewModel(ctx: ReportContext) {
       displayRegressed: [] as DisplayRegression[],
       displayAcknowledgedRegressed: [] as DisplayRegression[],
       displayImproved: [] as DisplayImprovement[],
+      displayNewQueries: [] as DisplayNewQuery[],
       preExistingRecommendations: [] as DisplayRecommendation[],
       newQueryCount: 0,
       hasComparison: false,
@@ -119,12 +144,23 @@ export function buildViewModel(ctx: ReportContext) {
   const newQueryHashes = new Set(
     ctx.comparison!.newQueries.map((q) => q.hash),
   );
+  const recommendedHashes = new Set(
+    ctx.recommendations.map((r) => r.fingerprint),
+  );
 
   const displayRecommendations = addPreviews(
     ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
   );
   const preExistingRecommendations = addPreviews(
     ctx.recommendations.filter((r) => !newQueryHashes.has(r.fingerprint)),
+  );
+
+  // New queries that carry no index recommendation are otherwise invisible:
+  // counted in the "N new" tally but listed nowhere (Site#3287 follow-up). The
+  // ones that DO have a recommendation already render under "introduces queries
+  // with recommendations", so exclude them here to avoid double-listing.
+  const displayNewQueries = addNewQueryPreviews(
+    ctx.comparison!.newQueries.filter((q) => !recommendedHashes.has(q.hash)),
   );
 
   const displayRegressed = addRegressionPreviews(ctx.comparison!.regressed);
@@ -136,6 +172,7 @@ export function buildViewModel(ctx: ReportContext) {
     displayRegressed,
     displayAcknowledgedRegressed,
     displayImproved,
+    displayNewQueries,
     preExistingRecommendations,
     newQueryCount: ctx.comparison!.newQueries.length,
     hasComparison: true,

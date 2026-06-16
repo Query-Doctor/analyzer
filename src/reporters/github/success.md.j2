@@ -59,6 +59,15 @@
 {% endfor %}
 {% endif %}
 
+{% if displayNewQueries.length > 0 %}
+#### This PR introduces new queries
+
+{% for q in displayNewQueries %}
+{% set link = queryLinks[q.hash] %}
+- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% if q.costLabel %}<br>{{ q.costLabel }} · no index suggestion{% endif %}
+{% endfor %}
+{% endif %}
+
 {% if hasComparison and preExistingRecommendations.length > 0 %}
 <details>
 <summary>{{ preExistingRecommendations.length }} pre-existing issue{{ "s" if preExistingRecommendations.length != 1 else "" }}</summary>
