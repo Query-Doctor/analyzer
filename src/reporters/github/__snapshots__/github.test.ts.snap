@@ -4,6 +4,7 @@ exports[`CI-signal metadata parity (analyzer#141) > linked repo: renders rollup 
 "### Query Doctor Analysis
 
 28 queries analyzed
+
 2 regressed · 1 improved · 3 new · 0 removed
 
 #### This PR improves queries
@@ -28,6 +29,7 @@ exports[`CI-signal metadata parity (analyzer#141) > unlinked repo: rollup + foot
 "### Query Doctor Analysis
 
 28 queries analyzed
+
 2 regressed · 1 improved · 3 new · 0 removed
 
 #### This PR improves queries
