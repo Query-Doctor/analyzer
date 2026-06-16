@@ -3,6 +3,10 @@
 {% if hasComparison %}
 {{ queryStats.analyzed | default('?') }} queries analyzed
 {%- if newQueryCount > 0 %} | {{ newQueryCount }} new quer{{ "ies" if newQueryCount != 1 else "y" }}{% endif %}
+{% elif comparisonUnavailable %}
+{{ queryStats.analyzed | default('?') }} queries analyzed — comparison temporarily unavailable.
+
+> **Couldn't load the baseline for `{{ comparisonBranch }}` this run**, so the comparison was skipped. This is temporary and doesn't mean the baseline is missing — re-run the check to retry.
 {% else %}
 {{ queryStats.analyzed | default('?') }} queries analyzed — no baseline found to compare against.
 

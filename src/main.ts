@@ -120,10 +120,14 @@ async function runInCI(
           `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
         );
       } else {
+        // Transient fetch failure after retries — flag it so the comment says
+        // "temporarily unavailable, re-run" rather than claiming there is no
+        // baseline (which would tell the user to add an already-present trigger).
+        reportContext.comparisonUnavailable = true;
         log.warn(
           "main",
           `Failed to fetch baseline for branch "${comparisonBranch}" (${result.reason}). ` +
-          `Comparison will be skipped. This is likely a transient Site API issue — re-run the check to retry.`,
+          `Comparison will be skipped this run — re-run the check to retry.`,
         );
       }
     }

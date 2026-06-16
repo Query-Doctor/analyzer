@@ -83,6 +83,13 @@ export interface ReportContext {
   error?: Error;
   comparison?: RunComparison;
   comparisonBranch?: string;
+  /**
+   * The baseline fetch failed transiently (timeout/5xx) after retries, so the
+   * comparison was skipped this run — distinct from a genuine missing baseline.
+   * Drives a "temporarily unavailable, re-run" message instead of the
+   * "no baseline / add a push trigger" copy (Site#3287).
+   */
+  comparisonUnavailable?: boolean;
   /** The run page link (`metadata.url` from `POST /ci/runs`). Absent when the repo isn't linked. */
   runUrl?: string;
   /** Unified CI-signal metadata: roll-up line, footer, per-query links, docs link, icon keys. */
