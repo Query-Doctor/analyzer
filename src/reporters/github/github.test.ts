@@ -184,6 +184,69 @@ describe("buildViewModel", () => {
     expect(vm.newQueryCount).toBe(1);
   });
 
+  test("new query without a recommendation is still listed (Site#3287 follow-up)", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-covered",
+            query: 'SELECT "id" FROM "matches"',
+            formattedQuery: 'SELECT "id" FROM "matches"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 42, indexesUsed: ["matches_pkey"] },
+          },
+        ],
+      }),
+      recommendations: [],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.displayNewQueries).toHaveLength(1);
+    expect(vm.displayNewQueries[0].queryPreview).toBe('SELECT "id" FROM "matches"');
+    expect(vm.displayNewQueries[0].costLabel).toBe("cost 42");
+  });
+
+  test("a new query with a recommendation is not double-listed in displayNewQueries", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-with-rec",
+            query: "SELECT 1",
+            formattedQuery: "SELECT 1",
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 10, indexesUsed: [] },
+          },
+        ],
+      }),
+      recommendations: [makeRecommendation({ fingerprint: "new-with-rec" })],
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.displayRecommendations.map((r) => r.fingerprint)).toContain(
+      "new-with-rec",
+    );
+    expect(vm.displayNewQueries).toHaveLength(0);
+  });
+
+  test("template lists a new query that has no index suggestion", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-covered",
+            query: 'SELECT "id" FROM "matches"',
+            formattedQuery: 'SELECT "id" FROM "matches"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 42, indexesUsed: ["matches_pkey"] },
+          },
+        ],
+      }),
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("This PR introduces new queries");
+    expect(output).toContain('SELECT "id" FROM "matches"');
+    expect(output).toContain("cost 42 · no index suggestion");
+  });
+
   test("regressions surface in displayRegressed", () => {
     const ctx = makeContext({
       comparison: makeComparison({

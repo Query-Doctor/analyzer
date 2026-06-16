@@ -17,6 +17,7 @@ exports[`CI-signal metadata parity (analyzer#141) > linked repo: renders rollup 
 
 
 
+
 <sub>Using assumed statistics (10000 rows/table). For better results, <a href="https://docs.querydoctor.com/reference/statistics">sync production stats</a>.</sub>
 
 <sub>More detail → get_ci_run({ runId: "9f3a1c20" }) · <a href="https://app.querydoctor.com/alice/proj/ci/9f3a1c20">view run</a> · <a href="https://docs.querydoctor.com">docs</a></sub>
@@ -36,6 +37,7 @@ exports[`CI-signal metadata parity (analyzer#141) > unlinked repo: rollup + foot
 #### This PR has regressions on queries
 
 - <code>SELECT 1</code><br>cost 120 → 170 (+42%)
+
 
 
 
