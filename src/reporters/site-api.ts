@@ -389,33 +389,69 @@ export type PreviousRunResult =
   | { kind: "not-found" }
   | { kind: "error"; reason: string };
 
+export interface FetchPreviousRunOptions {
+  /** Retry attempts after the first, on transient failures only. */
+  retries?: number;
+  /** Backoff before each retry. Pass 0 in tests. */
+  retryDelayMs?: number;
+}
+
+const delay = (ms: number) =>
+  ms > 0 ? new Promise<void>((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
+
+/**
+ * Fetch the baseline run for a branch, distinguishing three outcomes:
+ * `found`, a genuine `not-found` (404), and a transient `error`.
+ *
+ * The baseline fetch pulls a multi-MB payload under a 10s timeout, so a brief
+ * latency blip times out and used to report "no baseline" on a baseline that
+ * demonstrably exists (Site#3287). Retry transient failures — timeout, network,
+ * or 5xx — before giving up; a genuine 404 (no baseline) and other 4xx are
+ * returned immediately and never retried.
+ */
 export async function fetchPreviousRun(
   endpoint: string,
   repo: string,
   branch?: string,
   excludeId?: string,
+  options: FetchPreviousRunOptions = {},
 ): Promise<PreviousRunResult> {
+  const { retries = 2, retryDelayMs = 500 } = options;
   const params = new URLSearchParams({ repo });
   if (branch) params.set("branch", branch);
   if (excludeId) params.set("excludeId", excludeId);
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs/latest?${params}`;
   console.log(`Fetching previous run from ${url}`);
 
-  try {
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (response.status === 404) {
-      console.log("No previous run found");
-      return { kind: "not-found" };
+  let lastReason = "unknown";
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (attempt > 0) {
+      console.log(`Retrying baseline fetch (attempt ${attempt + 1}/${retries + 1})`);
+      await delay(retryDelayMs);
     }
-    if (!response.ok) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (response.status === 404) {
+        console.log("No previous run found");
+        return { kind: "not-found" };
+      }
+      if (response.ok) {
+        return { kind: "found", run: (await response.json()) as PreviousRun };
+      }
+      // 5xx is transient (retry); other non-ok statuses (e.g. 4xx) won't fix
+      // themselves on a retry, so fail fast.
+      lastReason = `HTTP ${response.status}`;
       console.warn(`Failed to fetch previous run: ${response.status}`);
-      return { kind: "error", reason: `HTTP ${response.status}` };
+      if (response.status < 500) {
+        return { kind: "error", reason: lastReason };
+      }
+    } catch (err) {
+      // Timeout / network error — transient, keep retrying.
+      lastReason = `${err}`;
+      console.warn(`Failed to fetch previous run: ${err}`);
     }
-    return { kind: "found", run: (await response.json()) as PreviousRun };
-  } catch (err) {
-    console.warn(`Failed to fetch previous run: ${err}`);
-    return { kind: "error", reason: `${err}` };
   }
+  return { kind: "error", reason: lastReason };
 }

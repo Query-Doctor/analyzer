@@ -1,6 +1,7 @@
 import { test, expect, describe, afterEach, vi } from "vitest";
 import {
   compareRuns,
+  fetchPreviousRun,
   gateEligibleNewQueries,
   postToSiteApi,
   type CiQueryPayload,
@@ -341,5 +342,119 @@ describe("gateEligibleNewQueries", () => {
     );
 
     expect(result.map((q) => q.hash)).toEqual(["b"]);
+  });
+});
+
+describe("fetchPreviousRun retry", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const foundResponse = () =>
+    new Response(
+      JSON.stringify({
+        id: "run-1",
+        repo: "org/repo",
+        branch: "main",
+        commitSha: "abc",
+        queries: [],
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+
+  test("retries a transient timeout and then succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("timeout", "TimeoutError"))
+      .mockResolvedValueOnce(foundResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPreviousRun(
+      "https://api.querydoctor.com",
+      "org/repo",
+      "main",
+      undefined,
+      { retryDelayMs: 0 },
+    );
+
+    expect(result).toEqual({
+      kind: "found",
+      run: { id: "run-1", repo: "org/repo", branch: "main", commitSha: "abc", queries: [] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("retries a 5xx and then succeeds", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("upstream", { status: 503 }))
+      .mockResolvedValueOnce(foundResponse());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPreviousRun(
+      "https://api.querydoctor.com",
+      "org/repo",
+      "main",
+      undefined,
+      { retryDelayMs: 0 },
+    );
+
+    expect(result.kind).toBe("found");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not retry a genuine 404 — returns not-found on the first call", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPreviousRun(
+      "https://api.querydoctor.com",
+      "org/repo",
+      "main",
+      undefined,
+      { retryDelayMs: 0 },
+    );
+
+    expect(result).toEqual({ kind: "not-found" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not retry a non-404 4xx — returns error on the first call", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response("", { status: 400 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPreviousRun(
+      "https://api.querydoctor.com",
+      "org/repo",
+      "main",
+      undefined,
+      { retryDelayMs: 0 },
+    );
+
+    expect(result).toEqual({ kind: "error", reason: "HTTP 400" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns error after exhausting retries on persistent transient failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new DOMException("timeout", "TimeoutError"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchPreviousRun(
+      "https://api.querydoctor.com",
+      "org/repo",
+      "main",
+      undefined,
+      { retries: 2, retryDelayMs: 0 },
+    );
+
+    expect(result.kind).toBe("error");
+    // initial attempt + 2 retries
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
