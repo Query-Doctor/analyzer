@@ -502,3 +502,72 @@ describe("baseline absent vs. temporarily unavailable (Site#3287)", () => {
     expect(output).not.toContain("add a `push` trigger");
   });
 });
+
+describe("unset-baseline callout (Site #3297 / #3312)", () => {
+  const unsetBaseline = {
+    comparisonBranchConfigured: false,
+    resolvedBranch: "feature-x",
+    headVsHead: true,
+    unset: true,
+    mcpCall: 'get_repo_config({ repo: "owner/repo" })',
+  };
+
+  test("warns when the baseline is unset, even though a comparison was produced", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({ baseline: unsetBaseline }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("No comparison branch configured");
+    // Names the fallback branch and the acute head-vs-head consequence...
+    expect(output).toContain("`feature-x`");
+    expect(output).toContain("this PR's own branch");
+    expect(output).toContain('0 new');
+    // ...and surfaces the MCP call to inspect/fix it.
+    expect(output).toContain('get_repo_config({ repo: "owner/repo" })');
+  });
+
+  test("frames a base-branch fallback as a divergence/non-PR risk, not head-vs-head", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({
+        baseline: { ...unsetBaseline, resolvedBranch: "main", headVsHead: false },
+      }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("No comparison branch configured");
+    expect(output).toContain("`main`");
+    expect(output).toContain("breaks on non-PR runs");
+    expect(output).not.toContain("this PR's own branch");
+  });
+
+  test("renders no callout when a comparison branch is configured", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({
+        baseline: {
+          comparisonBranchConfigured: true,
+          resolvedBranch: "staging",
+          headVsHead: false,
+          unset: false,
+          mcpCall: 'get_repo_config({ repo: "owner/repo" })',
+        },
+      }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).not.toContain("No comparison branch configured");
+  });
+
+  test("renders no callout when the baseline state is absent (older API / degraded read)", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({ baseline: null }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).not.toContain("No comparison branch configured");
+  });
+});

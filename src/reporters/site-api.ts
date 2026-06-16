@@ -102,6 +102,23 @@ export interface CiRunMetadata {
   signalKeys: { new: string; regressed: string; improved: string; index: string };
   /** Per-query run-scoped detail links, keyed by query hash. Empty when the repo isn't linked. */
   queries: Array<{ hash: string; link: string }>;
+  /**
+   * Comparison-baseline state (Site #3297). Optional: absent on a Site API that
+   * predates it (deploy skew — render nothing), `null` when the API couldn't
+   * resolve the baseline (a degraded read — unknown, not "unset"). When `unset`
+   * is true the project has no comparison branch configured (or it collapsed to
+   * a head-vs-head comparison), so the counts can be inaccurate (#3292) and the
+   * comment should warn. `resolvedBranch` is what the comparison fell back to;
+   * `headVsHead` is the acute all-zeros case; `mcpCall` is the MCP call to
+   * inspect/fix the config.
+   */
+  baseline?: {
+    comparisonBranchConfigured: boolean;
+    resolvedBranch: string;
+    headVsHead: boolean;
+    unset: boolean;
+    mcpCall: string;
+  } | null;
 }
 
 /**
