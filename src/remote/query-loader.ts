@@ -3,15 +3,15 @@ import { Connectable } from "../sync/connectable.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { RecentQuery } from "../sql/recent-query.ts";
 import { ExtensionNotInstalledError } from "../sync/errors.ts";
+import type { MetadataLoader, MetadataLoaderEvents } from "./metadata-loader.ts";
 
-export type QueryLoaderEvents = {
+export type QueryLoaderEvents = MetadataLoaderEvents & {
   poll: [RecentQuery[]];
-  pollError: [unknown];
   pgStatStatementsNotInstalled: [];
-  exit: [];
 };
 
-export class QueryLoader extends EventEmitter<QueryLoaderEvents> {
+export class QueryLoader extends EventEmitter<QueryLoaderEvents>
+  implements MetadataLoader<QueryLoaderEvents> {
   private consecutiveErrors = 0;
   private stopped = false;
   private readonly interval: number;

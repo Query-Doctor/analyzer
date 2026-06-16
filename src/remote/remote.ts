@@ -29,6 +29,7 @@ type RemoteEvents = {
   extensionPresenceChanged: [presence: ExtensionPresence];
   queriesPolled: [queries: RecentQuery[]];
   schemaSynced: [schema: FullSchema];
+  schemaDiffed: [diffs: Op[], schema: FullSchema];
   statsApplied: [stats: ExportedStats[]];
   queryError: [error: Error, query: OptimizedQuery];
 };
@@ -429,8 +430,22 @@ export class Remote extends EventEmitter<RemoteEvents> {
     if (this.queryLoader) {
       this.queryLoader.stop();
     }
+    if (this.schemaLoader) {
+      this.schemaLoader.stop();
+    }
     this.queryLoader = new QueryLoader(this.sourceManager, source);
     this.schemaLoader = new SchemaLoader(this.sourceManager, source);
+    this.schemaLoader.on("diff", (diffs, schema) => {
+      this.emit("schemaDiffed", diffs, schema);
+    });
+    this.schemaLoader.on("pollError", (error) => {
+      log.error("Failed to poll schema", "remote");
+      console.error(error);
+    });
+    this.schemaLoader.on("exit", () => {
+      log.error("Schema loader exited", "remote");
+      this.schemaLoader = undefined;
+    });
     this.queryLoader.on("pollError", (error) => {
       log.error("Failed to poll queries", "remote");
       console.error(error);
@@ -456,11 +471,13 @@ export class Remote extends EventEmitter<RemoteEvents> {
     });
     if (!this.options.disableQueryLoader) {
       this.queryLoader.start();
+      this.schemaLoader.start();
     }
   }
 
   async cleanup(): Promise<void> {
     this.queryLoader?.stop();
+    this.schemaLoader?.stop();
     await this.optimizer.finish;
     this.optimizer.stop();
     await Promise.all([
