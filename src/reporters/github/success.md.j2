@@ -16,6 +16,10 @@
 
 {{ runMetadata.rollupText }}
 {% endif %}
+{% if hasComparison and runMetadata and runMetadata.baseline and runMetadata.baseline.unset %}
+
+> ⚠️ **No comparison branch configured** — regressions and new queries are compared against `{{ runMetadata.baseline.resolvedBranch }}`{% if runMetadata.baseline.headVsHead %}, this PR's own branch, so the counts above can read "0 new" on a PR full of new queries{% else %}, a fallback that can diverge from the dashboard and breaks on non-PR runs{% endif %}. Set a comparison branch (typically your default branch) in the project's CI settings — or inspect it with <code>{{ runMetadata.baseline.mcpCall }}</code>.
+{% endif %}
 
 {% if displayImproved.length > 0 %}
 #### This PR improves queries
