@@ -519,6 +519,8 @@ describe("unset-baseline callout (Site #3297 / #3312)", () => {
     });
     const output = renderTemplate(ctx);
 
+    // Rendered as a GFM warning alert.
+    expect(output).toContain("> [!WARNING]");
     expect(output).toContain("No comparison branch configured");
     // Names the fallback branch and the acute head-vs-head consequence...
     expect(output).toContain("`feature-x`");
