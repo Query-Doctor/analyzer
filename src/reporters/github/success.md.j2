@@ -2,7 +2,6 @@
 
 {% if hasComparison %}
 {{ queryStats.analyzed | default('?') }} queries analyzed
-{%- if newQueryCount > 0 %} | {{ newQueryCount }} new quer{{ "ies" if newQueryCount != 1 else "y" }}{% endif %}
 {% elif comparisonUnavailable %}
 {{ queryStats.analyzed | default('?') }} queries analyzed — comparison temporarily unavailable.
 
