@@ -477,3 +477,28 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
     );
   });
 });
+
+describe("baseline absent vs. temporarily unavailable (Site#3287)", () => {
+  test("genuine missing baseline renders the no-baseline / push-trigger copy", () => {
+    const ctx = makeContext({ comparisonBranch: "staging" });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("No baseline on `staging`");
+    expect(output).toContain("add a `push` trigger");
+    expect(output).not.toContain("temporarily unavailable");
+  });
+
+  test("transient fetch failure renders a re-run message, not the no-baseline copy", () => {
+    const ctx = makeContext({
+      comparisonBranch: "staging",
+      comparisonUnavailable: true,
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("comparison temporarily unavailable");
+    expect(output).toContain("re-run the check");
+    // Must not tell the user to add a trigger that is already in place.
+    expect(output).not.toContain("No baseline on `staging`");
+    expect(output).not.toContain("add a `push` trigger");
+  });
+});
