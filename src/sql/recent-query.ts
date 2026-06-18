@@ -135,7 +135,7 @@ export class RecentQuery {
     );
     const analysis = await analyzer.analyze(formattedQuery);
     const query = this.rewriteQuery(analysis.queryWithoutTags);
-    const strippedFormattedQuery = await RecentQuery.formatQuery(analysis.queryWithoutTags);
+    const strippedFormattedQuery = await RecentQuery.formatQuery(query);
     const displayQuery = await RecentQuery.computeDisplayQuery(query);
     return new RecentQuery(
       { ...data, query, formattedQuery: strippedFormattedQuery, displayQuery },
