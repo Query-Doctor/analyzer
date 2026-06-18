@@ -19,6 +19,7 @@ import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { PgbadgerSource } from "./sql/pgbadger.ts";
 import type { RecentQuerySource } from "./sql/recent-query.ts";
+import type { FullSchema } from "@query-doctor/core";
 
 async function runInCI(
   targetPostgresUrl: Connectable,
@@ -46,6 +47,17 @@ async function runInCI(
   const { api, dispose: disposeApi } = await ApiClient.connect(siteApiEndpoint, env.TOKEN, { kind: "ci", branch, sha: "" }, remote, (err) => {
     log.warn(`API connection broken during CI run: ${err}`, "main");
   });
+
+  // `Runner.build` triggers `remote.syncFrom`, which emits `schemaSynced` with
+  // the schema dumped from the source DB. CI doesn't wire up `hookUpApiReporter`
+  // (that's the persistent-server path), so capture the schema here and push it
+  // explicitly. We await the push before `disposeApi` so the short-lived CI
+  // process doesn't exit before the WS write flushes.
+  let syncedSchema: FullSchema | undefined;
+  const onSchemaSynced = (schema: FullSchema) => {
+    syncedSchema = schema;
+  };
+  remote.on("schemaSynced", onSchemaSynced);
 
   try {
     const config = repo
@@ -79,6 +91,12 @@ async function runInCI(
       reportContext = results.reportContext;
     } finally {
       await runner.close();
+    }
+
+    if (syncedSchema) {
+      await api.pushSchema(JSON.parse(JSON.stringify(syncedSchema))).catch((err) => {
+        log.warn(`Failed to push schema: ${err}`, "main");
+      });
     }
 
     const queries = buildQueries(allResults, config);
@@ -198,6 +216,7 @@ async function runInCI(
       }
     }
   } finally {
+    remote.off("schemaSynced", onSchemaSynced);
     disposeApi();
   }
 }
