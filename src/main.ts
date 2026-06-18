@@ -69,6 +69,24 @@ async function runInCI(
       )
       : DEFAULT_CONFIG;
 
+    // Cost against the project's stored production statistics when available, so
+    // CI numbers reflect real prod cardinality instead of synthetic assumptions.
+    // Scoped server-side to this connection's project; null when none is stored
+    // or the pull fails, in which case the runner falls back to synthetic stats.
+    const productionStats = await api.getProductionStats().catch((err) => {
+      log.warn(
+        `Failed to fetch production stats via RPC: ${err}. Falling back to synthetic stats`,
+        "main",
+      );
+      return null;
+    });
+    if (productionStats && productionStats.length > 0) {
+      log.info(
+        `Costing against ${productionStats.length} table(s) of stored production statistics`,
+        "main",
+      );
+    }
+
     const source: RecentQuerySource = logPath
       ? new PgbadgerSource(logPath)
       : remoteDbManager.getConnectorFor(sourcePostgresUrl);
@@ -80,6 +98,7 @@ async function runInCI(
       maxCost,
       ignoredQueryHashes: config.ignoredQueryHashes,
       remote,
+      productionStats: productionStats ?? undefined,
     });
     let allResults: QueryProcessResult[];
     let reportContext;

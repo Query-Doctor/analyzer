@@ -14,7 +14,7 @@ import { Connectable } from "./sync/connectable.ts";
 import { Remote, StatisticsStrategy } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
-import { ExportedStats } from "@query-doctor/core";
+import { ExportedStats, Statistics } from "@query-doctor/core";
 import { readFile } from "node:fs/promises";
 import { buildQueries } from "./reporters/site-api.ts";
 
@@ -34,6 +34,9 @@ export class Runner {
     source: RecentQuerySource;
     ignoredQueryHashes?: string[];
     remote?: Remote;
+    // Real production statistics pulled from the Site API. When present, queries
+    // are costed against true prod cardinality instead of synthetic assumptions.
+    productionStats?: ExportedStats[];
   }) {
     const remote = options.remote ?? new Remote(
       options.targetPostgresUrl,
@@ -42,7 +45,7 @@ export class Runner {
       { disableQueryLoader: true }
     );
     await remote.syncFrom(options.sourcePostgresUrl,
-      await Runner.determineStatsMode(options.statisticsPath)
+      await Runner.determineStatsMode(options.statisticsPath, options.productionStats)
     );
     await remote.optimizer.finish;
     return new Runner(
@@ -53,9 +56,19 @@ export class Runner {
     );
   }
 
-  // CI either always pulls data from a file or sets a default. Never pulls from source
-  static async determineStatsMode(statsPath?: string): Promise<StatisticsStrategy> {
-    // TODO: grab recent stats from API if they exist
+  // Stats-mode precedence for CI: real production stats pulled from the Site API
+  // win, then an explicit stats file, then synthetic assumptions. CI never dumps
+  // stats from the ephemeral target database itself.
+  static async determineStatsMode(
+    statsPath?: string,
+    productionStats?: ExportedStats[],
+  ): Promise<StatisticsStrategy> {
+    if (productionStats && productionStats.length > 0) {
+      return {
+        type: "static",
+        stats: Statistics.statsModeFromExport(productionStats),
+      };
+    }
     if (statsPath) {
       const file = await readFile(statsPath);
       const rawStats = JSON.parse(file.toString())
