@@ -112,19 +112,13 @@ async function runInCI(
       await runner.close();
     }
 
-    if (syncedSchema) {
-      await api.pushSchema(JSON.parse(JSON.stringify(syncedSchema))).catch((err) => {
-        log.warn(`Failed to push schema: ${err}`, "main");
-      });
-    }
-
     const queries = buildQueries(allResults, config);
 
     // POST to Site API first so we get the run ID (for baseline exclusion) and
     // the unified CI-signal metadata for the PR comment.
     let runResult = null;
     if (siteApiEndpoint) {
-      runResult = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats);
+      runResult = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats, syncedSchema);
     }
     const runId: string | null = runResult?.id ?? null;
 

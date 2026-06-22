@@ -19,6 +19,7 @@ interface CiRunPayload {
   queries: CiQueryPayload[];
   statisticsMode?: StatisticsMode;
   computedStats?: ComputedStats;
+  schema?: unknown;
 }
 
 export interface CiQueryPayload {
@@ -341,6 +342,7 @@ export async function postToSiteApi(
   queries: CiQueryPayload[],
   statisticsMode?: StatisticsMode,
   computedStats?: ComputedStats,
+  schema?: unknown,
 ): Promise<CiRunResult | null> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
@@ -354,6 +356,7 @@ export async function postToSiteApi(
     queries,
     statisticsMode,
     computedStats,
+    schema,
   };
 
   // POST /ci/runs authenticates the run with the project token and attributes
