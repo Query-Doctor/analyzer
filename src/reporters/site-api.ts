@@ -1,5 +1,5 @@
 import * as github from "@actions/github";
-import type { ComputedStats, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
+import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
 
@@ -342,7 +342,7 @@ export async function postToSiteApi(
   queries: CiQueryPayload[],
   statisticsMode?: StatisticsMode,
   computedStats?: ComputedStats,
-  schema?: unknown,
+  schema?: FullSchema,
 ): Promise<CiRunResult | null> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
@@ -366,7 +366,7 @@ export async function postToSiteApi(
   if (!token) {
     console.warn(
       "TOKEN is not set — POST /ci/runs will be rejected as Unauthorized. " +
-        "Set TOKEN to your Query Doctor project token.",
+      "Set TOKEN to your Query Doctor project token.",
     );
   }
 
