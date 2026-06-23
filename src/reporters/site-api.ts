@@ -2,6 +2,7 @@ import * as github from "@actions/github";
 import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
+import type { Op } from "jsondiffpatch/formatters/jsonpatch";
 
 interface CiRunPayload {
   repo: string;
@@ -119,6 +120,22 @@ export interface CiRunMetadata {
     headVsHead: boolean;
     unset: boolean;
     mcpCall: string;
+  } | null;
+  /**
+   * Schema delta of this run's pushed schema against the latest schema stored
+   * for the resolved comparison baseline — the same baseline the roll-up uses,
+   * so the schema diff and the query signals agree on what "the target branch"
+   * is. `operations` is a jsondiffpatch JSON Patch (RFC 6902) over the
+   * {@link FullSchema} shape, keyed by table/index/constraint OID server-side.
+   *
+   * Optional/nullable to mirror {@link baseline}: absent on a Site API that
+   * predates this field (deploy skew — render nothing), `null` when the API
+   * couldn't resolve the baseline schema (a degraded read — distinct from a
+   * clean run with no schema change, which is `changed: false`).
+   */
+  schemaChange?: {
+    changed: boolean;
+    operations: Op[];
   } | null;
 }
 

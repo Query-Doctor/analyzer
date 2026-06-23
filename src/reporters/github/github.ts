@@ -18,6 +18,12 @@ import {
 } from "../reporter.ts";
 
 import type { CiQueryPayload, ImprovedQuery, RegressedQuery } from "../site-api.ts";
+import {
+  buildSchemaChangeView,
+  schemaChangeHeading,
+  schemaChangeLabel,
+  type SchemaChangeView,
+} from "./schema-change.ts";
 
 n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
@@ -123,9 +129,24 @@ function buildQueryLinks(ctx: ReportContext): Record<string, string> {
   return links;
 }
 
+/**
+ * Schema delta between this PR and the comparison baseline, sourced from the run
+ * metadata. Absent when the API predates the field or couldn't resolve the
+ * baseline schema (`null`), and empty when the schema is unchanged — all collapse
+ * to a non-rendering view so the template stays a single `if hasChanges` guard.
+ */
+function buildSchemaChange(ctx: ReportContext): SchemaChangeView {
+  const change = ctx.runMetadata?.schemaChange;
+  if (!change || !change.changed) {
+    return { hasChanges: false, total: 0, groups: [] };
+  }
+  return buildSchemaChangeView(change.operations);
+}
+
 export function buildViewModel(ctx: ReportContext) {
   const hasComparison = !!ctx.comparison;
   const queryLinks = buildQueryLinks(ctx);
+  const schemaChange = buildSchemaChange(ctx);
 
   if (!hasComparison) {
     return {
@@ -138,6 +159,9 @@ export function buildViewModel(ctx: ReportContext) {
       newQueryCount: 0,
       hasComparison: false,
       queryLinks,
+      schemaChange,
+      schemaChangeHeading,
+      schemaChangeLabel,
     };
   }
 
@@ -177,6 +201,9 @@ export function buildViewModel(ctx: ReportContext) {
     newQueryCount: ctx.comparison!.newQueries.length,
     hasComparison: true,
     queryLinks,
+    schemaChange,
+    schemaChangeHeading,
+    schemaChangeLabel,
   };
 }
 
