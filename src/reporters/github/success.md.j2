@@ -78,6 +78,19 @@
 </details>
 {% endif %}
 
+{% if schemaChange.hasChanges %}
+<details>
+<summary>{{ schemaChange.total }} schema change{{ "s" if schemaChange.total != 1 else "" }} vs <code>{{ comparisonBranch }}</code></summary>
+
+{% for group in schemaChange.groups %}
+**{{ schemaChangeHeading(group.kind) }}**
+
+{% for entry in group.entries %}
+- {{ schemaChangeLabel(entry) }}
+{% endfor %}
+{% endfor %}
+</details>
+{% endif %}
 {% if statisticsMode.kind == "fromAssumption" %}
 <sub>Using assumed statistics ({{ statisticsMode.reltuples }} rows/table). For better results, <a href="https://docs.querydoctor.com/reference/statistics">sync production stats</a>.</sub>
 {% endif %}

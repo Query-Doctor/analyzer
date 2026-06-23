@@ -636,3 +636,75 @@ describe("unset-baseline callout (Site #3297 / #3312)", () => {
     expect(output).not.toContain("No comparison branch configured");
   });
 });
+
+describe("schema change section", () => {
+  const addedTableOp = {
+    op: "add" as const,
+    path: "/tables/0",
+    value: { type: "table", oid: 1, schemaName: "public", tableName: "orders", columns: [] },
+  };
+  const droppedIndexOp = { op: "remove" as const, path: "/indexes/3" };
+
+  test("buildViewModel surfaces a non-rendering view when metadata has no schemaChange", () => {
+    const ctx = makeContext({ comparison: makeComparison(), runMetadata: makeMetadata() });
+    const vm = buildViewModel(ctx);
+    expect(vm.schemaChange.hasChanges).toBe(false);
+  });
+
+  test("buildViewModel ignores schemaChange when changed is false", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({ schemaChange: { changed: false, operations: [addedTableOp] } }),
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.schemaChange.hasChanges).toBe(false);
+  });
+
+  test("buildViewModel treats null schemaChange (degraded read) as no change", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({ schemaChange: null }),
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.schemaChange.hasChanges).toBe(false);
+  });
+
+  test("template renders schema changes vs the comparison branch", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      comparisonBranch: "main",
+      runMetadata: makeMetadata({
+        schemaChange: { changed: true, operations: [addedTableOp, droppedIndexOp] },
+      }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("2 schema changes vs <code>main</code>");
+    expect(output).toContain("**Added**");
+    expect(output).toContain("table public.orders");
+    expect(output).toContain("**Removed**");
+    expect(output).toContain("index (removed)");
+  });
+
+  test("template renders no schema section when unchanged", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      runMetadata: makeMetadata({ schemaChange: { changed: false, operations: [] } }),
+    });
+    const output = renderTemplate(ctx);
+    expect(output).not.toContain("schema change");
+  });
+
+  test("singular wording for a single schema change", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      comparisonBranch: "main",
+      runMetadata: makeMetadata({
+        schemaChange: { changed: true, operations: [addedTableOp] },
+      }),
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("1 schema change vs <code>main</code>");
+    expect(output).not.toContain("1 schema changes");
+  });
+});
