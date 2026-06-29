@@ -8,6 +8,7 @@ import { shutdownController } from "./shutdown.ts";
 import {
   buildQueries,
   type CiRunResult,
+  classifyIngestFailure,
   compareRuns,
   fetchPreviousRun,
   gateEligibleNewQueries,
@@ -123,17 +124,30 @@ async function runInCI(
       if (outcome.ok) {
         runResult = outcome.result;
       } else {
-        // Ingestion failed (e.g. a schema the API rejected). Without this the
-        // run silently vanishes: no dashboard link, and a degraded PR comment
-        // that looks like a normal empty result. Surface it in the comment and
-        // as an Actions annotation instead. Not setFailed — a Site API hiccup
-        // shouldn't block merging; this is a "you should know" signal.
-        reportContext.ingestError = outcome.failure;
-        core.warning(
-          `Query Doctor could not record this run` +
-          (outcome.failure.status ? ` (HTTP ${outcome.failure.status})` : "") +
-          `; it was not saved to the dashboard.`,
-        );
+        // Ingestion failed: the run was computed but not saved. Without this it
+        // silently vanishes — no dashboard link, a degraded PR comment that
+        // looks like a normal empty result, and a green check. Surface it in the
+        // comment, and pick the Actions severity by who can act and whether it
+        // recovers (see classifyIngestFailure).
+        const kind = classifyIngestFailure(outcome.failure.status);
+        reportContext.ingestError = { kind, ...outcome.failure };
+        const statusText = outcome.failure.status
+          ? ` (HTTP ${outcome.failure.status})`
+          : "";
+        const base = `Query Doctor could not record this run${statusText}; it was not saved to the dashboard.`;
+        if (kind === "auth") {
+          // The user's to fix and means CI isn't actually running — fail loudly.
+          core.setFailed(`${base} The project TOKEN is missing or invalid.`);
+        } else if (kind === "rejected") {
+          // The API refused a computed run (likely analyzer/API skew) — our bug,
+          // not theirs. Red and loud, but don't block the PR unless opted in.
+          const msg = `${base} The API rejected the submission; re-running won't help.`;
+          if (env.FAIL_ON_INGEST_ERROR) core.setFailed(msg);
+          else core.error(msg);
+        } else {
+          // Transient (network/timeout/5xx) — recoverable, so warn and move on.
+          core.warning(`${base} Query Doctor was unreachable — re-run to retry.`);
+        }
       }
     }
     const runId: string | null = runResult?.id ?? null;

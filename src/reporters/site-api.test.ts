@@ -1,5 +1,6 @@
 import { test, expect, describe, afterEach, vi } from "vitest";
 import {
+  classifyIngestFailure,
   compareRuns,
   fetchPreviousRun,
   gateEligibleNewQueries,
@@ -265,6 +266,24 @@ describe("postToSiteApi payload baseBranch", () => {
     await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
 
     expect(bodyFrom(fetchMock)).not.toHaveProperty("baseBranch");
+  });
+});
+
+describe("classifyIngestFailure", () => {
+  test("treats no-response and 5xx as transient (recoverable)", () => {
+    expect(classifyIngestFailure(null)).toBe("transient");
+    expect(classifyIngestFailure(500)).toBe("transient");
+    expect(classifyIngestFailure(503)).toBe("transient");
+  });
+
+  test("treats 401/403 as auth (user must fix the token)", () => {
+    expect(classifyIngestFailure(401)).toBe("auth");
+    expect(classifyIngestFailure(403)).toBe("auth");
+  });
+
+  test("treats other 4xx as a rejected run (contract skew)", () => {
+    expect(classifyIngestFailure(400)).toBe("rejected");
+    expect(classifyIngestFailure(422)).toBe("rejected");
   });
 });
 
