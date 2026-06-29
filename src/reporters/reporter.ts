@@ -1,5 +1,9 @@
 import type { ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
-import type { CiRunMetadata, RunComparison } from "./site-api.ts";
+import type {
+  CiRunMetadata,
+  IngestFailureKind,
+  RunComparison,
+} from "./site-api.ts";
 
 export interface Reporter {
   provider(): string;
@@ -92,9 +96,14 @@ export interface ReportContext {
   comparisonUnavailable?: boolean;
   /**
    * `POST /ci/runs` failed, so the run wasn't saved to the dashboard. Drives a
-   * prominent failure banner in the comment so the run doesn't silently vanish.
+   * prominent failure banner in the comment so the run doesn't silently vanish;
+   * `kind` tailors the copy (transient → retry, auth → fix token, rejected → our bug).
    */
-  ingestError?: { status: number | null; message: string };
+  ingestError?: {
+    kind: IngestFailureKind;
+    status: number | null;
+    message: string;
+  };
   /** The run page link (`metadata.url` from `POST /ci/runs`). Absent when the repo isn't linked. */
   runUrl?: string;
   /** Unified CI-signal metadata: roll-up line, footer, per-query links, docs link, icon keys. */

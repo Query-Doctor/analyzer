@@ -24,6 +24,11 @@ const envSchema = z.object({
   SITE_API_ENDPOINT: z.url().default("https://api.querydoctor.com"),
   TOKEN: z.string().optional(),
   GITHUB_REPOSITORY: z.string().optional(),
+  // Fail the check when the API rejects a computed run (4xx other than auth).
+  // Off by default: that's usually an analyzer/API contract issue the user
+  // can't fix, so we surface it loudly without blocking their PR. Auth failures
+  // always fail regardless; transient failures never do.
+  FAIL_ON_INGEST_ERROR: z.stringbool().default(false),
 });
 
 // we want to avoid asking for ALL env permissions if possible

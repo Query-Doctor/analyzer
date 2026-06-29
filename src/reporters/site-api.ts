@@ -164,6 +164,21 @@ export type PostRunOutcome =
   | { ok: true; result: CiRunResult }
   | { ok: false; failure: PostRunFailure };
 
+/**
+ * How a rejected ingest should be treated, by recipient and recoverability:
+ * - `transient`: network/timeout/5xx — recoverable, re-run to retry.
+ * - `auth`: 401/403 — CI is misconfigured; the user must fix the token.
+ * - `rejected`: other 4xx — the API refused a computed run (e.g. analyzer/API
+ *   contract skew); not the user's to fix and re-running won't help.
+ */
+export type IngestFailureKind = "transient" | "auth" | "rejected";
+
+export function classifyIngestFailure(status: number | null): IngestFailureKind {
+  if (status === null || status >= 500) return "transient";
+  if (status === 401 || status === 403) return "auth";
+  return "rejected";
+}
+
 // Response bodies (e.g. a ZodError) can be large; cap what we echo into the PR
 // comment so a failure banner stays readable.
 const MAX_FAILURE_MESSAGE_LENGTH = 600;

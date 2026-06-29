@@ -403,14 +403,36 @@ describe("template rendering", () => {
     expect(output).toContain("3 queries analyzed");
   });
 
-  test("renders a failure banner with status and details when ingestion failed", () => {
+  test("renders a rejected-ingest banner with status and details", () => {
     const ctx = makeContext({
-      ingestError: { status: 400, message: "ZodError: invalid constraintType" },
+      ingestError: {
+        kind: "rejected",
+        status: 400,
+        message: "ZodError: invalid constraintType",
+      },
     });
     const output = renderTemplate(ctx);
     expect(output).toContain("Query Doctor couldn't record this run");
     expect(output).toContain("HTTP 400");
+    expect(output).toContain("re-running won't help");
     expect(output).toContain("ZodError: invalid constraintType");
+  });
+
+  test("renders auth-specific copy for an auth-kind ingest failure", () => {
+    const ctx = makeContext({
+      ingestError: { kind: "auth", status: 401, message: "Unauthorized" },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("authentication failed");
+    expect(output).toContain("Set a valid `TOKEN`");
+  });
+
+  test("renders retry copy for a transient ingest failure", () => {
+    const ctx = makeContext({
+      ingestError: { kind: "transient", status: null, message: "network down" },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("re-run the check to retry");
   });
 
   test("omits the failure banner when ingestion succeeded", () => {
