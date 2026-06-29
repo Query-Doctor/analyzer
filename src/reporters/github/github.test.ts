@@ -402,6 +402,24 @@ describe("template rendering", () => {
     const output = renderTemplate(ctx);
     expect(output).toContain("3 queries analyzed");
   });
+
+  test("renders a failure banner with status and details when ingestion failed", () => {
+    const ctx = makeContext({
+      ingestError: { status: 400, message: "ZodError: invalid constraintType" },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("Query Doctor couldn't record this run");
+    expect(output).toContain("HTTP 400");
+    expect(output).toContain("ZodError: invalid constraintType");
+  });
+
+  test("omits the failure banner when ingestion succeeded", () => {
+    const ctx = makeContext({
+      queryStats: { analyzed: 3, matched: 1, optimized: 0, errored: 0 },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).not.toContain("Query Doctor couldn't record this run");
+  });
 });
 
 function makeMetadata(overrides: Partial<CiRunMetadata> = {}): CiRunMetadata {

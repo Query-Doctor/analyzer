@@ -7,6 +7,7 @@ import { Connectable } from "./sync/connectable.ts";
 import { shutdownController } from "./shutdown.ts";
 import {
   buildQueries,
+  type CiRunResult,
   compareRuns,
   fetchPreviousRun,
   gateEligibleNewQueries,
@@ -116,9 +117,24 @@ async function runInCI(
 
     // POST to Site API first so we get the run ID (for baseline exclusion) and
     // the unified CI-signal metadata for the PR comment.
-    let runResult = null;
+    let runResult: CiRunResult | null = null;
     if (siteApiEndpoint) {
-      runResult = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats, syncedSchema);
+      const outcome = await postToSiteApi(siteApiEndpoint, queries, reportContext.statisticsMode, reportContext.computedStats, syncedSchema);
+      if (outcome.ok) {
+        runResult = outcome.result;
+      } else {
+        // Ingestion failed (e.g. a schema the API rejected). Without this the
+        // run silently vanishes: no dashboard link, and a degraded PR comment
+        // that looks like a normal empty result. Surface it in the comment and
+        // as an Actions annotation instead. Not setFailed — a Site API hiccup
+        // shouldn't block merging; this is a "you should know" signal.
+        reportContext.ingestError = outcome.failure;
+        core.warning(
+          `Query Doctor could not record this run` +
+          (outcome.failure.status ? ` (HTTP ${outcome.failure.status})` : "") +
+          `; it was not saved to the dashboard.`,
+        );
+      }
     }
     const runId: string | null = runResult?.id ?? null;
 
