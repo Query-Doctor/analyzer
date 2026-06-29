@@ -268,6 +268,66 @@ describe("postToSiteApi payload baseBranch", () => {
   });
 });
 
+describe("postToSiteApi outcome", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  test("returns ok with the run on a 2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ id: "run-1", url: null }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    const outcome = await postToSiteApi("https://api.querydoctor.com", [
+      makeQuery("hash-a"),
+    ]);
+
+    expect(outcome).toEqual({
+      ok: true,
+      result: { id: "run-1", url: null, metadata: null },
+    });
+  });
+
+  test("returns a failure carrying the status and body on a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response("ZodError: invalid constraintType", { status: 400 }),
+      ),
+    );
+
+    const outcome = await postToSiteApi("https://api.querydoctor.com", [
+      makeQuery("hash-a"),
+    ]);
+
+    expect(outcome).toEqual({
+      ok: false,
+      failure: { status: 400, message: "ZodError: invalid constraintType" },
+    });
+  });
+
+  test("returns a failure with a null status when the request never completes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("network down")),
+    );
+
+    const outcome = await postToSiteApi("https://api.querydoctor.com", [
+      makeQuery("hash-a"),
+    ]);
+
+    expect(outcome.ok).toBe(false);
+    expect(outcome).toMatchObject({ failure: { status: null } });
+  });
+});
+
 describe("gateEligibleNewQueries", () => {
   function withRecommendation(
     hash: string,

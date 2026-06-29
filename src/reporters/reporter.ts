@@ -90,6 +90,11 @@ export interface ReportContext {
    * "no baseline / add a push trigger" copy (Site#3287).
    */
   comparisonUnavailable?: boolean;
+  /**
+   * `POST /ci/runs` failed, so the run wasn't saved to the dashboard. Drives a
+   * prominent failure banner in the comment so the run doesn't silently vanish.
+   */
+  ingestError?: { status: number | null; message: string };
   /** The run page link (`metadata.url` from `POST /ci/runs`). Absent when the repo isn't linked. */
   runUrl?: string;
   /** Unified CI-signal metadata: roll-up line, footer, per-query links, docs link, icon keys. */

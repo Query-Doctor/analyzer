@@ -149,6 +149,32 @@ export interface CiRunResult {
   metadata: CiRunMetadata | null;
 }
 
+/**
+ * Why `POST /ci/runs` didn't save the run. `status` is the HTTP status, or null
+ * when the request never completed (network/timeout). `message` is the (capped)
+ * response body or error text, surfaced in the PR comment so the failure isn't
+ * silent.
+ */
+export interface PostRunFailure {
+  status: number | null;
+  message: string;
+}
+
+export type PostRunOutcome =
+  | { ok: true; result: CiRunResult }
+  | { ok: false; failure: PostRunFailure };
+
+// Response bodies (e.g. a ZodError) can be large; cap what we echo into the PR
+// comment so a failure banner stays readable.
+const MAX_FAILURE_MESSAGE_LENGTH = 600;
+
+function truncateFailureMessage(message: string): string {
+  const trimmed = message.trim();
+  return trimmed.length > MAX_FAILURE_MESSAGE_LENGTH
+    ? trimmed.slice(0, MAX_FAILURE_MESSAGE_LENGTH) + "…"
+    : trimmed;
+}
+
 export interface RunComparison {
   previousRunId: string;
   previousBranch: string;
@@ -360,7 +386,7 @@ export async function postToSiteApi(
   statisticsMode?: StatisticsMode,
   computedStats?: ComputedStats,
   schema?: FullSchema,
-): Promise<CiRunResult | null> {
+): Promise<PostRunOutcome> {
   const payload: CiRunPayload = {
     repo: process.env.GITHUB_REPOSITORY ?? "",
     branch: process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || "",
@@ -402,7 +428,13 @@ export async function postToSiteApi(
     if (!response.ok) {
       const text = await response.text();
       console.warn(`Site API responded with ${response.status}: ${text}`);
-      return null;
+      return {
+        ok: false,
+        failure: {
+          status: response.status,
+          message: truncateFailureMessage(text),
+        },
+      };
     }
     const body = (await response.json()) as {
       id: string;
@@ -411,13 +443,19 @@ export async function postToSiteApi(
     };
     console.log(`Site API ingestion successful: ${JSON.stringify(body)}`);
     return {
-      id: body.id,
-      url: body.url ?? null,
-      metadata: body.metadata ?? null,
+      ok: true,
+      result: {
+        id: body.id,
+        url: body.url ?? null,
+        metadata: body.metadata ?? null,
+      },
     };
   } catch (err) {
     console.warn(`Failed to POST to Site API: ${err}`);
-    return null;
+    return {
+      ok: false,
+      failure: { status: null, message: truncateFailureMessage(String(err)) },
+    };
   }
 }
 
