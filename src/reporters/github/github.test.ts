@@ -247,6 +247,36 @@ describe("buildViewModel", () => {
     expect(output).toContain("cost 42 · no index suggestion");
   });
 
+  test("renders multiple new queries as separate list items (#158)", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "new-sessions",
+            query: 'SELECT "id" FROM "sessions"',
+            formattedQuery: 'SELECT "id" FROM "sessions"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 1, indexesUsed: ["sessions_pkey"] },
+          },
+          {
+            hash: "new-item-watches",
+            query: 'SELECT "id" FROM "item_watches"',
+            formattedQuery: 'SELECT "id" FROM "item_watches"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 1, indexesUsed: ["item_watches_pkey"] },
+          },
+        ],
+      }),
+    });
+    const output = renderTemplate(ctx);
+    // trimBlocks strips the newline after a trailing block tag, which used to
+    // glue consecutive bullets together (`… no index suggestion- SELECT …`).
+    expect(output).not.toMatch(/no index suggestion-\s*<code>/);
+    expect(output).toContain(
+      'no index suggestion\n- <code>SELECT "id" FROM "item_watches"</code>',
+    );
+  });
+
   test("regressions surface in displayRegressed", () => {
     const ctx = makeContext({
       comparison: makeComparison({

@@ -83,7 +83,7 @@
 
 {% for q in displayNewQueries %}
 {% set link = queryLinks[q.hash] %}
-- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% if q.costLabel %}<br>{{ q.costLabel }} · no index suggestion{% endif %}
+- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% if q.costLabel %}<br>{{ q.costLabel }} · no index suggestion{% endif %}{{""}}
 {% endfor %}
 {% endif %}
 
