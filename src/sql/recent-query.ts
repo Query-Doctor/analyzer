@@ -1,6 +1,5 @@
 import * as prettier from "prettier";
 import prettierPluginSql from "prettier-plugin-sql";
-import type { SegmentedQueryCache } from "../sync/seen-cache.ts";
 import {
   Analyzer,
   compactSelectList,
@@ -18,8 +17,7 @@ import { log } from "../log.ts";
 import type { LiveQueryOptimization } from "../remote/optimization.ts";
 
 /**
- * Constructed by syncing with {@link SegmentedQueryCache.sync}
- * and supplying the date the query was last seen
+ * Constructed by syncing with {@link syncQueries}
  */
 export class RecentQuery {
   private static HARDCODED_LIMIT = 50;
@@ -50,7 +48,6 @@ export class RecentQuery {
     readonly nudges: Nudge[],
     readonly hash: QueryHash,
     readonly normalizedHash: QueryHash,
-    readonly seenAt: number,
     analysisSkipped = false,
     statementType?: StatementType,
   ) {
@@ -101,7 +98,6 @@ export class RecentQuery {
       nudges: this.nudges,
       hash: this.hash,
       normalizedHash: this.normalizedHash,
-      seenAt: this.seenAt,
       optimization: this.optimization,
     }));
   }
@@ -117,7 +113,6 @@ export class RecentQuery {
     data: RawRecentQuery,
     hash: QueryHash,
     normalizedHash: QueryHash,
-    seenAt: number,
   ) {
     if (data.query.length > RecentQuery.MAX_ANALYZABLE_QUERY_SIZE) {
       return new RecentQuery(
@@ -128,7 +123,6 @@ export class RecentQuery {
         [],
         hash,
         normalizedHash,
-        seenAt,
         true,
       );
     }
@@ -149,7 +143,6 @@ export class RecentQuery {
       analysis.nudges,
       hash,
       normalizedHash,
-      seenAt,
       false,
       analysis.statementType,
     );
