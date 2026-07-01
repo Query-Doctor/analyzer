@@ -1,11 +1,11 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import type { RpcStub } from "capnweb";
-import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi, RecentQuery } from "@query-doctor/core";
+import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi } from "@query-doctor/core";
 import type { ExportedStats } from "@query-doctor/core";
 import { PgIdentifier, Statistics } from "@query-doctor/core";
 import { log } from "../log.ts";
 import type { Remote } from "./remote.ts";
-import type { OptimizedQuery } from "../sql/recent-query.ts";
+import type { OptimizedQuery, RecentQuery } from "../sql/recent-query.ts";
 
 export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () => void {
   const onExtensionPresenceChanged = (presence: Parameters<typeof api.setExtensionPresence>[0]) => {
