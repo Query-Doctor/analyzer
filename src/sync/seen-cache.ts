@@ -1,6 +1,10 @@
-import type { Postgres } from "@query-doctor/core";
-import { QueryHash, RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
-import { fingerprint } from "@libpg-query/parser";
+import { normalizedFingerprint, type Postgres } from "@query-doctor/core";
+import {
+  QueryHash,
+  RawRecentQuery,
+  RecentQuery,
+} from "../sql/recent-query.ts";
+import { fingerprint, parse } from "@libpg-query/parser";
 import { Sema } from "async-sema";
 import { log } from "../log.ts";
 
@@ -56,7 +60,15 @@ export class QueryCache {
       await sema.acquire();
       try {
         const key = await this.store(rawQuery);
-        return await RecentQuery.analyze(rawQuery, key, this.getFirstSeen(key));
+        const normalizedHash = QueryHash.parse(
+          await normalizedFingerprint(await parse(rawQuery.query), fingerprint),
+        );
+        return await RecentQuery.analyze(
+          rawQuery,
+          key,
+          normalizedHash,
+          this.getFirstSeen(key),
+        );
       } catch (error) {
         log.error(`Failed to analyze query ${rawQuery.query}`, "query-cache")
         console.error(error)
