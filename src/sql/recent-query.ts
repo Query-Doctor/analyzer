@@ -49,6 +49,7 @@ export class RecentQuery {
     readonly tags: SQLCommenterTag[],
     readonly nudges: Nudge[],
     readonly hash: QueryHash,
+    readonly normalizedHash: QueryHash,
     readonly seenAt: number,
     analysisSkipped = false,
     statementType?: StatementType,
@@ -99,6 +100,7 @@ export class RecentQuery {
       tags: this.tags,
       nudges: this.nudges,
       hash: this.hash,
+      normalizedHash: this.normalizedHash,
       seenAt: this.seenAt,
       optimization: this.optimization,
     }));
@@ -114,6 +116,7 @@ export class RecentQuery {
   static async analyze(
     data: RawRecentQuery,
     hash: QueryHash,
+    normalizedHash: QueryHash,
     seenAt: number,
   ) {
     if (data.query.length > RecentQuery.MAX_ANALYZABLE_QUERY_SIZE) {
@@ -124,6 +127,7 @@ export class RecentQuery {
         [],
         [],
         hash,
+        normalizedHash,
         seenAt,
         true,
       );
@@ -144,6 +148,7 @@ export class RecentQuery {
       analysis.tags,
       analysis.nudges,
       hash,
+      normalizedHash,
       seenAt,
       false,
       analysis.statementType,
