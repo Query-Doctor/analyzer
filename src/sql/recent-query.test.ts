@@ -138,7 +138,7 @@ test("isTargetlessSelectQuery returns false when table references exist", () => 
 
 test("constructor sets derived boolean properties correctly for a SELECT on user tables", () => {
   const refs: TableReference[] = [{ table: "users", schema: "public" }];
-  const rq = new RecentQuery(makeRawQuery(), refs, [], [], [], testHash, testNormalizedHash, 1000);
+  const rq = new RecentQuery(makeRawQuery(), refs, [], [], [], testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(true);
   expect(rq.isSystemQuery).toBe(false);
   expect(rq.isIntrospection).toBe(false);
@@ -146,7 +146,7 @@ test("constructor sets derived boolean properties correctly for a SELECT on user
 });
 
 test("constructor sets isTargetlessSelectQuery=true for SELECT with no table refs", () => {
-  const rq = new RecentQuery(makeRawQuery(), [], [], [], [], testHash, testNormalizedHash, 1000);
+  const rq = new RecentQuery(makeRawQuery(), [], [], [], [], testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(true);
   expect(rq.isTargetlessSelectQuery).toBe(true);
 });
@@ -160,7 +160,6 @@ test("constructor sets isTargetlessSelectQuery=false for non-SELECT even with em
     [],
     testHash,
     testNormalizedHash,
-    1000,
   );
   expect(rq.isSelectQuery).toBe(false);
   expect(rq.isTargetlessSelectQuery).toBe(false);
@@ -176,7 +175,7 @@ test("constructor copies all data fields from RawRecentQuery", () => {
     rows: "0",
     topLevel: false,
   });
-  const rq = new RecentQuery(data, [], [], [], [], testHash, testNormalizedHash, 1000);
+  const rq = new RecentQuery(data, [], [], [], [], testHash, testNormalizedHash);
   expect(rq.username).toBe("admin");
   expect(rq.query).toBe("SELECT 1");
   expect(rq.formattedQuery).toBe("SELECT\n  1");
@@ -185,13 +184,12 @@ test("constructor copies all data fields from RawRecentQuery", () => {
   expect(rq.rows).toBe("0");
   expect(rq.topLevel).toBe(false);
   expect(rq.hash).toBe(testHash);
-  expect(rq.seenAt).toBe(1000);
 });
 
 // --- withOptimization ---
 
 test("withOptimization attaches optimization to the instance", () => {
-  const rq = new RecentQuery(makeRawQuery(), [], [], [], [], testHash, testNormalizedHash, 1000);
+  const rq = new RecentQuery(makeRawQuery(), [], [], [], [], testHash, testNormalizedHash);
   const optimization = { plan: "mock plan" } as any;
   const optimized = rq.withOptimization(optimization);
   expect(optimized.optimization).toBe(optimization);
@@ -203,10 +201,9 @@ test("withOptimization attaches optimization to the instance", () => {
 
 test("analyze produces a RecentQuery with formatted query and analysis", async () => {
   const data = makeRawQuery({ query: "SELECT id FROM users WHERE id = $1" });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 2000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq).toBeInstanceOf(RecentQuery);
   expect(rq.hash).toBe(testHash);
-  expect(rq.seenAt).toBe(2000);
   // The formatted query should have uppercase keywords
   expect(rq.formattedQuery).toMatch(/SELECT/);
   // Table references should include 'users'
@@ -216,7 +213,7 @@ test("analyze produces a RecentQuery with formatted query and analysis", async (
 test("analyze throws on unparseable SQL", async () => {
   const data = makeRawQuery({ query: "THIS IS NOT VALID SQL AT ALL !!!" });
   await expect(
-    RecentQuery.analyze(data, testHash, testNormalizedHash, 3000),
+    RecentQuery.analyze(data, testHash, testNormalizedHash),
   ).rejects.toThrow();
 });
 
@@ -224,7 +221,7 @@ test("analyze throws on unparseable SQL", async () => {
 
 test("analyze sets isSelectQuery=true for SELECT", async () => {
   const data = makeRawQuery({ query: "SELECT * FROM users" });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(true);
 });
 
@@ -232,7 +229,7 @@ test("analyze sets isSelectQuery=true for CTE with SELECT", async () => {
   const data = makeRawQuery({
     query: "WITH cte AS (SELECT id FROM users) SELECT * FROM cte",
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(true);
 });
 
@@ -241,7 +238,7 @@ test("analyze sets isSelectQuery=false for UPDATE even with SELECT subquery", as
     query:
       'UPDATE "public"."jobs" SET "state" = $1 FROM (SELECT id FROM "public"."jobs" WHERE state = $2 LIMIT 10) AS s1 WHERE "jobs".id = s1.id',
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(false);
 });
 
@@ -249,7 +246,7 @@ test("analyze sets isSelectQuery=false for INSERT ... SELECT", async () => {
   const data = makeRawQuery({
     query: "INSERT INTO archive SELECT * FROM users WHERE active = false",
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(false);
 });
 
@@ -258,7 +255,7 @@ test("analyze sets isSelectQuery=false for DELETE with EXISTS subquery", async (
     query:
       "DELETE FROM users WHERE EXISTS (SELECT 1 FROM banned WHERE banned.user_id = users.id)",
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.isSelectQuery).toBe(false);
 });
 
@@ -269,7 +266,7 @@ test("analyze populates displayQuery for wide SELECTs", async () => {
     query:
       'SELECT "u"."id", "u"."email", "u"."first_name", "u"."last_name", "u"."created_at", "u"."updated_at", "u"."stripe_customer_id" FROM "users" "u" WHERE "u"."id" = $1',
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   // Normalize whitespace because the analyzer prettier-formats the query
   // before compacting; the site applies the same normalization on render.
   const normalized = rq.displayQuery?.replace(/\s+/g, " ").trim();
@@ -280,7 +277,7 @@ test("analyze populates displayQuery for wide SELECTs", async () => {
 
 test("analyze leaves displayQuery undefined for narrow SELECTs", async () => {
   const data = makeRawQuery({ query: "SELECT id FROM users WHERE id = $1" });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.displayQuery).toBeUndefined();
 });
 
@@ -289,7 +286,7 @@ test("analyze leaves displayQuery undefined for non-SELECTs", async () => {
     query:
       "INSERT INTO archive SELECT a, b, c, d, e, f, g, h FROM users WHERE active = false",
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.displayQuery).toBeUndefined();
 });
 
@@ -298,14 +295,14 @@ test("analyze leaves displayQuery undefined for UNION", async () => {
     query:
       "SELECT a, b, c, d, e, f, g FROM t UNION SELECT a, b, c, d, e, f, g FROM u",
   });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.displayQuery).toBeUndefined();
 });
 
 
 test("analyze strips sqlcommenter tags from formattedQuery", async () => {
   const data = makeRawQuery({ query: "select 1 /*a='1',b='2'*/" });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash, 1000);
+  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
   expect(rq.tags).toEqual([
     { key: "a", value: "1" },
     { key: "b", value: "2" },

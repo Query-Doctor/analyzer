@@ -1,5 +1,5 @@
 import { test, expect, vi } from "vitest";
-import { QueryCache } from "./seen-cache.ts";
+import { syncQueries } from "./query-sync.ts";
 import type { RawRecentQuery } from "../sql/recent-query.ts";
 
 function makeRawQuery(query: string): RawRecentQuery {
@@ -15,32 +15,26 @@ function makeRawQuery(query: string): RawRecentQuery {
 }
 
 test("sync skips unparseable queries and returns parseable ones", async () => {
-  const cache = new QueryCache();
-
   const validQuery = makeRawQuery("SELECT 1");
   // DEALLOCATE $1 is a utility statement that the pg parser rejects
   const invalidQuery = makeRawQuery("DEALLOCATE $1");
 
-  const results = await cache.sync([validQuery, invalidQuery]);
+  const results = await syncQueries([validQuery, invalidQuery]);
 
   expect(results).toHaveLength(1);
   expect(results[0].query).toContain("SELECT");
 });
 
 test("sync returns empty array when all queries fail", async () => {
-  const cache = new QueryCache();
-
   const invalidQuery1 = makeRawQuery("DEALLOCATE $1");
   const invalidQuery2 = makeRawQuery("not valid sql !!!");
 
-  const results = await cache.sync([invalidQuery1, invalidQuery2]);
+  const results = await syncQueries([invalidQuery1, invalidQuery2]);
 
   expect(results).toHaveLength(0);
 });
 
 test("sync bounds concurrency to MAX_CONCURRENCY", async () => {
-  const cache = new QueryCache();
-
   let peakConcurrent = 0;
   let currentConcurrent = 0;
 
@@ -61,7 +55,7 @@ test("sync bounds concurrency to MAX_CONCURRENCY", async () => {
     makeRawQuery(`SELECT ${i + 1}`),
   );
 
-  await cache.sync(queries);
+  await syncQueries(queries);
 
   expect(peakConcurrent).toBeLessThanOrEqual(10);
   expect(peakConcurrent).toBeGreaterThan(1); // verify some concurrency exists
