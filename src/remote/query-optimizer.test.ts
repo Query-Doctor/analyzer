@@ -144,7 +144,6 @@ test("controller syncs correctly", async () => {
           [],
           0 as any,
           0 as any,
-          1,
         ),
       ]);
       expect(
