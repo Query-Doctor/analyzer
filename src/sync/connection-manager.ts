@@ -1,5 +1,4 @@
 import type { Postgres } from "@query-doctor/core";
-import { SegmentedQueryCache } from "./seen-cache.ts";
 import { Connectable } from "./connectable.ts";
 import { PostgresConnector } from "./pg-connector.ts";
 import { connectToOptimizer, connectToSource } from "../sql/postgresjs.ts";
@@ -8,8 +7,6 @@ import { connectToOptimizer, connectToSource } from "../sql/postgresjs.ts";
  * Manages connections and query caches for each connection
  */
 export class ConnectionManager {
-  readonly segmentedQueryCache = new SegmentedQueryCache();
-
   // This prevents connections being garbage collected.
   // ConnectionMap should be responsible for closing connections
   private readonly connections = new Map<string, Postgres>();
@@ -48,7 +45,7 @@ export class ConnectionManager {
     const sql = input instanceof Connectable
       ? this.getOrCreateConnection(input)
       : input;
-    return new PostgresConnector(sql, this.segmentedQueryCache);
+    return new PostgresConnector(sql);
   }
 
   async close(connectable: Connectable): Promise<void> {

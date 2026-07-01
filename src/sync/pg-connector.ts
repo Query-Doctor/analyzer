@@ -17,7 +17,7 @@ import {
   PostgresQueryBuilder,
   dumpQueriesSql,
 } from "@query-doctor/core";
-import { SegmentedQueryCache } from "./seen-cache.ts";
+import { syncQueries } from "./query-sync.ts";
 import { FullSchema, FullSchemaColumn } from "@query-doctor/core";
 import { ExtensionNotInstalledError, PostgresError } from "./errors.ts";
 import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
@@ -96,7 +96,6 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple>, Rece
   private static readonly MIN_SIZE_FOR_TABLESAMPLE = 10_000;
   constructor(
     private readonly db: Postgres,
-    private readonly segmentedQueryCache: SegmentedQueryCache,
   ) { }
 
   async onStartAnalyze(): Promise<void> {
@@ -494,7 +493,7 @@ ORDER BY
           source.extensionName.toString() as "pg_stat_statements" | "pg_stat_monitor",
         );
         const results = await this.db.exec<RawRecentQuery>(sql);
-        return await this.segmentedQueryCache.sync(this.db, results);
+        return await syncQueries(results);
       }
     } catch (err) {
       if (
@@ -526,8 +525,6 @@ ORDER BY
             SELECT ${source.schema}.pg_stat_monitor_reset(); -- @qd_introspection
         `);
       }
-
-      this.segmentedQueryCache.reset(this.db);
     } catch (err) {
       if (
         err instanceof Error &&

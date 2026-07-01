@@ -3,7 +3,7 @@ import { statSync } from "node:fs";
 import csv from "fast-csv";
 import type { RawRecentQuery, RecentQuery } from "./recent-query.ts";
 import { preprocessEncodedJson } from "./json.ts";
-import { QueryCache } from "../sync/seen-cache.ts";
+import { syncQueries } from "../sync/query-sync.ts";
 import type { RecentQuerySource } from "./recent-query.ts";
 
 const INTROSPECTION_MARKER = "@qd_introspection";
@@ -60,7 +60,6 @@ export class PgbadgerSource implements RecentQuerySource {
 
   constructor(
     private readonly logPath: string,
-    private readonly cache: QueryCache = new QueryCache(),
   ) {
     this.logSize = statSync(this.logPath).size;
     console.log(`logPath=${this.logPath},fileSize=${this.logSize}`);
@@ -95,6 +94,6 @@ export class PgbadgerSource implements RecentQuerySource {
       this.totalRows++;
     }
     console.log("Finished pgbadger stream");
-    return this.cache.sync(rawQueries);
+    return syncQueries(rawQueries);
   }
 }
