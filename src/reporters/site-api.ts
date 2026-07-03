@@ -1,4 +1,5 @@
 import * as github from "@actions/github";
+import { isTestOriginQuery } from "@query-doctor/core";
 import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
@@ -198,6 +199,14 @@ export interface RunComparison {
   acknowledgedRegressed: RegressedQuery[];
   improved: ImprovedQuery[];
   newQueries: CiQueryPayload[];
+  /**
+   * Queries bucketed out of the gate because they originate from a test file
+   * (Query-Doctor/Site#3199). Kept as a distinct list — not silently dropped —
+   * so the run stays auditable: the PR comment can show what was excluded, and
+   * they never appear in `regressed`/`newQueries`/`improved`, so the gate can't
+   * fail on them.
+   */
+  testOriginExcluded: CiQueryPayload[];
   disappearedHashes: string[];
 }
 
@@ -296,8 +305,17 @@ export function compareRuns(
   const acknowledgedRegressed: RegressedQuery[] = [];
   const improved: ImprovedQuery[] = [];
   const newQueries: CiQueryPayload[] = [];
+  const testOriginExcluded: CiQueryPayload[] = [];
 
   for (const current of currentQueries) {
+    // A query issued from a test file runs no production path, so it must never
+    // gate the PR (#3199). Bucket it out before any regressed/new/improved
+    // categorization — same rule the Site alert engine applies, via the shared
+    // detector in @query-doctor/core — so the two surfaces can't drift.
+    if (isTestOriginQuery(current.tags)) {
+      testOriginExcluded.push(current);
+      continue;
+    }
     const prev = prevByHash.get(current.hash);
     if (!prev) {
       newQueries.push(current);
@@ -359,6 +377,7 @@ export function compareRuns(
     acknowledgedRegressed,
     improved,
     newQueries,
+    testOriginExcluded,
     disappearedHashes,
   };
 }

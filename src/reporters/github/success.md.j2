@@ -69,6 +69,16 @@
 </details>
 {% endif %}
 
+{% if displayTestOriginExcluded.length > 0 %}
+<details>
+<summary>{{ displayTestOriginExcluded.length }} test-origin quer{{ "ies" if displayTestOriginExcluded.length != 1 else "y" }} excluded from the gate</summary>
+
+{% for q in displayTestOriginExcluded %}
+- <code>{{ q.queryPreview }}</code>{% if q.costLabel %}<br>{{ q.costLabel }}{% endif %}
+{% endfor %}
+</details>
+{% endif %}
+
 {% if displayRecommendations.length > 0 %}
 #### This PR introduces queries with recommendations
 

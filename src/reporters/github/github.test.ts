@@ -126,6 +126,7 @@ function makeComparison(overrides: Partial<RunComparison> = {}): RunComparison {
     acknowledgedRegressed: [],
     improved: [],
     newQueries: [],
+    testOriginExcluded: [],
     disappearedHashes: [],
     ...overrides,
   };
@@ -182,6 +183,25 @@ describe("buildViewModel", () => {
     expect(vm.displayRecommendations).toHaveLength(1);
     expect(vm.displayRecommendations[0].fingerprint).toBe("new-query-1");
     expect(vm.newQueryCount).toBe(1);
+  });
+
+  test("test-origin excluded queries get their own auditable section (#3199)", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        testOriginExcluded: [
+          {
+            hash: "test-query-1",
+            query: "SELECT * FROM t",
+            formattedQuery: "SELECT * FROM t",
+            nudges: [], tags: [{ key: "file", value: "tests/db.test.ts" }], tableReferences: [],
+            optimization: { state: "no_improvement_found", cost: 99, indexesUsed: [] },
+          },
+        ],
+      }),
+    });
+    const vm = buildViewModel(ctx);
+    expect(vm.displayTestOriginExcluded).toHaveLength(1);
+    expect(vm.displayTestOriginExcluded[0].queryPreview).toBe("SELECT * FROM t");
   });
 
   test("new query without a recommendation is still listed (Site#3287 follow-up)", () => {

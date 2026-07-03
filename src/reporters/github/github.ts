@@ -155,6 +155,7 @@ export function buildViewModel(ctx: ReportContext) {
       displayAcknowledgedRegressed: [] as DisplayRegression[],
       displayImproved: [] as DisplayImprovement[],
       displayNewQueries: [] as DisplayNewQuery[],
+      displayTestOriginExcluded: [] as DisplayNewQuery[],
       preExistingRecommendations: [] as DisplayRecommendation[],
       newQueryCount: 0,
       hasComparison: false,
@@ -190,6 +191,10 @@ export function buildViewModel(ctx: ReportContext) {
   const displayRegressed = addRegressionPreviews(ctx.comparison!.regressed);
   const displayAcknowledgedRegressed = addRegressionPreviews(ctx.comparison!.acknowledgedRegressed);
   const displayImproved = addImprovementPreviews(ctx.comparison!.improved);
+  // Test-origin queries are auto-excluded from the gate (#3199); surface them so
+  // the exclusion is auditable rather than silent. They share the new-query
+  // preview shape (hash + preview + cost label).
+  const displayTestOriginExcluded = addNewQueryPreviews(ctx.comparison!.testOriginExcluded);
 
   return {
     displayRecommendations,
@@ -197,6 +202,7 @@ export function buildViewModel(ctx: ReportContext) {
     displayAcknowledgedRegressed,
     displayImproved,
     displayNewQueries,
+    displayTestOriginExcluded,
     preExistingRecommendations,
     newQueryCount: ctx.comparison!.newQueries.length,
     hasComparison: true,
