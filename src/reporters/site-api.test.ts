@@ -187,6 +187,59 @@ describe("compareRuns", () => {
       expect(result.disappearedHashes).toEqual(["hash-e"]);
     });
   });
+
+  describe("test-origin exclusion (#3199)", () => {
+    const fromTestFile = (q: CiQueryPayload): CiQueryPayload => ({
+      ...q,
+      tags: [{ key: "file", value: "tests/pg/postgres.test.ts" }],
+    });
+
+    test("a regressed test-origin query is bucketed out of the gate, not regressed", () => {
+      const current = [fromTestFile(makeQuery("hash-a", 500))];
+      const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
+
+      const result = compareRuns(current, previousRun, 10);
+
+      expect(result.regressed).toHaveLength(0);
+      expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-a"]);
+    });
+
+    test("a new test-origin query never enters newQueries", () => {
+      const current = [fromTestFile(makeQuery("hash-new", 200))];
+      const previousRun = makePreviousRun([]);
+
+      const result = compareRuns(current, previousRun, 10);
+
+      expect(result.newQueries).toHaveLength(0);
+      expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-new"]);
+    });
+
+    test("production queries in the same run are unaffected", () => {
+      const current = [
+        fromTestFile(makeQuery("hash-test", 500)), // was 100 → excluded
+        makeQuery("hash-prod", 500),               // was 100 → regressed
+      ];
+      const previousRun = makePreviousRun([
+        makeQuery("hash-test", 100),
+        makeQuery("hash-prod", 100),
+      ]);
+
+      const result = compareRuns(current, previousRun, 10);
+
+      expect(result.regressed.map((q) => q.hash)).toEqual(["hash-prod"]);
+      expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-test"]);
+    });
+
+    test("an untagged query still gates exactly as before", () => {
+      const current = [makeQuery("hash-a", 500)];
+      const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
+
+      const result = compareRuns(current, previousRun, 10);
+
+      expect(result.regressed).toHaveLength(1);
+      expect(result.testOriginExcluded).toHaveLength(0);
+    });
+  });
 });
 
 describe("postToSiteApi authentication", () => {
