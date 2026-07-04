@@ -138,6 +138,13 @@ async function runInCI(
         if (kind === "auth") {
           // The user's to fix and means CI isn't actually running — fail loudly.
           core.setFailed(`${base} The project TOKEN is missing or invalid.`);
+        } else if (kind === "too_large") {
+          // The payload exceeded the API's size limit — our side to fix, not
+          // theirs, and re-running the same payload won't help. Loud but
+          // non-blocking unless opted in, same as a rejected run.
+          const msg = `${base} The submission was too large for the API to accept; re-running won't help.`;
+          if (env.FAIL_ON_INGEST_ERROR) core.setFailed(msg);
+          else core.error(msg);
         } else if (kind === "rejected") {
           // The API refused a computed run (likely analyzer/API skew) — our bug,
           // not theirs. Red and loud, but don't block the PR unless opted in.

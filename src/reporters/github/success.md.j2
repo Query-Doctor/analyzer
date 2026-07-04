@@ -6,6 +6,8 @@
 > **Query Doctor couldn't record this run — authentication failed{% if ingestError.status %} (HTTP {{ ingestError.status }}){% endif %}.** The project token is missing or invalid, so nothing was saved to the dashboard. Set a valid `TOKEN` in your workflow.
 {% elif ingestError.kind == "transient" %}
 > **Query Doctor couldn't record this run.** The API was unreachable{% if ingestError.status %} (HTTP {{ ingestError.status }}){% endif %}, so it wasn't saved this time. This is usually temporary — re-run the check to retry.
+{% elif ingestError.kind == "too_large" %}
+> **Query Doctor couldn't record this run.** The submission was too large{% if ingestError.status %} (HTTP {{ ingestError.status }}){% endif %} for the API to accept, so it wasn't saved to the dashboard and the results below may be incomplete. Re-running won't help — this is a size limit on our side.
 {% else %}
 > **Query Doctor couldn't record this run.** The API rejected the submission{% if ingestError.status %} (HTTP {{ ingestError.status }}){% endif %}, so it wasn't saved to the dashboard and the results below may be incomplete. This usually means the analyzer and Query Doctor are out of sync — re-running won't help; if it persists, it's a bug on our side.
 {% endif %}
