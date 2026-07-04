@@ -97,7 +97,8 @@ export interface ReportContext {
   /**
    * `POST /ci/runs` failed, so the run wasn't saved to the dashboard. Drives a
    * prominent failure banner in the comment so the run doesn't silently vanish;
-   * `kind` tailors the copy (transient → retry, auth → fix token, rejected → our bug).
+   * `kind` tailors the copy (transient → retry, auth → fix token, too_large →
+   * payload over the size limit, rejected → our bug).
    */
   ingestError?: {
     kind: IngestFailureKind;

@@ -485,6 +485,22 @@ describe("template rendering", () => {
     expect(output).toContain("re-run the check to retry");
   });
 
+  test("renders payload-too-large copy for a too_large ingest failure", () => {
+    const ctx = makeContext({
+      ingestError: {
+        kind: "too_large",
+        status: 413,
+        message: '{"statusCode":413,"message":"request entity too large"}',
+      },
+    });
+    const output = renderTemplate(ctx);
+    expect(output).toContain("The submission was too large");
+    expect(output).toContain("HTTP 413");
+    expect(output).toContain("size limit on our side");
+    expect(output).not.toContain("out of sync");
+    expect(output).toContain("request entity too large");
+  });
+
   test("omits the failure banner when ingestion succeeded", () => {
     const ctx = makeContext({
       queryStats: { analyzed: 3, matched: 1, optimized: 0, errored: 0 },

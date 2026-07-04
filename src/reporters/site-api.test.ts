@@ -334,6 +334,10 @@ describe("classifyIngestFailure", () => {
     expect(classifyIngestFailure(403)).toBe("auth");
   });
 
+  test("treats 413 as too_large (payload over the size limit)", () => {
+    expect(classifyIngestFailure(413)).toBe("too_large");
+  });
+
   test("treats other 4xx as a rejected run (contract skew)", () => {
     expect(classifyIngestFailure(400)).toBe("rejected");
     expect(classifyIngestFailure(422)).toBe("rejected");

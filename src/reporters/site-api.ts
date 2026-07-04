@@ -169,14 +169,18 @@ export type PostRunOutcome =
  * How a rejected ingest should be treated, by recipient and recoverability:
  * - `transient`: network/timeout/5xx — recoverable, re-run to retry.
  * - `auth`: 401/403 — CI is misconfigured; the user must fix the token.
+ * - `too_large`: 413 — the payload exceeded the API's size limit. A distinct
+ *   cause from `rejected`: it's not contract skew, so the "out of sync" copy
+ *   would be wrong. Re-running the same payload won't help.
  * - `rejected`: other 4xx — the API refused a computed run (e.g. analyzer/API
  *   contract skew); not the user's to fix and re-running won't help.
  */
-export type IngestFailureKind = "transient" | "auth" | "rejected";
+export type IngestFailureKind = "transient" | "auth" | "too_large" | "rejected";
 
 export function classifyIngestFailure(status: number | null): IngestFailureKind {
   if (status === null || status >= 500) return "transient";
   if (status === 401 || status === 403) return "auth";
+  if (status === 413) return "too_large";
   return "rejected";
 }
 
