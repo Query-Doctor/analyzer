@@ -135,7 +135,12 @@ test("put tracks schemas per connectable independently", () => {
 
   const updated = makeSchema({
     extensions: [
-      { extensionName: "pg_trgm", version: "1.0", schemaName: "public" as any },
+      {
+        type: "extension",
+        extensionName: "pg_trgm",
+        version: "1.0",
+        schemaName: "public" as any,
+      },
     ],
   });
 
