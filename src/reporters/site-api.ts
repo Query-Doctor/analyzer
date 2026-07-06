@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import * as github from "@actions/github";
 import { isTestOriginQuery } from "@query-doctor/core";
 import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
@@ -454,14 +455,20 @@ export async function postToSiteApi(
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs`;
   console.log(`Posting CI run to ${url} (${queries.length} queries)`);
 
+  // Gzip the body: CI run payloads reach multiple MB (many queries + schema),
+  // and the Site API decompresses request bodies before enforcing its size
+  // limit. See Query-Doctor/Site raise-json-body-limit work.
+  const body = gzipSync(JSON.stringify(payload));
+
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Content-Encoding": "gzip",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify(payload),
+      body,
     });
     if (!response.ok) {
       const text = await response.text();
@@ -474,18 +481,18 @@ export async function postToSiteApi(
         },
       };
     }
-    const body = (await response.json()) as {
+    const responseBody = (await response.json()) as {
       id: string;
       url?: string | null;
       metadata?: CiRunMetadata | null;
     };
-    console.log(`Site API ingestion successful: ${JSON.stringify(body)}`);
+    console.log(`Site API ingestion successful: ${JSON.stringify(responseBody)}`);
     return {
       ok: true,
       result: {
-        id: body.id,
-        url: body.url ?? null,
-        metadata: body.metadata ?? null,
+        id: responseBody.id,
+        url: responseBody.url ?? null,
+        metadata: responseBody.metadata ?? null,
       },
     };
   } catch (err) {

@@ -1,3 +1,4 @@
+import { gunzipSync } from "node:zlib";
 import { test, expect, describe, afterEach, vi } from "vitest";
 import {
   classifyIngestFailure,
@@ -280,6 +281,16 @@ describe("postToSiteApi authentication", () => {
 
     expect(headersFrom(fetchMock).has("authorization")).toBe(false);
   });
+
+  test("gzips the request body and advertises Content-Encoding: gzip", async () => {
+    const fetchMock = stubOkFetch();
+
+    await postToSiteApi("https://api.querydoctor.com", [makeQuery("hash-a")]);
+
+    expect(headersFrom(fetchMock).get("content-encoding")).toBe("gzip");
+    const body = fetchMock.mock.calls[0]![1]!.body as Buffer;
+    expect(JSON.parse(gunzipSync(body).toString("utf8")).repo).toBeDefined();
+  });
 });
 
 describe("postToSiteApi payload baseBranch", () => {
@@ -300,7 +311,8 @@ describe("postToSiteApi payload baseBranch", () => {
   }
 
   function bodyFrom(fetchMock: ReturnType<typeof vi.fn>): Record<string, unknown> {
-    return JSON.parse(fetchMock.mock.calls[0]![1]!.body as string);
+    const body = fetchMock.mock.calls[0]![1]!.body as Buffer;
+    return JSON.parse(gunzipSync(body).toString("utf8"));
   }
 
   test("forwards GITHUB_BASE_REF as baseBranch on a PR run", async () => {
