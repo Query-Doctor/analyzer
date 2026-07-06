@@ -453,12 +453,16 @@ export async function postToSiteApi(
   }
 
   const url = `${endpoint.replace(/\/$/, "")}/ci/runs`;
-  console.log(`Posting CI run to ${url} (${queries.length} queries)`);
 
   // Gzip the body: CI run payloads reach multiple MB (many queries + schema),
   // and the Site API decompresses request bodies before enforcing its size
   // limit. See Query-Doctor/Site raise-json-body-limit work.
   const body = gzipSync(JSON.stringify(payload));
+
+  const sentKib = (body.byteLength / 1024).toFixed(1);
+  console.log(
+    `Posting CI run to ${url} (${queries.length} queries, ${sentKib} KiB gzipped)`,
+  );
 
   try {
     const response = await fetch(url, {
