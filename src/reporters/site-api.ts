@@ -1,10 +1,13 @@
-import { gzipSync } from "node:zlib";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import * as github from "@actions/github";
 import { isTestOriginQuery } from "@query-doctor/core";
 import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
 import type { Op } from "jsondiffpatch/formatters/jsonpatch";
+
+const gzipAsync = promisify(gzip);
 
 interface CiRunPayload {
   repo: string;
@@ -457,7 +460,7 @@ export async function postToSiteApi(
   // Gzip the body: CI run payloads reach multiple MB (many queries + schema),
   // and the Site API decompresses request bodies before enforcing its size
   // limit. See Query-Doctor/Site raise-json-body-limit work.
-  const body = gzipSync(JSON.stringify(payload));
+  const body = await gzipAsync(JSON.stringify(payload));
 
   const sentKib = (body.byteLength / 1024).toFixed(1);
   console.log(
