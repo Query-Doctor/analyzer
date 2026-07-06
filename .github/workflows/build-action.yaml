@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-24.04
     if: ${{ github.repository_owner == 'query-doctor' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
@@ -41,7 +41,7 @@ jobs:
           PG_RESTORE_BINARY: /usr/lib/postgresql/17/bin/pg_restore
 
       - name: Upload files to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         with:
           tag_name: v${{ env.VERSION }}
