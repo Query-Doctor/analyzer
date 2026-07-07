@@ -2,63 +2,103 @@ import { describe, expect, test } from "vitest";
 import {
   classifyChangedFiles,
   evaluateTestPresence,
+  patchAddsQueryCode,
   type ChangedFile,
 } from "./test-presence.ts";
 
-const added = (path: string): ChangedFile => ({ path, status: "added" });
-const modified = (path: string): ChangedFile => ({ path, status: "modified" });
-const removed = (path: string): ChangedFile => ({ path, status: "removed" });
+/** A minimal patch whose single added line is `line`. */
+function addPatch(line: string): string {
+  return `@@ -1,0 +1,1 @@\n+${line}`;
+}
+
+const changed = (
+  path: string,
+  line: string,
+  status = "modified",
+): ChangedFile => ({ path, status, patch: addPatch(line) });
+
+describe("patchAddsQueryCode", () => {
+  test("detects an ORM query call in added lines", () => {
+    expect(patchAddsQueryCode(addPatch("const u = await db.select().from(users);"))).toBe(
+      true,
+    );
+  });
+
+  test("detects a raw SQL string", () => {
+    expect(patchAddsQueryCode(addPatch('await client.query("INSERT INTO users VALUES (1)");'))).toBe(
+      true,
+    );
+  });
+
+  test("ignores a comment that merely mentions SQL keywords", () => {
+    expect(patchAddsQueryCode(addPatch("// TODO: select the user from the list"))).toBe(
+      false,
+    );
+  });
+
+  test("ignores non-query code", () => {
+    expect(patchAddsQueryCode(addPatch("const total = items.length + 1;"))).toBe(false);
+  });
+
+  test("only looks at added lines, not removed ones", () => {
+    const patch = "@@ -1,1 +1,1 @@\n-await db.select().from(users);\n+const x = 1;";
+    expect(patchAddsQueryCode(patch)).toBe(false);
+  });
+
+  test("is false for a missing patch", () => {
+    expect(patchAddsQueryCode(undefined)).toBe(false);
+  });
+});
 
 describe("classifyChangedFiles", () => {
-  test("buckets a repository and its spec into different surfaces", () => {
+  test("classes a query-bearing non-test file as data-access, wherever it lives", () => {
+    // Not named like a repository — content is what counts now.
     const surface = classifyChangedFiles([
-      modified("apps/api/src/users/user.repository.ts"),
-      modified("apps/api/src/users/user.repository.spec.ts"),
+      changed("apps/api/src/users/user.service.ts", "return db.select().from(users);"),
     ]);
-    expect(surface).toEqual({
-      dataAccessChanged: ["apps/api/src/users/user.repository.ts"],
-      dataLayerTestChanged: ["apps/api/src/users/user.repository.spec.ts"],
-    });
+    expect(surface.dataAccessChanged).toEqual(["apps/api/src/users/user.service.ts"]);
   });
 
-  test("treats files under a dal/ directory as data-access", () => {
-    const surface = classifyChangedFiles([added("src/dal/orders.ts")]);
-    expect(surface.dataAccessChanged).toEqual(["src/dal/orders.ts"]);
-    expect(surface.dataLayerTestChanged).toEqual([]);
-  });
-
-  test("counts an integration test as a data-layer test", () => {
+  test("does NOT flag a comment-only edit to a repository file", () => {
     const surface = classifyChangedFiles([
-      added("test/orders.integration.test.ts"),
-    ]);
-    expect(surface.dataLayerTestChanged).toEqual([
-      "test/orders.integration.test.ts",
+      changed("apps/api/src/users/user.repository.ts", "// clarify the join order"),
     ]);
     expect(surface.dataAccessChanged).toEqual([]);
   });
 
-  test("ignores non-data-access files entirely", () => {
+  test("classes a query-bearing test as a data-layer test", () => {
     const surface = classifyChangedFiles([
-      modified("apps/app/src/components/Button.tsx"),
-      modified("README.md"),
+      changed(
+        "apps/api/src/users/user.repository.spec.ts",
+        "expect(await db.select().from(users)).toHaveLength(1);",
+      ),
     ]);
-    expect(surface).toEqual({ dataAccessChanged: [], dataLayerTestChanged: [] });
+    expect(surface.dataLayerTestChanged).toEqual([
+      "apps/api/src/users/user.repository.spec.ts",
+    ]);
+    expect(surface.dataAccessChanged).toEqual([]);
   });
 
-  test("does not count a removed data-access file as a change", () => {
+  test("falls back to the filename prior when a patch is unavailable", () => {
     const surface = classifyChangedFiles([
-      removed("apps/api/src/users/user.repository.ts"),
+      { path: "apps/api/src/users/user.repository.ts", status: "modified" },
+    ]);
+    expect(surface.dataAccessChanged).toEqual(["apps/api/src/users/user.repository.ts"]);
+  });
+
+  test("does not count a removed file as a change", () => {
+    const surface = classifyChangedFiles([
+      changed("apps/api/src/users/user.repository.ts", "db.select().from(users)", "removed"),
     ]);
     expect(surface.dataAccessChanged).toEqual([]);
   });
 });
 
 describe("evaluateTestPresence", () => {
-  test("flags data-access change with no data-layer test", () => {
+  test("flags a query change with no related test", () => {
     const verdict = evaluateTestPresence([
-      modified("apps/api/src/users/user.repository.ts"),
+      changed("apps/api/src/users/user.repository.ts", "db.insert(users).values(u);"),
     ]);
-    expect(verdict).not.toBeNull();
     expect(verdict).toMatchObject({
       condition: "untested-data-access",
       verdictClass: "uncertain-conservative-flag",
@@ -66,44 +106,51 @@ describe("evaluateTestPresence", () => {
     });
   });
 
-  test("passes when a data-layer test changes alongside the data-access code", () => {
+  test("passes when a related data-layer test changes alongside the query", () => {
     const verdict = evaluateTestPresence([
-      modified("apps/api/src/users/user.repository.ts"),
-      added("apps/api/src/users/user.repository.spec.ts"),
+      changed("apps/api/src/users/user.repository.ts", "db.insert(users).values(u);"),
+      changed(
+        "apps/api/src/users/user.repository.spec.ts",
+        "expect(await db.select().from(users)).toEqual([u]);",
+      ),
     ]);
     expect(verdict).toBeNull();
   });
 
-  test("passes when the PR changes no data-access code", () => {
+  test("still flags when only an UNRELATED data-layer test changed", () => {
     const verdict = evaluateTestPresence([
-      modified("apps/app/src/components/Button.tsx"),
-      added("docs/guide.md"),
+      changed("apps/api/src/orders/order.repository.ts", "db.insert(orders).values(o);"),
+      changed(
+        "apps/api/src/users/user.repository.spec.ts",
+        "expect(await db.select().from(users)).toEqual([u]);",
+      ),
+    ]);
+    expect(verdict?.dataAccessFiles).toEqual([
+      "apps/api/src/orders/order.repository.ts",
+    ]);
+  });
+
+  test("passes when the PR changes no query code", () => {
+    const verdict = evaluateTestPresence([
+      changed("apps/app/src/components/Button.tsx", "const label = props.label;"),
+      changed("docs/guide.md", "Some prose about SELECT and FROM."),
     ]);
     expect(verdict).toBeNull();
   });
 
-  test("does not fire on a pure data-access deletion", () => {
+  test("does not fire on a comment-only edit to a repository file", () => {
     const verdict = evaluateTestPresence([
-      removed("apps/api/src/users/user.repository.ts"),
+      changed("apps/api/src/users/user.repository.ts", "// rename for clarity"),
     ]);
     expect(verdict).toBeNull();
   });
 
-  test("frames the finding as unverified, not as a bad query", () => {
+  test("frames the finding as unverified, not a bad query", () => {
     const verdict = evaluateTestPresence([
-      added("src/dal/orders.ts"),
+      changed("src/dal/orders.ts", "db.update(orders).set({ shipped: true });"),
     ]);
     expect(verdict?.reason).toContain("could not verify");
     expect(verdict?.reason).toContain("flagged conservatively");
     expect(verdict?.nextStep).toContain("test");
-  });
-
-  test("evaluates only diff-introduced surface, not pre-existing code", () => {
-    // A frontend-only PR: pre-existing repositories elsewhere are untouched and
-    // must not trip the gate, because they aren't in the diff.
-    const verdict = evaluateTestPresence([
-      modified("apps/app/src/routes/dashboard.tsx"),
-    ]);
-    expect(verdict).toBeNull();
   });
 });

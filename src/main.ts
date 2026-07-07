@@ -224,15 +224,16 @@ async function runInCI(
     // Generate PR comment with comparison data
     await runner.report(reportContext);
 
-    // The test-presence gate is a coverage-gap condition, not a regression, so it
-    // fails the check on its own — independent of the comparison block below.
-    // Framed as "unverified", never as "your query is bad".
+    // The test-presence gate surfaces as a non-blocking warning, not a red X:
+    // it is a crude diff heuristic, so it warns loudly while the capture-based
+    // rungs (#3502/#3503) are built. Flipping it to a hard failure is opt-in via
+    // the per-repo policy (#3500). Framed as "unverified", never "your query is bad".
     if (reportContext.testPresenceVerdict) {
       const verdict = reportContext.testPresenceVerdict;
       const files = verdict.dataAccessFiles.map((f) => `  - ${f}`).join("\n");
-      core.setFailed(
+      core.warning(
         `${verdict.reason}\n\nNext step: ${verdict.nextStep}\n\n` +
-          `Changed data-access files with no data-layer test:\n${files}`,
+          `Changed data-access files with no related data-layer test:\n${files}`,
       );
     }
 

@@ -1,66 +1,93 @@
-// The crude test-presence gate (#3496) — the MVP tracer bullet for the CI⇄MCP
-// verdict loop. It is a *pure diff heuristic*: given the files a PR changed, it
-// asks one question — "did this PR touch data-access code without touching a
-// real-DB (repository/integration) test?" — and, if so, emits a conservative
-// "we could not verify this" flag.
+// The test-presence gate (#3496) — the MVP tracer bullet for the CI⇄MCP verdict
+// loop. It asks one question of a PR's diff: "did this change add or alter a
+// query without a real-DB (repository/integration) test alongside it?" — and, if
+// so, emits a conservative "we could not verify this" flag.
 //
 // It never claims a query is *bad*. Query Doctor only analyses SQL that a
-// real-DB test actually runs against Postgres; a data-access change with no such
-// test produces no captured query, so CI would go green having never seen it.
-// This gate reports that blind spot honestly instead of letting silence read as
-// safety. By design it *under-fires*: it only speaks up when data-access code
-// changed and no data-layer test changed alongside it.
+// real-DB test runs against Postgres; a query change with no such test produces
+// no captured query, so CI would go green having never seen it. This gate
+// reports that blind spot honestly.
+//
+// It is a pure *diff* heuristic — it reads the diff's added lines to decide
+// whether a query changed (still no runtime capture, no query-to-site mapping;
+// those are the later capture-based rungs, #3502/#3503). Reading the diff's
+// content, rather than guessing from the filename, is what keeps it from
+// reddening a comment-only edit to a repository file or missing a query added to
+// a plainly-named `service.ts`. It ships warn-only until the capture-based rungs
+// make it precise enough to block.
 
 /** One entry from the PR's changed-file list (GitHub's `pulls.listFiles`). */
 export interface ChangedFile {
   path: string;
   /** GitHub file status: added | modified | removed | renamed | copied | changed | unchanged. */
   status: string;
+  /** Unified-diff hunks for the file; absent for large or binary files. */
+  patch?: string;
 }
 
 /**
- * Path heuristics that decide what "data-access code" and "data-layer test"
- * look like. Kept as data (not hard-coded regexes) so a later per-repo config
- * (#3500) can override the defaults without touching the gate logic.
+ * Path and content heuristics. Kept as data (not hard-coded regexes) so a later
+ * per-repo config (#3500) can override the defaults without touching the gate.
  */
 export interface TestPresenceConfig {
   /** Marks a path as a test file of any kind. */
   testFilePatterns: RegExp[];
-  /** Marks a non-test path as data-access (query-emitting) code. */
-  dataAccessPatterns: RegExp[];
+  /** Extensions worth inspecting for query code — a doc/config file never is. */
+  sourceFilePatterns: RegExp[];
+  /** Content signals that an added diff line is (part of) a query. */
+  queryCodePatterns: RegExp[];
+  /** Fallback data-access signal, used only when a file's patch is unavailable. */
+  dataAccessPathPatterns: RegExp[];
   /** Marks a test path as a real-DB data-layer (repository/integration) test. */
-  dataLayerTestPatterns: RegExp[];
+  dataLayerTestPathPatterns: RegExp[];
 }
 
-// Conservative defaults, tuned to under-fire. `repository` / `dal` /
-// `data-access` are the clearest data-access signals and match this project's
-// own convention (`apps/api/**/*.repository.ts`). Anything narrower would never
-// fire; anything broader risks reddening PRs over unrelated code.
 export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
   testFilePatterns: [
-    /\.(test|spec)\.[cm]?[jt]sx?$/i, // *.test.ts, *.spec.tsx, *.test.mjs, ...
+    /\.(test|spec)\.[cm]?[jt]sx?$/i, // *.test.ts, *.spec.tsx, ...
     /(^|\/)__tests__\//i,
     /(^|\/)tests?\//i,
     /(^|\/)test_[^/]+\.py$/i, // Python: test_foo.py
     /_test\.(py|go|rb)$/i, // Go/Python/Ruby: foo_test.go
   ],
-  dataAccessPatterns: [
-    /(^|\/)[^/]*repositor(y|ies)[^/]*\.[cm]?[jt]sx?$/i, // user.repository.ts, repositories.ts
-    /(^|\/)[^/]*\.repo\.[cm]?[jt]sx?$/i, // user.repo.ts
-    /(^|\/)(dal|data-access)\//i, // src/dal/**, src/data-access/**
+  sourceFilePatterns: [/\.([cm]?[jt]sx?|py|go|rb|java|kt|rs|php|scala|cs|sql)$/i],
+  // Prefer high-precision ORM / query-builder calls; a small set of raw-SQL
+  // shapes catches string queries. Comment lines are stripped before matching,
+  // so a code comment mentioning "select" won't trip it.
+  queryCodePatterns: [
+    /\bdb\.(select|insert|update|delete)\b/i,
+    /\.(execute|query)\s*\(/i,
+    /\bsql`/, // drizzle sql`...` tag
+    /\bdrizzle\s*\(/i,
+    /\bknex\b/i,
+    /\bprisma\.\w+\.(find\w*|create|update|delete|upsert|count|aggregate)\b/i,
+    /\.createQueryBuilder\s*\(/i,
+    /\bgetRepository\s*\(/i,
+    /\.\$(queryRaw|executeRaw)/,
+    /\.(leftJoin|innerJoin|rightJoin)\s*\(/i,
+    /\binsert\s+into\b/i,
+    /\bdelete\s+from\b/i,
+    /\bupdate\b[^\n]{0,80}\bset\b/i,
+    /\bselect\b[\s\S]{0,300}?\bfrom\b/i,
+    /\b(create|alter|drop)\s+(table|index|view|materialized\s+view)\b/i,
   ],
-  dataLayerTestPatterns: [
-    /repositor(y|ies)/i, // *.repository.spec.ts
+  dataAccessPathPatterns: [
+    /(^|\/)[^/]*repositor(y|ies)[^/]*\.[cm]?[jt]s$/i,
+    /(^|\/)[^/]*\.repo\.[cm]?[jt]s$/i,
+    /(^|\/)(dal|data-access)\//i,
+  ],
+  dataLayerTestPathPatterns: [
+    /repositor(y|ies)/i,
     /\.repo\./i,
-    /integration/i, // *.integration.test.ts
+    /integration/i,
     /(^|\/)(dal|data-access)\//i,
   ],
 };
 
 /**
  * A changed file "changed" for gating purposes when its content could have
- * introduced or altered a query. A pure deletion removes surface, it doesn't
- * add an unverified query, so `removed`/`unchanged` never trip the gate.
+ * introduced or altered a query. A pure deletion removes surface, it doesn't add
+ * an unverified query, so `removed`/`unchanged` never trip the gate.
  */
 function isChanged(status: string): boolean {
   return status !== "removed" && status !== "unchanged";
@@ -74,31 +101,98 @@ function isTestFile(path: string, config: TestPresenceConfig): boolean {
   return matchesAny(path, config.testFilePatterns);
 }
 
-function isDataAccessFile(path: string, config: TestPresenceConfig): boolean {
+/** The added lines of a unified diff, with the leading `+` removed. */
+function addedLines(patch: string): string {
+  return patch
+    .split("\n")
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => line.slice(1))
+    .join("\n");
+}
+
+/** Drop lines that are plainly comments, so prose mentioning SQL keywords doesn't match. */
+function stripCommentLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => {
+      const trimmed = line.trim();
+      return !(
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("/*") ||
+        trimmed.startsWith("#") ||
+        trimmed.startsWith("--")
+      );
+    })
+    .join("\n");
+}
+
+/** True when the diff's *added* lines contain query code. */
+export function patchAddsQueryCode(
+  patch: string | undefined,
+  config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
+): boolean {
+  if (!patch) return false;
+  const added = stripCommentLines(addedLines(patch));
+  return matchesAny(added, config.queryCodePatterns);
+}
+
+/**
+ * Did this non-test change add or alter a query? Uses the diff content when
+ * available; falls back to the filename prior only when the patch is missing
+ * (large/binary files), where content can't be inspected.
+ */
+function changedQueryCode(
+  file: ChangedFile,
+  config: TestPresenceConfig,
+): boolean {
+  if (!matchesAny(file.path, config.sourceFilePatterns)) return false;
+  if (file.patch !== undefined) return patchAddsQueryCode(file.patch, config);
+  return matchesAny(file.path, config.dataAccessPathPatterns);
+}
+
+/** A test counts as a data-layer test if it exercises query code or is named like one. */
+function isDataLayerTest(file: ChangedFile, config: TestPresenceConfig): boolean {
   return (
-    !isTestFile(path, config) && matchesAny(path, config.dataAccessPatterns)
+    isTestFile(file.path, config) &&
+    (patchAddsQueryCode(file.patch, config) ||
+      matchesAny(file.path, config.dataLayerTestPathPatterns))
   );
 }
 
-function isDataLayerTest(path: string, config: TestPresenceConfig): boolean {
-  return (
-    isTestFile(path, config) && matchesAny(path, config.dataLayerTestPatterns)
-  );
+function directory(path: string): string {
+  const slash = path.lastIndexOf("/");
+  return slash === -1 ? "" : path.slice(0, slash);
+}
+
+/** Filename without directory, extension, or a `.test`/`.spec` suffix. */
+function baseStem(path: string): string {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return name
+    .replace(/\.(test|spec)\./i, ".")
+    .replace(/\.[cm]?[jt]sx?$/i, "")
+    .replace(/\.(py|go|rb)$/i, "");
+}
+
+/**
+ * Whether a data-layer test plausibly covers a changed data-access file: same
+ * directory, or the test's name carries the file's stem (`user.repository.ts` ↔
+ * `user.repository.spec.ts`, `orders.ts` ↔ `orders.integration.test.ts`).
+ * Lenient on purpose — a loose match makes the gate under-fire, the safe side.
+ */
+function isRelated(dataAccessPath: string, testPath: string): boolean {
+  if (directory(dataAccessPath) === directory(testPath)) return true;
+  const stem = baseStem(dataAccessPath);
+  return stem.length > 0 && baseStem(testPath).includes(stem);
 }
 
 export interface ChangedSurface {
-  /** Non-test data-access files the PR added or changed. */
+  /** Non-test files whose diff added/altered query code. */
   dataAccessChanged: string[];
   /** Real-DB data-layer tests the PR added or changed. */
   dataLayerTestChanged: string[];
 }
 
-/**
- * Bucket a PR's changed files into the two surfaces the gate cares about. A
- * repository *test* (`user.repository.spec.ts`) counts as a data-layer test,
- * not as data-access code — so changing a repository and its test together
- * satisfies the gate, while changing the repository alone does not.
- */
 export function classifyChangedFiles(
   files: ChangedFile[],
   config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
@@ -107,9 +201,9 @@ export function classifyChangedFiles(
   const dataLayerTestChanged: string[] = [];
   for (const file of files) {
     if (!isChanged(file.status)) continue;
-    if (isDataLayerTest(file.path, config)) {
-      dataLayerTestChanged.push(file.path);
-    } else if (isDataAccessFile(file.path, config)) {
+    if (isTestFile(file.path, config)) {
+      if (isDataLayerTest(file, config)) dataLayerTestChanged.push(file.path);
+    } else if (changedQueryCode(file, config)) {
       dataAccessChanged.push(file.path);
     }
   }
@@ -128,30 +222,30 @@ export interface TestPresenceVerdict {
   reason: string;
   nextStep: string;
   triageHint: string;
-  /** The changed data-access files that triggered the flag. */
+  /** The changed data-access files with no related data-layer test — what to cover. */
   dataAccessFiles: string[];
 }
 
 const REASON =
-  "This PR changes data-access code but no real-DB (repository/integration) test " +
-  "changed alongside it, so Query Doctor could not verify the queries it " +
-  "introduces — nothing here exercises them against Postgres. This is flagged " +
+  "This PR adds or changes queries in data-access code, but no related real-DB " +
+  "(repository/integration) test changed, so Query Doctor could not verify them " +
+  "— nothing here exercises them against Postgres. This is flagged " +
   "conservatively; it is not a claim that the query is wrong.";
 
 const NEXT_STEP =
-  "Add a repository/integration test that exercises the changed data-access " +
-  "code against a real database, following your project's testing conventions " +
-  "— or, if a test genuinely isn't needed (a revert, generated code, a " +
-  "column-drop migration), triage it.";
+  "Add or update a repository/integration test that exercises the changed " +
+  "queries against a real database, following your project's testing " +
+  "conventions — or, if a test genuinely isn't needed (a revert, generated " +
+  "code, a column-drop migration), triage it.";
 
 const TRIAGE_HINT =
-  "If this data-access change intentionally needs no test, note why on the PR so " +
-  "the exception is auditable rather than silent.";
+  "If this change intentionally needs no test, note why on the PR so the " +
+  "exception is auditable rather than silent.";
 
 /**
- * Evaluate the gate. Returns a verdict when the PR trips the flag, or `null`
- * when it passes — the two passing cases being "no data-access change" and
- * "data-access change with a data-layer test alongside it".
+ * Evaluate the gate. Returns a verdict listing the changed data-access files
+ * that have no related data-layer test, or `null` when the PR passes — no query
+ * change, or every query change has a related test alongside it.
  */
 export function evaluateTestPresence(
   files: ChangedFile[],
@@ -161,15 +255,16 @@ export function evaluateTestPresence(
     files,
     config,
   );
-  if (dataAccessChanged.length === 0 || dataLayerTestChanged.length > 0) {
-    return null;
-  }
+  const untested = dataAccessChanged.filter(
+    (path) => !dataLayerTestChanged.some((test) => isRelated(path, test)),
+  );
+  if (untested.length === 0) return null;
   return {
     condition: "untested-data-access",
     verdictClass: "uncertain-conservative-flag",
     reason: REASON,
     nextStep: NEXT_STEP,
     triageHint: TRIAGE_HINT,
-    dataAccessFiles: dataAccessChanged,
+    dataAccessFiles: untested,
   };
 }
