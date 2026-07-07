@@ -25,5 +25,9 @@ export async function fetchPrChangedFiles(
     pull_number: prNumber,
     per_page: 100,
   });
-  return files.map((f) => ({ path: f.filename, status: f.status }));
+  return files.map((f) => ({
+    path: f.filename,
+    status: f.status,
+    patch: f.patch,
+  }));
 }

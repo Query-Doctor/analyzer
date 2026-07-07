@@ -829,7 +829,7 @@ describe("test-presence verdict rendering", () => {
     const output = renderTemplate(makeContext({ testPresenceVerdict: verdict }));
     expect(output).toContain("[!WARNING]");
     expect(output).toContain(
-      "Unverified — this PR changes data-access code with no data-layer test.",
+      "Unverified — this PR changes queries with no related data-layer test.",
     );
     expect(output).toContain(verdict.reason);
     expect(output).toContain(verdict.nextStep);
@@ -839,6 +839,6 @@ describe("test-presence verdict rendering", () => {
 
   test("omits the banner entirely when there is no verdict", () => {
     const output = renderTemplate(makeContext());
-    expect(output).not.toContain("Unverified — this PR changes data-access code");
+    expect(output).not.toContain("Unverified — this PR changes queries");
   });
 });
