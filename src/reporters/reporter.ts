@@ -4,6 +4,7 @@ import type {
   IngestFailureKind,
   RunComparison,
 } from "./site-api.ts";
+import type { TestPresenceVerdict } from "../gate/test-presence.ts";
 
 export interface Reporter {
   provider(): string;
@@ -108,6 +109,13 @@ export interface ReportContext {
   runUrl?: string;
   /** Unified CI-signal metadata: roll-up line, footer, per-query links, docs link, icon keys. */
   runMetadata?: CiRunMetadata;
+  /**
+   * The crude test-presence gate (#3496) flagged this PR: data-access code
+   * changed with no data-layer test alongside it. Rendered as a conservative
+   * "could not verify" banner in the comment; also fails the check in `main`.
+   * A pure diff heuristic — independent of the baseline comparison.
+   */
+  testPresenceVerdict?: TestPresenceVerdict;
 }
 
 export interface IndexStatistic {

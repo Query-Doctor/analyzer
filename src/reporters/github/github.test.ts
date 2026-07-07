@@ -798,3 +798,31 @@ describe("schema change section", () => {
     expect(output).not.toContain("1 schema changes");
   });
 });
+
+describe("test-presence verdict rendering", () => {
+  const verdict = {
+    condition: "untested-data-access" as const,
+    verdictClass: "uncertain-conservative-flag" as const,
+    reason: "This PR changes data-access code but could not verify it.",
+    nextStep: "Add a repository/integration test that exercises it.",
+    triageHint: "Note why on the PR if no test is needed.",
+    dataAccessFiles: ["apps/api/src/users/user.repository.ts"],
+  };
+
+  test("renders the unverified banner, reason, next step, and flagged file", () => {
+    const output = renderTemplate(makeContext({ testPresenceVerdict: verdict }));
+    expect(output).toContain("[!WARNING]");
+    expect(output).toContain(
+      "Unverified — this PR changes data-access code with no data-layer test.",
+    );
+    expect(output).toContain(verdict.reason);
+    expect(output).toContain(verdict.nextStep);
+    expect(output).toContain("`apps/api/src/users/user.repository.ts`");
+    expect(output).toContain(verdict.triageHint);
+  });
+
+  test("omits the banner entirely when there is no verdict", () => {
+    const output = renderTemplate(makeContext());
+    expect(output).not.toContain("Unverified — this PR changes data-access code");
+  });
+});
