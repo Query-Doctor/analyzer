@@ -22,6 +22,21 @@
 {% endif %}
 
 {% endif %}
+{% if testPresenceVerdict %}
+> [!WARNING]
+> **Unverified — this PR changes data-access code with no data-layer test.**
+> {{ testPresenceVerdict.reason }}
+>
+> **Next step:** {{ testPresenceVerdict.nextStep }}
+>
+> Changed data-access files with no data-layer test:
+{% for f in testPresenceVerdict.dataAccessFiles %}
+> - `{{ f }}`
+{% endfor %}
+>
+> _{{ testPresenceVerdict.triageHint }}_
+
+{% endif %}
 {% if hasComparison %}
 {{ queryStats.analyzed | default('?') }} queries analyzed
 {% elif comparisonUnavailable %}

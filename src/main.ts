@@ -15,6 +15,8 @@ import {
   postToSiteApi,
 } from "./reporters/site-api.ts";
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
+import { fetchPrChangedFiles } from "./gate/changed-files.ts";
+import { evaluateTestPresence } from "./gate/test-presence.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
@@ -209,9 +211,37 @@ async function runInCI(
       );
     }
 
+    // Crude test-presence gate (#3496): flag data-access changes that ship with
+    // no data-layer test. A pure diff heuristic — independent of capture and of
+    // the baseline comparison, so it runs even on a brand-new PR with no
+    // baseline. Best-effort: a GitHub API hiccup must never sink the whole run.
+    if (env.GITHUB_TOKEN) {
+      try {
+        const changedFiles = await fetchPrChangedFiles(env.GITHUB_TOKEN);
+        if (changedFiles) {
+          reportContext.testPresenceVerdict =
+            evaluateTestPresence(changedFiles) ?? undefined;
+        }
+      } catch (err) {
+        log.warn(`Test-presence gate skipped: ${err}`, "main");
+      }
+    }
+
     console.log("Creating report...")
     // Generate PR comment with comparison data
     await runner.report(reportContext);
+
+    // The test-presence gate is a coverage-gap condition, not a regression, so it
+    // fails the check on its own — independent of the comparison block below.
+    // Framed as "unverified", never as "your query is bad".
+    if (reportContext.testPresenceVerdict) {
+      const verdict = reportContext.testPresenceVerdict;
+      const files = verdict.dataAccessFiles.map((f) => `  - ${f}`).join("\n");
+      core.setFailed(
+        `${verdict.reason}\n\nNext step: ${verdict.nextStep}\n\n` +
+          `Changed data-access files with no data-layer test:\n${files}`,
+      );
+    }
 
     // Block PR if regressions exceed thresholds, or if a brand-new query ships
     // with a high-confidence index recommendation (#3281). New queries have no
