@@ -92,6 +92,38 @@ describe("classifyChangedFiles", () => {
     ]);
     expect(surface.dataAccessChanged).toEqual([]);
   });
+
+  test("does NOT class a Drizzle migration .sql as changed data-access", () => {
+    // DDL, not a query site — its coverage lives in a pg/integration test.
+    const surface = classifyChangedFiles([
+      changed(
+        "apps/api/drizzle/0026_projects_card1_733.sql",
+        "CREATE TABLE projects (id uuid PRIMARY KEY);",
+      ),
+    ]);
+    expect(surface.dataAccessChanged).toEqual([]);
+  });
+
+  test("excludes migration .sql under a migrations/ directory too", () => {
+    const surface = classifyChangedFiles([
+      changed(
+        "db/migrations/20240101_add_orders/migration.sql",
+        "ALTER TABLE plans ADD COLUMN project_id uuid;",
+      ),
+    ]);
+    expect(surface.dataAccessChanged).toEqual([]);
+  });
+
+  test("still classes DDL inside a .ts source file as data-access", () => {
+    // A migration file is excluded; a create-table in application code is not.
+    const surface = classifyChangedFiles([
+      changed(
+        "apps/api/src/schema.ts",
+        "await db.execute(sql`CREATE TABLE projects (id uuid)`);",
+      ),
+    ]);
+    expect(surface.dataAccessChanged).toEqual(["apps/api/src/schema.ts"]);
+  });
 });
 
 describe("evaluateTestPresence", () => {
@@ -128,6 +160,35 @@ describe("evaluateTestPresence", () => {
     expect(verdict?.dataAccessFiles).toEqual([
       "apps/api/src/orders/order.repository.ts",
     ]);
+  });
+
+  test("does not fire on the migration + pg-test PR from #3531", () => {
+    // The reported false positive: a PR that adds a Drizzle migration and a pg
+    // test exercising the new table/column. The migration is DDL (excluded); the
+    // pg test is real coverage — nothing to flag.
+    const verdict = evaluateTestPresence([
+      changed(
+        "drizzle/0026_projects_card1_733.sql",
+        "CREATE TABLE projects (id uuid PRIMARY KEY);",
+      ),
+      changed(
+        "tests/pg/postgres.test.ts",
+        "expect(await db.select().from(projects)).toEqual([p]);",
+      ),
+    ]);
+    expect(verdict).toBeNull();
+  });
+
+  test("does not fire on a migration alone, even with no test", () => {
+    // A migration's coverage can't be linked by the diff heuristic, so it is
+    // never flagged — under-firing is the safe side for a warn-only gate.
+    const verdict = evaluateTestPresence([
+      changed(
+        "apps/api/drizzle/0027_add_index.sql",
+        "CREATE INDEX plans_project_id_idx ON plans (project_id);",
+      ),
+    ]);
+    expect(verdict).toBeNull();
   });
 
   test("passes when the PR changes no query code", () => {
