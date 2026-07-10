@@ -40,6 +40,14 @@ export interface TestPresenceConfig {
   dataAccessPathPatterns: RegExp[];
   /** Marks a test path as a real-DB data-layer (repository/integration) test. */
   dataLayerTestPathPatterns: RegExp[];
+  /**
+   * Marks a path as a generated schema-migration `.sql` file. These are DDL, not
+   * a query site, and have no co-located test — their coverage lives in whatever
+   * repository/integration test exercises the new schema, which the stem
+   * heuristic can never link. Excluded from the data-access set so a well-tested
+   * migration doesn't false-positive.
+   */
+  migrationFilePatterns: RegExp[];
 }
 
 export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
@@ -81,6 +89,12 @@ export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
     /\.repo\./i,
     /integration/i,
     /(^|\/)(dal|data-access)\//i,
+  ],
+  migrationFilePatterns: [
+    /(^|\/)migrations?\/.*\.sql$/i, // .../migrations/**/*.sql (Rails, Prisma, ...)
+    /(^|\/)migrate\/.*\.sql$/i, // .../migrate/**/*.sql
+    /(^|\/)drizzle\/.*\.sql$/i, // Drizzle output dir
+    /(^|\/)\d{4,}_[^/]*\.sql$/i, // numbered migration: 0026_projects_card1_733.sql
   ],
 };
 
@@ -147,6 +161,10 @@ function changedQueryCode(
   config: TestPresenceConfig,
 ): boolean {
   if (!matchesAny(file.path, config.sourceFilePatterns)) return false;
+  // A migration `.sql` is schema DDL, not a query site. Its `CREATE/ALTER TABLE`
+  // would match the DDL query pattern, but there is no co-located test to link it
+  // to, so treating it as changed query code false-positives on every migration.
+  if (matchesAny(file.path, config.migrationFilePatterns)) return false;
   if (file.patch !== undefined) return patchAddsQueryCode(file.patch, config);
   return matchesAny(file.path, config.dataAccessPathPatterns);
 }
