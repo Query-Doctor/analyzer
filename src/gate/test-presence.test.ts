@@ -214,4 +214,27 @@ describe("evaluateTestPresence", () => {
     expect(verdict?.reason).toContain("flagged conservatively");
     expect(verdict?.nextStep).toContain("test");
   });
+
+  // A repo whose data-layer test doesn't sit beside the source or share its stem
+  // (e.g. `tests/pg/postgres.test.ts` for `src/db/postgres.ts`) trips the diff
+  // heuristic — but the run captured the new queries, proving a test ran them.
+  test("passes when capture reports new queries the run executed", () => {
+    const files = [
+      changed("src/db/postgres.ts", "return db.select().from(projects).where(eq(projects.userId, id));"),
+    ];
+    expect(evaluateTestPresence(files)).not.toBeNull();
+    const verdict = evaluateTestPresence(files, undefined, {
+      newQueryHashes: ["f13683ee48e6a487", "53350021ed44ae14"],
+    });
+    expect(verdict).toBeNull();
+  });
+
+  test("still flags when capture reports no new queries", () => {
+    const verdict = evaluateTestPresence(
+      [changed("src/db/postgres.ts", "return db.select().from(projects);")],
+      undefined,
+      { newQueryHashes: [] },
+    );
+    expect(verdict?.dataAccessFiles).toEqual(["src/db/postgres.ts"]);
+  });
 });

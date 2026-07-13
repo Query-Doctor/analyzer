@@ -261,13 +261,25 @@ const TRIAGE_HINT =
   "exception is auditable rather than silent.";
 
 /**
+ * Capture evidence from the run, used to override the diff heuristic with what
+ * actually executed. `newQueryHashes` are the fingerprints this run captured
+ * that the baseline had not — query surface this PR introduced that a real-DB
+ * test ran against Postgres. Empty when there is no baseline to diff against.
+ */
+export interface TestPresenceCapture {
+  newQueryHashes: readonly string[];
+}
+
+/**
  * Evaluate the gate. Returns a verdict listing the changed data-access files
  * that have no related data-layer test, or `null` when the PR passes — no query
- * change, or every query change has a related test alongside it.
+ * change, every query change has a related test alongside it, or capture proves
+ * the change ran against Postgres.
  */
 export function evaluateTestPresence(
   files: ChangedFile[],
   config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
+  capture?: TestPresenceCapture,
 ): TestPresenceVerdict | null {
   const { dataAccessChanged, dataLayerTestChanged } = classifyChangedFiles(
     files,
@@ -277,6 +289,17 @@ export function evaluateTestPresence(
     (path) => !dataLayerTestChanged.some((test) => isRelated(path, test)),
   );
   if (untested.length === 0) return null;
+
+  // Capture is ground truth for the blind spot this gate exists to catch: a
+  // query change that runs against Postgres in no test produces no captured
+  // query. If this run captured new query surface, a real-DB test *did* exercise
+  // the change — observed execution overrides the diff heuristic's "no related
+  // test" guess, so don't flag. Per-query→file attribution (which would let a
+  // partially-tested PR still flag its one uncovered file) is the next rung,
+  // #3503; until then this suppresses at the run level, on the safe under-fire
+  // side the gate already favours.
+  if (capture && capture.newQueryHashes.length > 0) return null;
+
   return {
     condition: "untested-data-access",
     verdictClass: "uncertain-conservative-flag",
