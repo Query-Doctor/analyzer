@@ -211,16 +211,21 @@ async function runInCI(
       );
     }
 
-    // Crude test-presence gate (#3496): flag data-access changes that ship with
-    // no data-layer test. A pure diff heuristic — independent of capture and of
-    // the baseline comparison, so it runs even on a brand-new PR with no
-    // baseline. Best-effort: a GitHub API hiccup must never sink the whole run.
+    // Test-presence gate (#3496): flag data-access changes that ship with no
+    // data-layer test. A diff heuristic, but capture overrides it (#3502): when
+    // the run captured new query surface, the change demonstrably ran against
+    // Postgres, so the "no related test" guess is dropped. Runs even on a
+    // brand-new PR with no baseline (then capture is empty and it's diff-only).
+    // Best-effort: a GitHub API hiccup must never sink the whole run.
     if (env.GITHUB_TOKEN) {
       try {
         const changedFiles = await fetchPrChangedFiles(env.GITHUB_TOKEN);
         if (changedFiles) {
+          const capture = reportContext.comparison
+            ? { newQueryHashes: reportContext.comparison.newQueries.map((q) => q.hash) }
+            : undefined;
           reportContext.testPresenceVerdict =
-            evaluateTestPresence(changedFiles) ?? undefined;
+            evaluateTestPresence(changedFiles, undefined, capture) ?? undefined;
         }
       } catch (err) {
         log.warn(`Test-presence gate skipped: ${err}`, "main");
