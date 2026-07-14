@@ -63,6 +63,60 @@ describe("patchAddsQueryCode", () => {
     expect(patchAddsQueryCode(addPatch('"DROP TABLE IF EXISTS old_stuff"'))).toBe(true);
   });
 
+  // The DDL recall the statement-shape rewrite must hold, shape by shape. Two
+  // variants are newly caught: the old adjacency pattern missed
+  // `CREATE UNIQUE INDEX CONCURRENTLY` and `CREATE OR REPLACE VIEW` (a word
+  // between the keywords broke it); the optional groups here cover them.
+  test("detects each DDL variant, including two the old pattern missed", () => {
+    const ddl = [
+      "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ix_email ON users (email);",
+      'CREATE INDEX "ix quoted" ON "user events" (occurred_at DESC);',
+      "CREATE TABLE IF NOT EXISTS widgets (id serial PRIMARY KEY, name text);",
+      "CREATE OR REPLACE VIEW active_users AS SELECT 1;",
+      "CREATE MATERIALIZED VIEW daily_stats AS SELECT 1;",
+      "ALTER TABLE users ADD COLUMN age int;",
+      'ALTER TABLE "users" DROP COLUMN age;',
+      "ALTER TABLE IF EXISTS users RENAME TO members;",
+      "DROP TABLE old_stuff;",
+      "DROP INDEX CONCURRENTLY ix_email;",
+      "DROP VIEW IF EXISTS active_users;",
+      "DROP MATERIALIZED VIEW daily_stats;",
+    ];
+    for (const stmt of ddl) {
+      expect(patchAddsQueryCode(addPatch(stmt)), stmt).toBe(true);
+    }
+  });
+
+  test("detects multi-line DDL through the query-call shapes", () => {
+    // The DDL patterns are same-line; DDL wrapped across lines still registers
+    // via the call that runs it (`.execute(` / sql``) on its opening line.
+    const patch =
+      "@@ -1,0 +1,3 @@\n" +
+      "+await db.execute(`\n" +
+      "+  CREATE INDEX idx_users_email\n" +
+      "+    ON users (email)`);";
+    expect(patchAddsQueryCode(patch)).toBe(true);
+  });
+
+  test("detects CREATE TABLE ... AS SELECT via the select shape", () => {
+    expect(
+      patchAddsQueryCode(addPatch("CREATE TABLE archive AS SELECT id FROM users;")),
+    ).toBe(true);
+  });
+
+  test("accepts the known miss: a bare multi-line DDL string with no query call", () => {
+    // Deliberate: the keyword line alone carries no statement grammar, and the
+    // gate is warn-only with an under-fire bias — a false positive costs trust,
+    // a miss here is covered by the capture rungs (#3502/#3503). This test pins
+    // the trade-off so a future change to it is a decision, not an accident.
+    const patch =
+      "@@ -1,0 +1,3 @@\n" +
+      "+const DDL =\n" +
+      "+  'CREATE INDEX idx_users_email' +\n" +
+      "+  ' ON users (email)';";
+    expect(patchAddsQueryCode(patch)).toBe(false);
+  });
+
   test("only looks at added lines, not removed ones", () => {
     const patch = "@@ -1,1 +1,1 @@\n-await db.select().from(users);\n+const x = 1;";
     expect(patchAddsQueryCode(patch)).toBe(false);
