@@ -204,6 +204,29 @@ describe("buildViewModel", () => {
     expect(vm.displayTestOriginExcluded[0].queryPreview).toBe("SELECT * FROM t");
   });
 
+  test("multiple test-origin excluded queries each start a new bullet (trimBlocks glue)", () => {
+    // trimBlocks eats the newline after the row's trailing `{% endif %}`; without
+    // the `{{""}}` guard the next bullet glues onto the prior cost line ("cost 1- SELECT…").
+    const excluded = (hash: string, table: string) => ({
+      hash,
+      query: `SELECT "id" FROM "${table}"`,
+      formattedQuery: `SELECT "id" FROM "${table}"`,
+      nudges: [], tags: [], tableReferences: [],
+      optimization: { state: "no_improvement_found" as const, cost: 1, indexesUsed: [] },
+    });
+    const ctx = makeContext({
+      comparison: makeComparison({
+        testOriginExcluded: [excluded("t1", "sessions"), excluded("t2", "item_watches")],
+      }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).not.toMatch(/cost 1- /);
+    expect(output).toContain(
+      '<code>SELECT "id" FROM "sessions"</code><br>cost 1\n- <code>SELECT "id" FROM "item_watches"</code>',
+    );
+  });
+
   test("new query without a recommendation is still listed (Site#3287 follow-up)", () => {
     const ctx = makeContext({
       comparison: makeComparison({
