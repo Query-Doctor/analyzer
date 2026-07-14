@@ -11,10 +11,15 @@ import {
 } from "./site-api.ts";
 
 function makeQuery(hash: string, cost: number = 100): CiQueryPayload {
+  // Give each distinct hash a distinct table so the query text (and thus its
+  // shape) is unique per hash — real queries can't share text without sharing a
+  // hash. This keeps shape-matching (#3367) from conflating unrelated fixtures;
+  // the changed-query tests below use explicitly same-shape queries.
+  const table = `t_${hash.replace(/[^a-z0-9]/gi, "_")}`;
   return {
     hash,
-    query: `SELECT * FROM t WHERE id = $1`,
-    formattedQuery: `SELECT *\nFROM t\nWHERE id = $1`,
+    query: `SELECT * FROM ${table} WHERE id = $1`,
+    formattedQuery: `SELECT *\nFROM ${table}\nWHERE id = $1`,
     optimization: {
       state: "no_improvement_found",
       cost,
@@ -38,11 +43,11 @@ function makePreviousRun(queries: CiQueryPayload[]): PreviousRun {
 
 describe("compareRuns", () => {
   describe("new query detection via previousRun", () => {
-    test("when previousRun has no queries, all current queries are new", () => {
+    test("when previousRun has no queries, all current queries are new", async () => {
       const queries = [makeQuery("hash-a"), makeQuery("hash-b")];
       const previousRun = makePreviousRun([]);
 
-      const result = compareRuns(queries, previousRun, 10);
+      const result = await compareRuns(queries, previousRun, 10);
 
       expect(result.newQueries).toHaveLength(2);
       expect(result.newQueries.map((q) => q.hash)).toEqual([
@@ -53,7 +58,7 @@ describe("compareRuns", () => {
       expect(result.improved).toHaveLength(0);
     });
 
-    test("when previousRun contains hashes, only non-seen queries are new", () => {
+    test("when previousRun contains hashes, only non-seen queries are new", async () => {
       const queries = [
         makeQuery("hash-a"),
         makeQuery("hash-b"),
@@ -64,17 +69,17 @@ describe("compareRuns", () => {
         makeQuery("hash-c"),
       ]);
 
-      const result = compareRuns(queries, previousRun, 10);
+      const result = await compareRuns(queries, previousRun, 10);
 
       expect(result.newQueries).toHaveLength(1);
       expect(result.newQueries[0].hash).toBe("hash-b");
     });
 
-    test("query in previousRun with increased cost is flagged as regression", () => {
+    test("query in previousRun with increased cost is flagged as regression", async () => {
       const currentQueries = [makeQuery("hash-a", 500)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(currentQueries, previousRun, 10);
+      const result = await compareRuns(currentQueries, previousRun, 10);
 
       expect(result.newQueries).toHaveLength(0);
       expect(result.regressed).toHaveLength(1);
@@ -86,22 +91,22 @@ describe("compareRuns", () => {
   });
 
   describe("regression threshold", () => {
-    test("cost change within threshold is not flagged", () => {
+    test("cost change within threshold is not flagged", async () => {
       const currentQueries = [makeQuery("hash-a", 115)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(currentQueries, previousRun, 20);
+      const result = await compareRuns(currentQueries, previousRun, 20);
 
       expect(result.regressed).toHaveLength(0);
       expect(result.improved).toHaveLength(0);
       expect(result.newQueries).toHaveLength(0);
     });
 
-    test("cost decrease beyond threshold is flagged as improved", () => {
+    test("cost decrease beyond threshold is flagged as improved", async () => {
       const currentQueries = [makeQuery("hash-a", 30)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(currentQueries, previousRun, 10);
+      const result = await compareRuns(currentQueries, previousRun, 10);
 
       expect(result.improved).toHaveLength(1);
       expect(result.improved[0].hash).toBe("hash-a");
@@ -109,11 +114,11 @@ describe("compareRuns", () => {
       expect(result.improved[0].currentCost).toBe(30);
     });
 
-    test("acknowledged regression goes to acknowledgedRegressed, not regressed", () => {
+    test("acknowledged regression goes to acknowledgedRegressed, not regressed", async () => {
       const currentQueries = [makeQuery("hash-a", 500)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(
+      const result = await compareRuns(
         currentQueries,
         previousRun,
         10,
@@ -128,27 +133,27 @@ describe("compareRuns", () => {
   });
 
   describe("minimumCost filtering", () => {
-    test("regression where both costs are below minimumCost is skipped", () => {
+    test("regression where both costs are below minimumCost is skipped", async () => {
       const currentQueries = [makeQuery("hash-a", 8)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 2)]);
 
-      const result = compareRuns(currentQueries, previousRun, 10, 50);
+      const result = await compareRuns(currentQueries, previousRun, 10, 50);
 
       expect(result.regressed).toHaveLength(0);
     });
 
-    test("regression where current cost exceeds minimumCost is reported", () => {
+    test("regression where current cost exceeds minimumCost is reported", async () => {
       const currentQueries = [makeQuery("hash-a", 200)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 10)]);
 
-      const result = compareRuns(currentQueries, previousRun, 10, 50);
+      const result = await compareRuns(currentQueries, previousRun, 10, 50);
 
       expect(result.regressed).toHaveLength(1);
     });
   });
 
   describe("disappeared queries", () => {
-    test("queries in previousRun but not in current are disappeared", () => {
+    test("queries in previousRun but not in current are disappeared", async () => {
       const currentQueries = [makeQuery("hash-a")];
       const previousRun = makePreviousRun([
         makeQuery("hash-a"),
@@ -156,14 +161,14 @@ describe("compareRuns", () => {
         makeQuery("hash-c"),
       ]);
 
-      const result = compareRuns(currentQueries, previousRun, 10);
+      const result = await compareRuns(currentQueries, previousRun, 10);
 
       expect(result.disappearedHashes).toEqual(["hash-b", "hash-c"]);
     });
   });
 
   describe("mixed scenarios", () => {
-    test("new, regressed, improved, and disappeared queries together", () => {
+    test("new, regressed, improved, and disappeared queries together", async () => {
       const currentQueries = [
         makeQuery("hash-a", 500), // regressed (was 100)
         makeQuery("hash-b", 30),  // improved (was 100)
@@ -177,7 +182,7 @@ describe("compareRuns", () => {
         makeQuery("hash-e", 100), // disappeared
       ]);
 
-      const result = compareRuns(currentQueries, previousRun, 10);
+      const result = await compareRuns(currentQueries, previousRun, 10);
 
       expect(result.newQueries).toHaveLength(1);
       expect(result.newQueries[0].hash).toBe("hash-d");
@@ -195,27 +200,27 @@ describe("compareRuns", () => {
       tags: [{ key: "file", value: "tests/pg/postgres.test.ts" }],
     });
 
-    test("a regressed test-origin query is bucketed out of the gate, not regressed", () => {
+    test("a regressed test-origin query is bucketed out of the gate, not regressed", async () => {
       const current = [fromTestFile(makeQuery("hash-a", 500))];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(current, previousRun, 10);
+      const result = await compareRuns(current, previousRun, 10);
 
       expect(result.regressed).toHaveLength(0);
       expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-a"]);
     });
 
-    test("a new test-origin query never enters newQueries", () => {
+    test("a new test-origin query never enters newQueries", async () => {
       const current = [fromTestFile(makeQuery("hash-new", 200))];
       const previousRun = makePreviousRun([]);
 
-      const result = compareRuns(current, previousRun, 10);
+      const result = await compareRuns(current, previousRun, 10);
 
       expect(result.newQueries).toHaveLength(0);
       expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-new"]);
     });
 
-    test("production queries in the same run are unaffected", () => {
+    test("production queries in the same run are unaffected", async () => {
       const current = [
         fromTestFile(makeQuery("hash-test", 500)), // was 100 → excluded
         makeQuery("hash-prod", 500),               // was 100 → regressed
@@ -225,20 +230,104 @@ describe("compareRuns", () => {
         makeQuery("hash-prod", 100),
       ]);
 
-      const result = compareRuns(current, previousRun, 10);
+      const result = await compareRuns(current, previousRun, 10);
 
       expect(result.regressed.map((q) => q.hash)).toEqual(["hash-prod"]);
       expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-test"]);
     });
 
-    test("an untagged query still gates exactly as before", () => {
+    test("an untagged query still gates exactly as before", async () => {
       const current = [makeQuery("hash-a", 500)];
       const previousRun = makePreviousRun([makeQuery("hash-a", 100)]);
 
-      const result = compareRuns(current, previousRun, 10);
+      const result = await compareRuns(current, previousRun, 10);
 
       expect(result.regressed).toHaveLength(1);
       expect(result.testOriginExcluded).toHaveLength(0);
+    });
+  });
+
+  describe("changed-query detection via shape (#3367)", () => {
+    // The real Nutcracker case: adding columns to a SELECT changes the hash but
+    // not the query's shape.
+    const BASE_SQL =
+      "SELECT id, share_slug, user_id FROM design_renders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2";
+    const WIDER_SQL =
+      "SELECT id, share_slug, user_id, session_id, source_payload FROM design_renders WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2";
+
+    const q = (
+      hash: string,
+      sql: string,
+      cost: number,
+      file = "src/db/postgres.ts",
+    ): CiQueryPayload => ({
+      hash,
+      query: sql,
+      formattedQuery: sql,
+      optimization: { state: "no_improvement_found", cost, indexesUsed: [] },
+      nudges: [],
+      tags: [{ key: "file", value: file }],
+      tableReferences: [],
+    });
+
+    test("a column added to a SELECT reads as one changed query, not new + removed", async () => {
+      const current = [q("hash-wide", WIDER_SQL, 100)];
+      const previousRun = makePreviousRun([q("hash-base", BASE_SQL, 100)]);
+
+      const result = await compareRuns(current, previousRun, 10);
+
+      expect(result.newQueries).toHaveLength(0);
+      expect(result.disappearedHashes).toHaveLength(0);
+    });
+
+    test("a shape-matched query carries the cost delta against its previous self", async () => {
+      const current = [q("hash-wide", WIDER_SQL, 500)];
+      const previousRun = makePreviousRun([q("hash-base", BASE_SQL, 100)]);
+
+      const result = await compareRuns(current, previousRun, 10);
+
+      expect(result.regressed).toHaveLength(1);
+      expect(result.regressed[0]).toMatchObject({
+        hash: "hash-wide",
+        previousCost: 100,
+        currentCost: 500,
+      });
+      expect(result.newQueries).toHaveLength(0);
+      expect(result.disappearedHashes).toHaveLength(0);
+    });
+
+    test("the same shape from a different call site is not merged", async () => {
+      const current = [q("hash-wide", WIDER_SQL, 100, "src/db/other.ts")];
+      const previousRun = makePreviousRun([
+        q("hash-base", BASE_SQL, 100, "src/db/postgres.ts"),
+      ]);
+
+      const result = await compareRuns(current, previousRun, 10);
+
+      expect(result.newQueries.map((x) => x.hash)).toEqual(["hash-wide"]);
+      expect(result.disappearedHashes).toEqual(["hash-base"]);
+    });
+
+    test("when the original query still runs, the widened variant is genuinely new", async () => {
+      const current = [q("hash-base", BASE_SQL, 100), q("hash-wide", WIDER_SQL, 100)];
+      const previousRun = makePreviousRun([q("hash-base", BASE_SQL, 100)]);
+
+      const result = await compareRuns(current, previousRun, 10);
+
+      expect(result.newQueries.map((x) => x.hash)).toEqual(["hash-wide"]);
+      expect(result.disappearedHashes).toHaveLength(0);
+    });
+
+    test("a genuinely different query is not shape-matched", async () => {
+      const current = [
+        q("hash-x", "SELECT id FROM widgets WHERE owner_id = $1", 100),
+      ];
+      const previousRun = makePreviousRun([q("hash-base", BASE_SQL, 100)]);
+
+      const result = await compareRuns(current, previousRun, 10);
+
+      expect(result.newQueries.map((x) => x.hash)).toEqual(["hash-x"]);
+      expect(result.disappearedHashes).toEqual(["hash-base"]);
     });
   });
 });
@@ -335,22 +424,22 @@ describe("postToSiteApi payload baseBranch", () => {
 });
 
 describe("classifyIngestFailure", () => {
-  test("treats no-response and 5xx as transient (recoverable)", () => {
+  test("treats no-response and 5xx as transient (recoverable)", async () => {
     expect(classifyIngestFailure(null)).toBe("transient");
     expect(classifyIngestFailure(500)).toBe("transient");
     expect(classifyIngestFailure(503)).toBe("transient");
   });
 
-  test("treats 401/403 as auth (user must fix the token)", () => {
+  test("treats 401/403 as auth (user must fix the token)", async () => {
     expect(classifyIngestFailure(401)).toBe("auth");
     expect(classifyIngestFailure(403)).toBe("auth");
   });
 
-  test("treats 413 as too_large (payload over the size limit)", () => {
+  test("treats 413 as too_large (payload over the size limit)", async () => {
     expect(classifyIngestFailure(413)).toBe("too_large");
   });
 
-  test("treats other 4xx as a rejected run (contract skew)", () => {
+  test("treats other 4xx as a rejected run (contract skew)", async () => {
     expect(classifyIngestFailure(400)).toBe("rejected");
     expect(classifyIngestFailure(422)).toBe("rejected");
   });
@@ -449,25 +538,25 @@ describe("gateEligibleNewQueries", () => {
     };
   }
 
-  test("flags a new query whose recommendation exceeds regressionThreshold", () => {
+  test("flags a new query whose recommendation exceeds regressionThreshold", async () => {
     const result = gateEligibleNewQueries([withRecommendation("a", 99)], 90);
 
     expect(result.map((q) => q.hash)).toEqual(["a"]);
   });
 
-  test("with regressionThreshold 0 (flag-all), any real recommendation blocks", () => {
+  test("with regressionThreshold 0 (flag-all), any real recommendation blocks", async () => {
     const result = gateEligibleNewQueries([withRecommendation("a", 99)], 0);
 
     expect(result.map((q) => q.hash)).toEqual(["a"]);
   });
 
-  test("ignores a recommendation at or below regressionThreshold", () => {
+  test("ignores a recommendation at or below regressionThreshold", async () => {
     const result = gateEligibleNewQueries([withRecommendation("a", 40)], 90);
 
     expect(result).toHaveLength(0);
   });
 
-  test("ignores a query with no index recommendation (e.g. test-only query)", () => {
+  test("ignores a query with no index recommendation (e.g. test-only query)", async () => {
     const result = gateEligibleNewQueries(
       [withRecommendation("a", 99, false)],
       90,
@@ -476,13 +565,13 @@ describe("gateEligibleNewQueries", () => {
     expect(result).toHaveLength(0);
   });
 
-  test("ignores a query with no available improvement", () => {
+  test("ignores a query with no available improvement", async () => {
     const result = gateEligibleNewQueries([makeQuery("a")], 90);
 
     expect(result).toHaveLength(0);
   });
 
-  test("acknowledged hashes are exempt", () => {
+  test("acknowledged hashes are exempt", async () => {
     const result = gateEligibleNewQueries(
       [withRecommendation("a", 99), withRecommendation("b", 99)],
       90,

@@ -202,7 +202,7 @@ async function runInCI(
       }
     }
     if (previousRun) {
-      reportContext.comparison = compareRuns(
+      reportContext.comparison = await compareRuns(
         queries,
         previousRun,
         config.regressionThreshold,
