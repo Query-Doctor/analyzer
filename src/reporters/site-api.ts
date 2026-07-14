@@ -4,6 +4,7 @@ import * as github from "@actions/github";
 import { isTestOriginQuery } from "@query-doctor/core";
 import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
+import { originsCompatible, shapeKey } from "./query-shape.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
 import type { Op } from "jsondiffpatch/formatters/jsonpatch";
 
@@ -298,16 +299,67 @@ export function buildQueries(
     .filter((q) => !ignoredSet.has(q.hash));
 }
 
-export function compareRuns(
+/**
+ * Bucket previous queries by shape key. Keys are computed up front (parsing is
+ * async), then the map is built synchronously so concurrent inserts can't race.
+ * Unparseable queries carry no key and simply don't participate in shape-matching.
+ */
+async function buildShapeIndex(
+  queries: CiQueryPayload[],
+): Promise<Map<string, CiQueryPayload[]>> {
+  const keyed = await Promise.all(
+    queries.map(async (q) => ({ q, key: await shapeKey(q.query) })),
+  );
+  const index = new Map<string, CiQueryPayload[]>();
+  for (const { q, key } of keyed) {
+    if (!key) continue;
+    const bucket = index.get(key);
+    if (bucket) bucket.push(q);
+    else index.set(key, [q]);
+  }
+  return index;
+}
+
+/**
+ * Find a previous query of the same shape and call site for a current query
+ * whose exact hash didn't match — the changed-query case (#3367). Skips
+ * previous queries already claimed by another match so each pairs at most once.
+ */
+async function matchByShape(
+  current: CiQueryPayload,
+  prevByShape: Map<string, CiQueryPayload[]>,
+  matchedPrevHashes: Set<string>,
+): Promise<CiQueryPayload | null> {
+  const key = await shapeKey(current.query);
+  if (!key) return null;
+  const bucket = prevByShape.get(key);
+  if (!bucket) return null;
+  return (
+    bucket.find(
+      (prev) =>
+        !matchedPrevHashes.has(prev.hash) &&
+        originsCompatible(current.tags, prev.tags),
+    ) ?? null
+  );
+}
+
+export async function compareRuns(
   currentQueries: CiQueryPayload[],
   previousRun: PreviousRun,
   regressionThreshold: number,
   minimumCost: number = 0,
   acknowledgedQueryHashes: string[] = [],
-): RunComparison {
+): Promise<RunComparison> {
   const prevByHash = new Map(previousRun.queries.map((q) => [q.hash, q]));
   const currentHashes = new Set(currentQueries.map((q) => q.hash));
   const acknowledgedSet = new Set(acknowledgedQueryHashes);
+
+  // Shape index over the previous run: a column added to a SELECT changes the
+  // exact hash but not the query's shape, so an exact-hash miss falls back to
+  // matching a previous query of the same shape and call site — recognising one
+  // changed query instead of a spurious removed+new pair (#3367).
+  const prevByShape = await buildShapeIndex(previousRun.queries);
+  const matchedPrevHashes = new Set<string>();
 
   const regressed: RegressedQuery[] = [];
   const acknowledgedRegressed: RegressedQuery[] = [];
@@ -315,6 +367,11 @@ export function compareRuns(
   const newQueries: CiQueryPayload[] = [];
   const testOriginExcluded: CiQueryPayload[] = [];
 
+  // Pair each current query with its previous counterpart in two passes.
+  // Pass 1 reserves every exact-hash match first, so pass 2's shape-matching
+  // can't claim a previous query that a later current query matches exactly.
+  const pairs: Array<[current: CiQueryPayload, prev: CiQueryPayload]> = [];
+  const pendingShapeMatch: CiQueryPayload[] = [];
   for (const current of currentQueries) {
     // A query issued from a test file runs no production path, so it must never
     // gate the PR (#3199). Bucket it out before any regressed/new/improved
@@ -324,11 +381,25 @@ export function compareRuns(
       testOriginExcluded.push(current);
       continue;
     }
-    const prev = prevByHash.get(current.hash);
-    if (!prev) {
-      newQueries.push(current);
-      continue;
+    const exact = prevByHash.get(current.hash);
+    if (exact) {
+      matchedPrevHashes.add(exact.hash);
+      pairs.push([current, exact]);
+    } else {
+      pendingShapeMatch.push(current);
     }
+  }
+  for (const current of pendingShapeMatch) {
+    const prev = await matchByShape(current, prevByShape, matchedPrevHashes);
+    if (prev) {
+      matchedPrevHashes.add(prev.hash);
+      pairs.push([current, prev]);
+    } else {
+      newQueries.push(current);
+    }
+  }
+
+  for (const [current, prev] of pairs) {
     const prevCost = getQueryCost(prev);
     const currentCost = getQueryCost(current);
     if (prevCost === null || currentCost === null || prevCost === 0) continue;
@@ -370,9 +441,13 @@ export function compareRuns(
     }
   }
 
+  // A previous query counts as disappeared only if nothing in the current run
+  // claims it — neither an exact-hash match nor a shape match. Excluding
+  // shape-matched hashes is what stops a column-add from showing up as a phantom
+  // removal alongside its "new" twin (#3367).
   const disappearedHashes: string[] = [];
   for (const [hash] of prevByHash) {
-    if (!currentHashes.has(hash)) {
+    if (!currentHashes.has(hash) && !matchedPrevHashes.has(hash)) {
       disappearedHashes.push(hash);
     }
   }
