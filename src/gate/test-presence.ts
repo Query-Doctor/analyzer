@@ -77,7 +77,17 @@ export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
     /\bdelete\s+from\b/i,
     /\bupdate\b[^\n]{0,80}\bset\b/i,
     /\bselect\b[\s\S]{0,300}?\bfrom\b/i,
-    /\b(create|alter|drop)\s+(table|index|view|materialized\s+view)\b/i,
+    // DDL is matched by statement shape (ON clause, column list, target
+    // identifier), not bare keyword adjacency: prose in a string literal —
+    // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539)
+    // — must not read as a query. Stripping string literals instead would
+    // blind the raw-SQL shapes above, since raw SQL lives in strings; the
+    // statement's own grammar is the discriminator.
+    /\bcreate\s+(unique\s+)?index\b[^\n]{0,120}?\bon\b/i,
+    /\bcreate\s+table\b[^\n]{0,80}?\(/i,
+    /\bcreate\s+(or\s+replace\s+)?(materialized\s+)?view\b[^\n]{0,80}?\bas\b/i,
+    /\balter\s+table\s+(if\s+exists\s+)?["\w]/i,
+    /\bdrop\s+(table|index|view|materialized\s+view)\s+(if\s+exists\s+|concurrently\s+)?["\w]/i,
   ],
   dataAccessPathPatterns: [
     /(^|\/)[^/]*repositor(y|ies)[^/]*\.[cm]?[jt]s$/i,
