@@ -40,6 +40,29 @@ describe("patchAddsQueryCode", () => {
     expect(patchAddsQueryCode(addPatch("const total = items.length + 1;"))).toBe(false);
   });
 
+  test("ignores DDL keywords in a prose string literal", () => {
+    // The Site#3539 false positive: an MCP tool description mentioning the
+    // fix it returns. Prose, not a statement — no ON clause, no column list.
+    expect(
+      patchAddsQueryCode(
+        addPatch(
+          '"each with its suggested CREATE INDEX fix, cost delta, and current triage status, ranked by impact.",',
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  test("still detects statement-shaped DDL", () => {
+    expect(
+      patchAddsQueryCode(addPatch('"CREATE INDEX plans_project_id_idx ON plans (project_id)"')),
+    ).toBe(true);
+    expect(
+      patchAddsQueryCode(addPatch("const ddl = `CREATE TABLE widgets (id serial primary key)`;")),
+    ).toBe(true);
+    expect(patchAddsQueryCode(addPatch('"ALTER TABLE users ADD COLUMN age int"'))).toBe(true);
+    expect(patchAddsQueryCode(addPatch('"DROP TABLE IF EXISTS old_stuff"'))).toBe(true);
+  });
+
   test("only looks at added lines, not removed ones", () => {
     const patch = "@@ -1,1 +1,1 @@\n-await db.select().from(users);\n+const x = 1;";
     expect(patchAddsQueryCode(patch)).toBe(false);
@@ -188,6 +211,30 @@ describe("evaluateTestPresence", () => {
         "CREATE INDEX plans_project_id_idx ON plans (project_id);",
       ),
     ]);
+    expect(verdict).toBeNull();
+  });
+
+  test("does not fire on the tool-rename PR from Site#3539", () => {
+    // A rename PR rewrote a tool-registration line whose description string
+    // says "suggested CREATE INDEX fix" — prose, not a query. The touched spec
+    // files aren't data-layer tests and a rename captures no new hashes, so
+    // only the content heuristic can keep this PR clean.
+    const verdict = evaluateTestPresence(
+      [
+        changed(
+          "packages/mcp-server/src/tools/index.ts",
+          '"Review a CI run in one call: each with its suggested CREATE INDEX fix, cost delta, and current triage status.",',
+        ),
+        changed("packages/mcp-server/src/server.spec.ts", '"review_ci_run",'),
+        changed(
+          "packages/mcp-server/src/tools/ci/review-ci-run.spec.ts",
+          'const result = await runReviewCiRun({ runId: "run_1" }, client);',
+          "renamed",
+        ),
+      ],
+      undefined,
+      { newQueryHashes: [] },
+    );
     expect(verdict).toBeNull();
   });
 
