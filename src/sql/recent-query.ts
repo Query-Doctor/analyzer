@@ -49,9 +49,7 @@ export class RecentQuery {
     readonly hash: QueryHash,
     readonly normalizedHash: QueryHash,
     analysisSkipped = false,
-    // Kept on the instance so push sites can drop non-DML (see api-client);
-    // undefined when analysis was skipped (oversized) or failed.
-    readonly statementType?: StatementType,
+    statementType?: StatementType,
   ) {
     this.username = data.username;
     this.query = data.query;
