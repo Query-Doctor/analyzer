@@ -33,12 +33,24 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
       log.error(`Failed to push stats: ${err}`, "api-client");
     });
   };
+  // pg_stat_statements retains everything the database ever executed — COPY
+  // from dumps/seeds, DDL from migrations, VACUUM. None of it is an app query:
+  // shipping it pollutes the project's query catalog and fires unfixable
+  // "no CI coverage" alerts (Query-Doctor/Site#3578). Only DML is pushed.
+  // `undefined` (analysis skipped or failed) is pushed too — fail open rather
+  // than silently losing real queries. Known gap: core classifies MergeStmt as
+  // "other", so MERGE statements are dropped until its map learns them.
+  const isAppQuery = (query: RecentQuery) => query.statementType !== "other";
+
   const onQueriesPolled = (queries: RecentQuery[]) => {
-    api.pushQuery(JSON.parse(JSON.stringify(queries))).catch((err) => {
+    const appQueries = queries.filter(isAppQuery);
+    if (appQueries.length === 0) return;
+    api.pushQuery(JSON.parse(JSON.stringify(appQueries))).catch((err) => {
       log.error(`Failed to push polled queries: ${err}`, "api-client");
     });
   };
   const pushOptimizedQuery = (query: OptimizedQuery) => {
+    if (!isAppQuery(query)) return;
     const q = [query.toJSON()]
     api.pushQuery(q).catch((err) => {
       log.error(`Failed to push optimized query: ${err}`, "api-client");
