@@ -635,3 +635,92 @@ test("optimizer does not treat ASC index as duplicate of DESC candidate", async 
       await pg.stop();
     }
 });
+
+test("optimizeAdHoc returns an error before any sync and optimizes an unobserved query after", async () => {
+    const pg = await new PostgreSqlContainer("postgres:17")
+      .withCopyContentToContainer([
+        {
+          content: `
+            create table orders(id int, customer_id int, status text);
+            insert into orders (id, customer_id, status)
+              select i, i % 500, 'open' from generate_series(1, 1000) i;
+            create extension pg_stat_statements;
+          `,
+          target: "/docker-entrypoint-initdb.d/init.sql",
+        },
+      ])
+      .withCommand([
+        "-c",
+        "shared_preload_libraries=pg_stat_statements",
+        "-c",
+        "autovacuum=off",
+      ])
+      .start();
+
+    const manager = ConnectionManager.forLocalDatabase();
+    const conn = Connectable.fromString(pg.getConnectionUri());
+    const optimizer = new QueryOptimizer(manager, conn);
+
+    const statsMode = {
+      kind: "fromStatisticsExport" as const,
+      source: { kind: "inline" as const },
+      stats: [{
+        tableName: "orders",
+        schemaName: "public",
+        relpages: 10000,
+        reltuples: 10_000_000,
+        relallvisible: 1,
+        columns: [
+          { columnName: "id", stats: null, attlen: null },
+          { columnName: "customer_id", stats: null, attlen: null },
+          { columnName: "status", stats: null, attlen: null },
+        ],
+        indexes: [],
+      }],
+    };
+
+    try {
+      // Never observed in pg_stat_statements, and no CREATE INDEX exists on
+      // customer_id, so the optimizer should recommend one once it can run.
+      const adHoc = "select * from orders where customer_id = 7;";
+
+      const beforeSync = await optimizer.optimizeAdHoc(adHoc);
+      assert(
+        beforeSync.state === "error",
+        `Expected error before sync but got ${beforeSync.state}`,
+      );
+
+      await optimizer.start([], statsMode);
+      await optimizer.finish;
+
+      const result = await optimizer.optimizeAdHoc(adHoc);
+      assert(
+        result.state === "improvements_available",
+        `Expected improvements_available but got ${result.state}`,
+      );
+      expect(
+        result.indexRecommendations.some((r) =>
+          r.columns.some((c) => c.column === "customer_id")
+        ),
+        "Expected a recommendation on customer_id",
+      ).toBeTruthy();
+
+      // The ad-hoc query must not join the tracked query set.
+      expect(
+        optimizer.getQueries().some((q) => q.query.includes("customer_id")),
+        "Ad-hoc query should not be added to the tracked set",
+      ).toBeFalsy();
+
+      const unsupported = await optimizer.optimizeAdHoc(
+        "update orders set status = 'closed' where id = 1;",
+      );
+      assert(
+        unsupported.state === "not_supported",
+        `Expected not_supported for a non-SELECT but got ${unsupported.state}`,
+      );
+    } finally {
+      optimizer.stop();
+      await manager.closeAll();
+      await pg.stop();
+    }
+});
