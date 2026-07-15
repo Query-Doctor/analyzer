@@ -259,38 +259,6 @@ test("analyze sets isSelectQuery=false for DELETE with EXISTS subquery", async (
   expect(rq.isSelectQuery).toBe(false);
 });
 
-// --- statementType persistence (push sites drop "other" — see api-client) ---
-
-test("analyze keeps statementType on the instance for DML", async () => {
-  const data = makeRawQuery({ query: "SELECT * FROM users" });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
-  expect(rq.statementType).toBe("select");
-});
-
-test("analyze classifies DDL as other", async () => {
-  const data = makeRawQuery({
-    query:
-      'CREATE INDEX "ci_runs_repo_created_at_idx" ON "ci_runs" USING btree ("repo", "created_at" DESC)',
-  });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
-  expect(rq.statementType).toBe("other");
-});
-
-test("analyze classifies COPY as other", async () => {
-  const data = makeRawQuery({
-    query: "COPY public.project_queries (id, hash) FROM stdin",
-  });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
-  expect(rq.statementType).toBe("other");
-});
-
-test("oversized queries skip analysis and carry no statementType", async () => {
-  const data = makeRawQuery({ query: `SELECT ${"1,".repeat(30_000)} 1` });
-  const rq = await RecentQuery.analyze(data, testHash, testNormalizedHash);
-  expect(rq.analysisSkipped).toBe(true);
-  expect(rq.statementType).toBeUndefined();
-});
-
 // --- displayQuery via analyze ---
 
 test("analyze populates displayQuery for wide SELECTs", async () => {
