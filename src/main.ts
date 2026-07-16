@@ -358,6 +358,7 @@ async function main() {
       env.LOG_PATH,
       typeof env.MAX_COST === "number" ? env.MAX_COST : undefined,
     );
+    process.exit(process.exitCode ?? 0);
   } else {
     await runOutsideCI();
   }
