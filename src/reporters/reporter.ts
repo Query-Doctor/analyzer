@@ -1,4 +1,4 @@
-import type { ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
+import type { CiConclusion, ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
 import type {
   CiRunMetadata,
   IngestFailureKind,
@@ -113,10 +113,16 @@ export interface ReportContext {
   /**
    * The crude test-presence gate (#3496) flagged this PR: data-access code
    * changed with no data-layer test alongside it. Rendered as a conservative
-   * "could not verify" banner in the comment; also fails the check in `main`.
+   * "could not verify" block in the comment; also gates the check in `main`.
    * A pure diff heuristic — independent of the baseline comparison.
    */
   testPresenceVerdict?: TestPresenceVerdict;
+  /**
+   * The gate verdict's resolved CI conclusion (taxonomy #3498 + policy #3500):
+   * `failure` renders the blocking framing, `neutral` the softened `warn` one.
+   * Absent when there is no surfaced verdict.
+   */
+  testPresenceConclusion?: CiConclusion;
 }
 
 export interface IndexStatistic {

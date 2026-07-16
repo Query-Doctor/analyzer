@@ -17,13 +17,14 @@ import {
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { fetchPrChangedFiles } from "./gate/changed-files.ts";
 import { evaluateTestPresence } from "./gate/test-presence.ts";
+import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { PgbadgerSource } from "./sql/pgbadger.ts";
 import type { RecentQuerySource } from "./sql/recent-query.ts";
-import type { FullSchema } from "@query-doctor/core";
+import type { FullSchema, RepoPolicyConfig } from "@query-doctor/core";
 
 async function runInCI(
   targetPostgresUrl: Connectable,
@@ -232,21 +233,46 @@ async function runInCI(
       }
     }
 
+    // Resolve the gate verdict's CI conclusion via the shared taxonomy (#3498)
+    // and policy engine (#3500) instead of a local severity. By default an
+    // unverified data-access change concludes `failure`, so it blocks the check —
+    // a "Warning" beside a green check is invisible to downstream reviewers
+    // (Site#3541). A repo can soften it to a non-blocking neutral (`warn`) or
+    // suppress it (`off`). Resolved before the report so `off` also drops the
+    // comment block, and so the comment can render the right framing.
+    if (reportContext.testPresenceVerdict) {
+      const policyConfig: RepoPolicyConfig =
+        ("conditionPolicies" in config ? config.conditionPolicies : undefined) ??
+        {};
+      const resolved = resolveVerdict(
+        reportContext.testPresenceVerdict,
+        policyConfig,
+      );
+      if (resolved.surfaced) {
+        reportContext.testPresenceConclusion = resolved.conclusion;
+      } else {
+        reportContext.testPresenceVerdict = undefined;
+      }
+    }
+
     console.log("Creating report...")
     // Generate PR comment with comparison data
     await runner.report(reportContext);
 
-    // The test-presence gate surfaces as a non-blocking warning, not a red X:
-    // it is a crude diff heuristic, so it warns loudly while the capture-based
-    // rungs (#3502/#3503) are built. Flipping it to a hard failure is opt-in via
-    // the per-repo policy (#3500). Framed as "unverified", never "your query is bad".
+    // Carry the verdict into the check itself: a blocking conclusion fails the
+    // run (red X), a softened one surfaces as a non-blocking annotation. Framed
+    // as "could not verify", never "your query is broken".
     if (reportContext.testPresenceVerdict) {
       const verdict = reportContext.testPresenceVerdict;
       const files = verdict.dataAccessFiles.map((f) => `  - ${f}`).join("\n");
-      core.warning(
+      const message =
         `${verdict.reason}\n\nNext step: ${verdict.nextStep}\n\n` +
-          `Changed data-access files with no related data-layer test:\n${files}`,
-      );
+        `Changed data-access files with no related data-layer test:\n${files}`;
+      if (reportContext.testPresenceConclusion === "failure") {
+        core.setFailed(message);
+      } else {
+        core.warning(message);
+      }
     }
 
     // Block PR if regressions exceed thresholds, or if a brand-new query ships
