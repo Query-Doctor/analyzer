@@ -108,6 +108,11 @@ export class ApiClient extends RpcTarget implements ClientApi {
     const dispose = () => {
       if (disposed) return;
       disposed = true;
+      // Mark the connection broken before disposing the stub. Disposing makes
+      // capnweb fire onRpcBroken with "RPC session was shut down by disposing
+      // the main stub"; without this guard triggerBroken would report our own
+      // intentional teardown as a broken connection.
+      broken = true;
       stopPing();
       try { api[Symbol.dispose](); } catch { /* already gone */ }
       try { (unauthenticated as unknown as Disposable)[Symbol.dispose]?.(); } catch { /* already gone */ }
