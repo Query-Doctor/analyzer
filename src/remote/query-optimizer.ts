@@ -1,5 +1,6 @@
 import EventEmitter from "node:events";
 import { OptimizedQuery, QueryHash, RecentQuery } from "../sql/recent-query.ts";
+import { syncQueries } from "../sync/query-sync.ts";
 import type { LiveQueryOptimization } from "./optimization.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Sema } from "async-sema";
@@ -220,6 +221,57 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   /**
+   * Optimize a one-off SQL string that was never observed in pg_stat_statements —
+   * an agent handing us a query to check on demand. It is NOT added to the tracked
+   * query set; the result is computed and returned, leaving the background
+   * optimization loop untouched. Requires a prior sync (a `target` must exist);
+   * returns an `error` state if none has happened yet. Runs under the same
+   * semaphore as the loop so it never shares the optimizer connection concurrently.
+   */
+  async optimizeAdHoc(query: string): Promise<LiveQueryOptimization> {
+    const target = this.target;
+    if (!target) {
+      return {
+        state: "error",
+        error:
+          "No database has been synced yet. Connect a database before running ad-hoc queries.",
+      };
+    }
+    const [recent] = await syncQueries([{
+      username: "",
+      query,
+      formattedQuery: query,
+      meanTime: 0,
+      calls: "0",
+      rows: "0",
+      topLevel: true,
+    }]);
+    if (!recent) {
+      return { state: "error", error: "Failed to analyze query" };
+    }
+    const status = this.checkQueryUnsupported(recent);
+    if (status.type === "ignored") {
+      return {
+        state: "not_supported",
+        reason: "Query is an introspection or system query",
+      };
+    }
+    if (status.type === "not_supported") {
+      return { state: "not_supported", reason: status.reason };
+    }
+    const optimized = recent.withOptimization({ state: "waiting" });
+    const token = await this.semaphore.acquire();
+    try {
+      return await this.optimizeQuery(optimized, target, {
+        timeoutMs: this.queryTimeoutMs,
+        sideEffects: false,
+      });
+    } finally {
+      this.semaphore.release(token);
+    }
+  }
+
+  /**
    * Insert new queries to be processed. The {@link start} method must
    * have been called previously for this to take effect
    */
@@ -429,8 +481,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private async optimizeQuery(
     recent: OptimizedQuery,
     target: Target,
-    options: { timeoutMs: number },
+    options: { timeoutMs: number; sideEffects?: boolean },
   ): Promise<LiveQueryOptimization> {
+    const sideEffects = options.sideEffects ?? true;
     const builder = new PostgresQueryBuilder(recent.query);
     const indexes = this.getPotentialIndexCandidates(
       target.statistics,
@@ -450,15 +503,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       console.error("Error with optimization", error);
       console.error("[query-optimizer] failed query:", recent.query);
       if (error instanceof TimeoutError) {
-        return this.onTimeout(recent, options.timeoutMs);
+        return this.onTimeout(recent, options.timeoutMs, sideEffects);
       } else if (error instanceof Error) {
-        return this.onError(recent, error.message);
+        return this.onError(recent, error.message, sideEffects);
       } else {
-        return this.onError(recent, "Internal error");
+        return this.onError(recent, "Internal error", sideEffects);
       }
     }
 
-    return this.onOptimizeReady(result, recent);
+    return this.onOptimizeReady(result, recent, sideEffects);
   }
 
   private async dropDisabledIndexes(tx: PostgresTransaction): Promise<void> {
@@ -470,6 +523,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onOptimizeReady(
     result: OptimizeResult,
     recent: OptimizedQuery,
+    sideEffects = true,
   ): LiveQueryOptimization {
     switch (result.kind) {
       case "ok": {
@@ -477,12 +531,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
         const indexesUsed = Array.from(result.existingIndexes);
         const reduction = costReductionPercentage(result.baseCost, result.finalCost);
         if (reduction < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(
-            recent,
-            result.baseCost,
-            indexesUsed,
-            result.baseExplainPlan,
-          );
+          if (sideEffects) {
+            this.onNoImprovements(
+              recent,
+              result.baseCost,
+              indexesUsed,
+              result.baseExplainPlan,
+            );
+          }
           return {
             state: "no_improvement_found",
             cost: result.baseCost,
@@ -490,7 +546,9 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
             explainPlan: result.baseExplainPlan,
           };
         } else {
-          this.onImprovementsAvailable(recent, result, result.baseExplainPlan);
+          if (sideEffects) {
+            this.onImprovementsAvailable(recent, result, result.baseExplainPlan);
+          }
           return {
             state: "improvements_available",
             cost: result.baseCost,
@@ -505,7 +563,7 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       }
       // unlikely to hit if we've already checked the base plan for zero cost
       case "zero_cost_plan":
-        return this.onZeroCostPlan(recent, result.explainPlan);
+        return this.onZeroCostPlan(recent, result.explainPlan, sideEffects);
     }
   }
 
@@ -585,8 +643,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onZeroCostPlan(
     recent: OptimizedQuery,
     explainPlan?: PostgresExplainStage,
+    sideEffects = true,
   ): LiveQueryOptimization {
-    this.emit("zeroCostPlan", recent);
+    if (sideEffects) {
+      this.emit("zeroCostPlan", recent);
+    }
     return {
       state: "error",
       error:
@@ -598,21 +659,27 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   private onError(
     recent: OptimizedQuery,
     errorMessage: string,
+    sideEffects = true,
   ): LiveQueryOptimization {
     const error = new Error(errorMessage);
-    this.emit("error", error, recent);
+    if (sideEffects) {
+      this.emit("error", error, recent);
+    }
     return { state: "error", error: error.message };
   }
 
   private onTimeout(
     recent: OptimizedQuery,
     waitedMs: number,
+    sideEffects = true,
   ): LiveQueryOptimization {
     let retries = 0;
     if ("retries" in recent.optimization) {
       retries = recent.optimization.retries + 1;
     }
-    this.emit("timeout", recent, waitedMs);
+    if (sideEffects) {
+      this.emit("timeout", recent, waitedMs);
+    }
     return { state: "timeout", waitedMs, retries };
   }
 }

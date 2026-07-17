@@ -1,6 +1,6 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import type { RpcStub } from "capnweb";
-import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi } from "@query-doctor/core";
+import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, LiveQueryOptimization, ServerApi } from "@query-doctor/core";
 import type { ExportedStats } from "@query-doctor/core";
 import { PgIdentifier, Statistics } from "@query-doctor/core";
 import { log } from "../log.ts";
@@ -183,7 +183,7 @@ export class ApiClient extends RpcTarget implements ClientApi {
     );
   }
 
-  async runQuery(_query: string): Promise<void> {
-    log.warn("runQuery is not implemented", ApiClient.name);
+  async runQuery(query: string): Promise<LiveQueryOptimization> {
+    return this.remote.runAdHocQuery(query);
   }
 }

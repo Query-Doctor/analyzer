@@ -10,7 +10,7 @@
     "dev:docker": "docker compose -f docker-compose.dev.yml up --build",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
-    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs --packages=external && cp src/reporters/github/success.md.j2 src/sync/schema_dump.sql dist/"
+    "build": "npm run typecheck && esbuild src/main.ts --bundle --platform=node --format=esm --outfile=dist/main.mjs --packages=external && cp src/reporters/github/success.md.j2 src/sync/schema_dump.sql dist/"
   },
   "dependencies": {
     "@actions/core": "^3.0.0",

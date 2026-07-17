@@ -17,6 +17,7 @@ import { ExtensionNotInstalledError } from "../sync/errors.ts";
 import { type OptimizedQuery, type RecentQuery } from "../sql/recent-query.ts";
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 import { type RemoteSyncFullSchemaResponse } from "./remote.dto.ts";
+import { type LiveQueryOptimization } from "./optimization.ts";
 import { QueryOptimizer } from "./query-optimizer.ts";
 import { EventEmitter } from "node:events";
 import { log } from "../log.ts";
@@ -385,6 +386,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private getDatabaseInfo(source: Connectable) {
     const connector = this.sourceManager.getConnectorFor(source);
     return connector.getDatabaseInfo();
+  }
+
+  async runAdHocQuery(query: string): Promise<LiveQueryOptimization> {
+    return this.optimizer.optimizeAdHoc(query);
   }
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
