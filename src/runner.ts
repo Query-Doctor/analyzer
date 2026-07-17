@@ -195,6 +195,7 @@ export class Runner {
     const reportContext: ReportContext = {
       statisticsMode: this.remote.optimizer.statisticsMode,
       computedStats: this.remote.optimizer.computedStats,
+      modeledTables: this.remote.optimizer.syntheticTables,
       recommendations: filteredRecommendations,
       queriesPastThreshold: filteredThresholdWarnings,
       queryStats: Object.freeze({

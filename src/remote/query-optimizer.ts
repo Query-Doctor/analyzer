@@ -113,6 +113,15 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     return this.target?.statistics.ownMetadata;
   }
 
+  /**
+   * Tables ("schema.table") sized by the synthesizer because the exported
+   * snapshot didn't cover them — their costs are modeled, not verified. Empty
+   * unless a schema was supplied in fromStatisticsExport mode.
+   */
+  get syntheticTables(): string[] {
+    return this.target?.statistics.syntheticTables ?? [];
+  }
+
   getExistingIndexes(): FullSchemaIndex[] {
     return this.existingIndexes;
   }
@@ -146,7 +155,11 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(this.connectable);
     const ownStats = await Statistics.dumpStats(pg, version);
-    const statistics = new Statistics(pg, version, ownStats, statsMode);
+    // Pass the current schema so tables the exported snapshot doesn't cover
+    // (added on this branch / since the snapshot was captured) are sized by the
+    // synthesizer instead of the flat default. No-op when statsMode isn't
+    // fromStatisticsExport.
+    const statistics = new Statistics(pg, version, ownStats, statsMode, schema);
     this.existingIndexes = schema?.indexes ?? [];
     const filteredIndexes = this.filterDisabledIndexes(this.existingIndexes);
     const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
