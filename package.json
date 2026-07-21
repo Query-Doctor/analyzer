@@ -21,7 +21,7 @@
     "@libpg-query/parser": "^17.6.3",
     "@opentelemetry/api": "^1.9.0",
     "@pgsql/types": "^17.6.2",
-    "@query-doctor/core": "^0.12.0",
+    "@query-doctor/core": "^0.13.0",
     "async-sema": "^3.1.1",
     "capnweb": "^0.7.0",
     "dedent": "^1.7.1",

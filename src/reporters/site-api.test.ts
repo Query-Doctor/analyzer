@@ -245,6 +245,30 @@ describe("compareRuns", () => {
       expect(result.regressed).toHaveLength(1);
       expect(result.testOriginExcluded).toHaveLength(0);
     });
+
+    // Real SQLCommenter `file` tags carry a `:line:col` suffix
+    // (`…repository.spec.ts:509:10`). Before core stripped that suffix, the
+    // `$`-anchored `.spec.ts` pattern never matched, so a test read-back leaked
+    // into newQueries and phantom-blocked unrelated PRs run after run — the
+    // server dropped it as test-origin while the analyzer did not (Site #3606).
+    test("excludes a .spec.ts query whose file tag carries a :line:col suffix", async () => {
+      const withSuffix: CiQueryPayload = {
+        ...makeQuery("hash-new", 200),
+        tags: [
+          {
+            key: "file",
+            value:
+              "/home/runner/work/Site/Site/apps/api/src/projects/project-queries.repository.spec.ts:509:10",
+          },
+        ],
+      };
+      const previousRun = makePreviousRun([]);
+
+      const result = await compareRuns([withSuffix], previousRun, 10);
+
+      expect(result.newQueries).toHaveLength(0);
+      expect(result.testOriginExcluded.map((q) => q.hash)).toEqual(["hash-new"]);
+    });
   });
 
   describe("changed-query detection via shape (#3367)", () => {
