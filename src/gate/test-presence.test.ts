@@ -201,6 +201,33 @@ describe("classifyChangedFiles", () => {
     ]);
     expect(surface.dataAccessChanged).toEqual(["apps/api/src/schema.ts"]);
   });
+
+  test("does not read a `select-plan` route path as a SELECT ... FROM query", () => {
+    // Site#3615 root cause: `\bselect\b` matched the hyphenated route segment,
+    // and an import `from` on the next line completed the `SELECT ... FROM`
+    // shape. Requiring whitespace after `select`, as real SQL has, fixes it.
+    const surface = classifyChangedFiles([
+      {
+        path: "apps/app/src/routeTree.gen.ts",
+        status: "modified",
+        patch:
+          "@@ -18,2 +18,2 @@\n" +
+          "+} from './routes/membership/select-plan'\n" +
+          "+import { Route as MembershipRegisterRouteImport } from './routes/membership/register'",
+      },
+    ]);
+    expect(surface.dataAccessChanged).toEqual([]);
+  });
+
+  test("still flags a raw SELECT ... FROM query in application code", () => {
+    // The tightened `select`-shape must keep its recall: real SQL has whitespace
+    // after the keyword. This trips only the raw select shape (no `db.`, no
+    // `.query(`), so it locks that pattern in.
+    const surface = classifyChangedFiles([
+      changed("apps/api/src/reports.ts", "const sql = `SELECT id, name FROM users`;"),
+    ]);
+    expect(surface.dataAccessChanged).toEqual(["apps/api/src/reports.ts"]);
+  });
 });
 
 describe("evaluateTestPresence", () => {
@@ -252,6 +279,23 @@ describe("evaluateTestPresence", () => {
         "tests/pg/postgres.test.ts",
         "expect(await db.select().from(projects)).toEqual([p]);",
       ),
+    ]);
+    expect(verdict).toBeNull();
+  });
+
+  test("does not fire on the route-tree regeneration from Site#3614", () => {
+    // The reported false positive: a routeTree.gen.ts regeneration (import
+    // re-ordering) whose `select-plan` route path read as `SELECT ... FROM`.
+    // No data access, nothing to flag.
+    const verdict = evaluateTestPresence([
+      {
+        path: "apps/app/src/routeTree.gen.ts",
+        status: "modified",
+        patch:
+          "@@ -18,2 +18,2 @@\n" +
+          "+} from './routes/membership/select-plan'\n" +
+          "+import { Route as MembershipRegisterRouteImport } from './routes/membership/register'",
+      },
     ]);
     expect(verdict).toBeNull();
   });

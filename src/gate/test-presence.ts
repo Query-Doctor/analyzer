@@ -76,7 +76,11 @@ export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
     /\binsert\s+into\b/i,
     /\bdelete\s+from\b/i,
     /\bupdate\b[^\n]{0,80}\bset\b/i,
-    /\bselect\b[\s\S]{0,300}?\bfrom\b/i,
+    // `select` must be followed by whitespace, as real `SELECT … FROM` is — so a
+    // hyphenated route segment like `select-plan` (whose `\bselect\b` boundary is
+    // the hyphen) doesn't read as a query when an import `from` follows it
+    // (Site#3615).
+    /\bselect\s[\s\S]{0,300}?\bfrom\b/i,
     // DDL is matched by statement shape (ON clause, column list, target
     // identifier), not bare keyword adjacency: prose in a string literal —
     // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539)
