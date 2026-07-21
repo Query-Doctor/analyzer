@@ -1,6 +1,6 @@
 import { newWebSocketRpcSession, RpcTarget } from "capnweb";
 import type { RpcStub } from "capnweb";
-import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, ServerApi } from "@query-doctor/core";
+import type { ConnectionMode, UnauthenticatedServerApi, ClientApi, IndexDefinition, LiveQueryOptimization, ServerApi } from "@query-doctor/core";
 import type { ExportedStats } from "@query-doctor/core";
 import { PgIdentifier, Statistics } from "@query-doctor/core";
 import { log } from "../log.ts";
@@ -183,7 +183,10 @@ export class ApiClient extends RpcTarget implements ClientApi {
     );
   }
 
-  async runQuery(_query: string): Promise<void> {
-    log.warn("runQuery is not implemented", ApiClient.name);
+  async runQuery(_query: string): Promise<LiveQueryOptimization> {
+    // Part of the ClientApi RPC surface (core 0.13.0) but never invoked on the
+    // CI client — throw rather than return a fabricated optimization, so a stray
+    // call surfaces loudly instead of silently yielding a bogus result.
+    throw new Error("runQuery is not implemented on the CI ApiClient");
   }
 }
