@@ -848,11 +848,17 @@ describe("test-presence verdict rendering", () => {
     dataAccessFiles: ["apps/api/src/users/user.repository.ts"],
   };
 
-  test("renders the unverified banner, reason, next step, and flagged file", () => {
-    const output = renderTemplate(makeContext({ testPresenceVerdict: verdict }));
-    expect(output).toContain("[!WARNING]");
+  test("renders a blocking caution block, reason, next step, and flagged file — never a Warning heading", () => {
+    const output = renderTemplate(
+      makeContext({
+        testPresenceVerdict: verdict,
+        testPresenceConclusion: "failure",
+      }),
+    );
+    expect(output).toContain("[!CAUTION]");
+    expect(output).not.toContain("[!WARNING]");
     expect(output).toContain(
-      "Unverified — this PR changes queries with no related data-layer test.",
+      "Could not verify — this PR changes queries with no related data-layer test.",
     );
     expect(output).toContain(verdict.reason);
     expect(output).toContain(verdict.nextStep);
@@ -860,8 +866,23 @@ describe("test-presence verdict rendering", () => {
     expect(output).toContain(verdict.triageHint);
   });
 
-  test("omits the banner entirely when there is no verdict", () => {
+  test("renders a non-blocking note block when the policy softened the verdict to neutral", () => {
+    const output = renderTemplate(
+      makeContext({
+        testPresenceVerdict: verdict,
+        testPresenceConclusion: "neutral",
+      }),
+    );
+    expect(output).toContain("[!NOTE]");
+    expect(output).not.toContain("[!CAUTION]");
+    expect(output).not.toContain("[!WARNING]");
+    expect(output).toContain(verdict.reason);
+  });
+
+  test("omits the block entirely when there is no verdict", () => {
     const output = renderTemplate(makeContext());
-    expect(output).not.toContain("Unverified — this PR changes queries");
+    expect(output).not.toContain(
+      "Could not verify — this PR changes queries",
+    );
   });
 });

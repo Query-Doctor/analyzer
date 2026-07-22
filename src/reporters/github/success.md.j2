@@ -23,8 +23,8 @@
 
 {% endif %}
 {% if testPresenceVerdict %}
-> [!WARNING]
-> **Unverified — this PR changes queries with no related data-layer test.**
+> [!{{ "CAUTION" if testPresenceConclusion == "failure" else "NOTE" }}]
+> **Could not verify — this PR changes queries with no related data-layer test.**
 > {{ testPresenceVerdict.reason }}
 >
 > **Next step:** {{ testPresenceVerdict.nextStep }}
