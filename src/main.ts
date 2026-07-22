@@ -18,6 +18,7 @@ import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { fetchPrChangedFiles } from "./gate/changed-files.ts";
 import { evaluateTestPresence } from "./gate/test-presence.ts";
 import { gateRegression } from "./gate/regression.ts";
+import { gateSchemaChange } from "./gate/schema-change.ts";
 import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
@@ -273,6 +274,22 @@ async function runInCI(
         core.setFailed(message);
       } else {
         core.warning(message);
+      }
+    }
+
+    // Schema-change gate (Site#3289). The API already computed the schema diff
+    // (`runMetadata.schemaChange`) and the comment renders it; this only decides
+    // the check. Block by default so a person validates the migration; a repo
+    // softens it to `warn`/`off` via the schema-drift policy.
+    const schemaGate = gateSchemaChange(
+      reportContext.runMetadata?.schemaChange,
+      "conditionPolicies" in config ? config.conditionPolicies : undefined,
+    );
+    if (schemaGate) {
+      if (schemaGate.conclusion === "failure") {
+        core.setFailed(schemaGate.message);
+      } else {
+        core.warning(schemaGate.message);
       }
     }
 
