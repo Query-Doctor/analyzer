@@ -17,6 +17,7 @@ import {
 import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { fetchPrChangedFiles } from "./gate/changed-files.ts";
 import { evaluateTestPresence } from "./gate/test-presence.ts";
+import { gateRegression } from "./gate/regression.ts";
 import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
@@ -288,20 +289,33 @@ async function runInCI(
         return queryLink ? `\n    ${queryLink}` : "";
       };
 
-      const blockingMessages: string[] = [];
+      const policyConfig: RepoPolicyConfig =
+        ("conditionPolicies" in config ? config.conditionPolicies : undefined) ??
+        {};
 
       const { regressed, newQueries } = reportContext.comparison;
-      if (regressed.length > 0) {
+
+      // Regression arm routed through the shared policy engine (#3500), so a repo
+      // can soften it to warn/off like untested-data-access and schema-drift.
+      // `regressed` is already the untriaged, beyond-threshold set; the policy is
+      // a second, repo-wide layer on top of per-query triage. Default `fail`, so
+      // a repo that sets nothing blocks exactly as the old inline path did.
+      const regressionGate = gateRegression(regressed.length, policyConfig);
+      if (regressionGate) {
         const messages = regressed.map((q) => {
           const preview = queryPreview(q.formattedQuery);
           const cost = `cost ${formatCost(q.previousCost)} → ${formatCost(q.currentCost)} (+${q.regressionPercentage.toFixed(1)}%)`;
           return `  - ${preview}: ${cost}${linkFor(q.hash)}`;
         });
-        blockingMessages.push(
-          `${regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`,
-        );
+        const message = `${regressed.length} untriaged regression(s) beyond threshold:\n${messages.join("\n")}`;
+        if (regressionGate.conclusion === "failure") core.setFailed(message);
+        else core.warning(message);
       }
 
+      // New-query arm stays on its inline setFailed. Its default policy is
+      // `warn`, so routing it through resolveVerdict would silently stop it
+      // blocking — a behavior change that needs a human sign-off, tracked
+      // separately from this regression-only task.
       const gateNewQueries = gateEligibleNewQueries(
         newQueries,
         config.regressionThreshold,
@@ -318,13 +332,9 @@ async function runInCI(
           const detail = `cost ${formatCost(opt.cost)}, index recommendation cuts it ${opt.costReductionPercentage.toFixed(1)}%`;
           return `  - ${preview}: ${detail}${linkFor(q.hash)}`;
         });
-        blockingMessages.push(
+        core.setFailed(
           `${gateNewQueries.length} new quer${gateNewQueries.length === 1 ? "y" : "ies"} ship${gateNewQueries.length === 1 ? "s" : ""} with a high-impact index recommendation (acknowledge on the dashboard to allow):\n${messages.join("\n")}`,
         );
-      }
-
-      if (blockingMessages.length > 0) {
-        core.setFailed(blockingMessages.join("\n\n"));
       }
     }
   } finally {
