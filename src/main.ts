@@ -18,6 +18,7 @@ import { formatCost, queryPreview } from "./reporters/github/github.ts";
 import { fetchPrChangedFiles } from "./gate/changed-files.ts";
 import { evaluateTestPresence } from "./gate/test-presence.ts";
 import { gateRegression } from "./gate/regression.ts";
+import { gateNewQuery } from "./gate/new-query.ts";
 import { gateSchemaChange } from "./gate/schema-change.ts";
 import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
@@ -329,17 +330,20 @@ async function runInCI(
         else core.warning(message);
       }
 
-      // New-query arm stays on its inline setFailed. Its default policy is
-      // `warn`, so routing it through resolveVerdict would silently stop it
-      // blocking — a behavior change that needs a human sign-off, tracked
-      // separately from this regression-only task.
+      // New-query arm routed through the shared policy engine (#3500). A plain
+      // new query is informational (`new-query` defaults to `warn`), but one that
+      // ships with a beyond-threshold index recommendation is actionable, so
+      // `gateEligibleNewQueries` scopes to that set and the gate routes under the
+      // `new-query-index` key, which defaults `fail` — blocking exactly as the old
+      // inline path did, while letting a repo soften it to warn/off.
       const gateNewQueries = gateEligibleNewQueries(
         newQueries,
         config.regressionThreshold,
         config.acknowledgedQueryHashes,
         config.minimumCost,
       );
-      if (gateNewQueries.length > 0) {
+      const newQueryGate = gateNewQuery(gateNewQueries.length, policyConfig);
+      if (newQueryGate) {
         const messages = gateNewQueries.map((q) => {
           const preview = queryPreview(q.formattedQuery);
           // gateEligibleNewQueries only returns improvements_available entries.
@@ -350,9 +354,9 @@ async function runInCI(
           const detail = `cost ${formatCost(opt.cost)}, index recommendation cuts it ${opt.costReductionPercentage.toFixed(1)}%`;
           return `  - ${preview}: ${detail}${linkFor(q.hash)}`;
         });
-        core.setFailed(
-          `${gateNewQueries.length} new quer${gateNewQueries.length === 1 ? "y" : "ies"} ship${gateNewQueries.length === 1 ? "s" : ""} with a high-impact index recommendation (acknowledge on the dashboard to allow):\n${messages.join("\n")}`,
-        );
+        const message = `${gateNewQueries.length} new quer${gateNewQueries.length === 1 ? "y" : "ies"} ship${gateNewQueries.length === 1 ? "s" : ""} with a high-impact index recommendation (acknowledge on the dashboard to allow):\n${messages.join("\n")}`;
+        if (newQueryGate.conclusion === "failure") core.setFailed(message);
+        else core.warning(message);
       }
     }
   } finally {
