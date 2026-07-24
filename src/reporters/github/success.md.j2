@@ -101,7 +101,7 @@
 
 {% for r in displayRecommendations %}
 {% set link = queryLinks[r.fingerprint] %}
-- {% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
+- {% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction){% if r.belowThreshold %} · below cost threshold (not gated){% endif %}{{""}}
 {% endfor %}
 {% endif %}
 

@@ -534,6 +534,7 @@ describe("gateEligibleNewQueries", () => {
     hash: string,
     costReductionPercentage: number,
     hasIndexRecommendation = true,
+    cost = 407_000,
   ): CiQueryPayload {
     return {
       hash,
@@ -541,7 +542,7 @@ describe("gateEligibleNewQueries", () => {
       formattedQuery: "SELECT *\nFROM t\nWHERE user_id = $1",
       optimization: {
         state: "improvements_available",
-        cost: 407_000,
+        cost,
         optimizedCost: 8.2,
         costReductionPercentage,
         indexRecommendations: hasIndexRecommendation
@@ -603,6 +604,39 @@ describe("gateEligibleNewQueries", () => {
     );
 
     expect(result.map((q) => q.hash)).toEqual(["b"]);
+  });
+
+  test("does not gate a new query whose cost is at or below minimumCost", async () => {
+    const result = gateEligibleNewQueries(
+      [withRecommendation("a", 99, true, 80)],
+      90,
+      [],
+      100,
+    );
+
+    expect(result).toHaveLength(0);
+  });
+
+  test("gates a new query whose cost exceeds minimumCost", async () => {
+    const result = gateEligibleNewQueries(
+      [withRecommendation("a", 99, true, 150)],
+      90,
+      [],
+      100,
+    );
+
+    expect(result.map((q) => q.hash)).toEqual(["a"]);
+  });
+
+  test("with minimumCost 0 the cost floor is disabled", async () => {
+    const result = gateEligibleNewQueries(
+      [withRecommendation("a", 99, true, 5)],
+      90,
+      [],
+      0,
+    );
+
+    expect(result.map((q) => q.hash)).toEqual(["a"]);
   });
 });
 

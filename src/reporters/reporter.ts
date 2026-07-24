@@ -81,6 +81,13 @@ export interface ReportContext {
   statisticsMode: StatisticsMode;
   computedStats?: ComputedStats;
   recommendations: ReportIndexRecommendation[];
+  /**
+   * Recommendations dropped from `recommendations` because their `baseCost` is at
+   * or below the repo's `minimumCost` floor — too cheap to gate on, but still
+   * shown in the comment (marked below-threshold) so a below-floor query isn't
+   * mislabeled "no index suggestion". Empty when no floor is set.
+   */
+  belowThresholdRecommendations?: ReportIndexRecommendation[];
   queriesPastThreshold: ReportQueryCostWarning[];
   queryStats: Readonly<ReportStatistics>;
   statistics: [IndexIdentifier, IndexStatistic][];

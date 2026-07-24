@@ -479,11 +479,18 @@ export async function compareRuns(
  * regression must exceed that same percentage. Acknowledged hashes are exempt,
  * the same triage escape hatch regressions have; ignored hashes never reach here
  * (they're dropped in {@link buildQueries}).
+ *
+ * `minimumCost` is the same cost floor the regressed/improved arms honor in
+ * {@link buildComparison}: a query at or below it is too cheap to gate on
+ * (a large percentage cut of a trivial cost is still a trivial saving), so it is
+ * excluded even when its recommendation clears the percentage threshold. `0`
+ * disables the floor.
  */
 export function gateEligibleNewQueries(
   newQueries: CiQueryPayload[],
   regressionThreshold: number,
   acknowledgedQueryHashes: string[] = [],
+  minimumCost = 0,
 ): CiQueryPayload[] {
   const acknowledgedSet = new Set(acknowledgedQueryHashes);
   return newQueries.filter((q) => {
@@ -492,7 +499,8 @@ export function gateEligibleNewQueries(
     return (
       opt.state === "improvements_available" &&
       opt.indexRecommendations.length > 0 &&
-      opt.costReductionPercentage > regressionThreshold
+      opt.costReductionPercentage > regressionThreshold &&
+      (minimumCost <= 0 || opt.cost > minimumCost)
     );
   });
 }

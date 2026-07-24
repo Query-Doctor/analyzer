@@ -34,6 +34,8 @@ n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
 interface DisplayRecommendation extends ReportIndexRecommendation {
   queryPreview: string;
+  /** Below the `minimumCost` floor: shown for context, but does not gate the PR. */
+  belowThreshold: boolean;
 }
 
 interface DisplayRegression extends RegressedQuery {
@@ -70,10 +72,12 @@ export function queryPreview(formattedQuery: string): string {
 
 function addPreviews(
   recs: ReportIndexRecommendation[],
+  belowThreshold = false,
 ): DisplayRecommendation[] {
   return recs.map((r) => ({
     ...r,
     queryPreview: queryPreview(r.formattedQuery),
+    belowThreshold,
   }));
 }
 
@@ -172,10 +176,23 @@ export function buildViewModel(ctx: ReportContext) {
   const recommendedHashes = new Set(
     ctx.recommendations.map((r) => r.fingerprint),
   );
-
-  const displayRecommendations = addPreviews(
-    ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
+  // New queries whose recommendation is below the cost floor: shown with their
+  // fix, marked below-threshold, and NOT gated. Without this they'd fall through
+  // to displayNewQueries and be mislabeled "no index suggestion". Scoped to new
+  // queries — below-floor recommendations on pre-existing queries stay hidden.
+  const belowThresholdNewRecs = (ctx.belowThresholdRecommendations ?? []).filter(
+    (r) => newQueryHashes.has(r.fingerprint),
   );
+  const belowThresholdHashes = new Set(
+    belowThresholdNewRecs.map((r) => r.fingerprint),
+  );
+
+  const displayRecommendations = [
+    ...addPreviews(
+      ctx.recommendations.filter((r) => newQueryHashes.has(r.fingerprint)),
+    ),
+    ...addPreviews(belowThresholdNewRecs, true),
+  ];
   const preExistingRecommendations = addPreviews(
     ctx.recommendations.filter((r) => !newQueryHashes.has(r.fingerprint)),
   );
@@ -183,9 +200,12 @@ export function buildViewModel(ctx: ReportContext) {
   // New queries that carry no index recommendation are otherwise invisible:
   // counted in the "N new" tally but listed nowhere (Site#3287 follow-up). The
   // ones that DO have a recommendation already render under "introduces queries
-  // with recommendations", so exclude them here to avoid double-listing.
+  // with recommendations" (gated above the floor, below-threshold below it), so
+  // exclude both here to avoid double-listing.
   const displayNewQueries = addNewQueryPreviews(
-    ctx.comparison!.newQueries.filter((q) => !recommendedHashes.has(q.hash)),
+    ctx.comparison!.newQueries.filter(
+      (q) => !recommendedHashes.has(q.hash) && !belowThresholdHashes.has(q.hash),
+    ),
   );
 
   const displayRegressed = addRegressionPreviews(ctx.comparison!.regressed);
