@@ -185,12 +185,12 @@ export class Runner {
         : queriesPastThreshold;
 
     if (config.minimumCost > 0) {
-      const filtered =
-        recommendations.length - filteredRecommendations.length +
-        (queriesPastThreshold.length - filteredThresholdWarnings.length);
-      if (filtered > 0) {
+      const shownNotGated = belowThresholdRecommendations.length;
+      const filteredWarnings =
+        queriesPastThreshold.length - filteredThresholdWarnings.length;
+      if (shownNotGated > 0 || filteredWarnings > 0) {
         console.log(
-          `Filtered ${filtered} queries below minimumCost=${config.minimumCost} from PR comment`,
+          `minimumCost=${config.minimumCost}: ${shownNotGated} recommendation(s) shown below threshold (not gated), ${filteredWarnings} cost warning(s) filtered from the PR comment`,
         );
       }
     }
