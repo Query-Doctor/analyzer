@@ -270,6 +270,95 @@ describe("buildViewModel", () => {
     expect(vm.displayNewQueries).toHaveLength(0);
   });
 
+  test("a new query with a below-threshold recommendation is surfaced as a recommendation, not 'no index suggestion'", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "cheap-new",
+            query: 'SELECT "id" FROM "projects"',
+            formattedQuery: 'SELECT "id" FROM "projects"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: {
+              state: "improvements_available",
+              cost: 13,
+              optimizedCost: 9,
+              costReductionPercentage: 30,
+              indexRecommendations: [
+                {
+                  schema: "public",
+                  table: "projects",
+                  columns: [{ schema: "public", table: "projects", column: "team_id" }],
+                  definition: "CREATE INDEX ON projects (team_id)",
+                },
+              ],
+              indexesUsed: [],
+            },
+          },
+        ],
+      }),
+      recommendations: [],
+      belowThresholdRecommendations: [
+        makeRecommendation({
+          fingerprint: "cheap-new",
+          formattedQuery: 'SELECT "id" FROM "projects"',
+          baseCost: 13,
+          optimizedCost: 9,
+        }),
+      ],
+    });
+    const vm = buildViewModel(ctx);
+
+    expect(vm.displayNewQueries).toHaveLength(0);
+    expect(vm.displayRecommendations.map((r) => r.fingerprint)).toEqual([
+      "cheap-new",
+    ]);
+    expect(vm.displayRecommendations[0].belowThreshold).toBe(true);
+  });
+
+  test("template shows a below-threshold new-query recommendation with a not-gated note", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        newQueries: [
+          {
+            hash: "cheap-new",
+            query: 'SELECT "id" FROM "projects"',
+            formattedQuery: 'SELECT "id" FROM "projects"',
+            nudges: [], tags: [], tableReferences: [],
+            optimization: {
+              state: "improvements_available",
+              cost: 13,
+              optimizedCost: 9,
+              costReductionPercentage: 30,
+              indexRecommendations: [
+                {
+                  schema: "public",
+                  table: "projects",
+                  columns: [{ schema: "public", table: "projects", column: "team_id" }],
+                  definition: "CREATE INDEX ON projects (team_id)",
+                },
+              ],
+              indexesUsed: [],
+            },
+          },
+        ],
+      }),
+      belowThresholdRecommendations: [
+        makeRecommendation({
+          fingerprint: "cheap-new",
+          formattedQuery: 'SELECT "id" FROM "projects"',
+          baseCost: 13,
+          optimizedCost: 9,
+        }),
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain('SELECT "id" FROM "projects"');
+    expect(output).toContain("below cost threshold (not gated)");
+    expect(output).not.toContain("no index suggestion");
+  });
+
   test("template lists a new query that has no index suggestion", () => {
     const ctx = makeContext({
       comparison: makeComparison({

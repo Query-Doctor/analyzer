@@ -172,6 +172,13 @@ export class Runner {
       config.minimumCost > 0
         ? recommendations.filter((r) => r.baseCost > config.minimumCost)
         : recommendations;
+    // Kept, not discarded: still shown in the comment (marked below-threshold) so
+    // a below-floor query isn't mislabeled "no index suggestion", but excluded
+    // from gating and index statistics.
+    const belowThresholdRecommendations =
+      config.minimumCost > 0
+        ? recommendations.filter((r) => r.baseCost <= config.minimumCost)
+        : [];
     const filteredThresholdWarnings =
       config.minimumCost > 0
         ? queriesPastThreshold.filter((w) => w.baseCost > config.minimumCost)
@@ -196,6 +203,7 @@ export class Runner {
       statisticsMode: this.remote.optimizer.statisticsMode,
       computedStats: this.remote.optimizer.computedStats,
       recommendations: filteredRecommendations,
+      belowThresholdRecommendations,
       queriesPastThreshold: filteredThresholdWarnings,
       queryStats: Object.freeze({
         analyzed,

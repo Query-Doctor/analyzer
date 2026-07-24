@@ -337,6 +337,7 @@ async function runInCI(
         newQueries,
         config.regressionThreshold,
         config.acknowledgedQueryHashes,
+        config.minimumCost,
       );
       if (gateNewQueries.length > 0) {
         const messages = gateNewQueries.map((q) => {
