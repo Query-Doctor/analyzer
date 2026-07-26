@@ -29,7 +29,7 @@ runs:
 
     # Cache pgBadger build
     - name: Cache pgBadger
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       id: pgbadger-cache
       with:
         path: /usr/local/bin/pgbadger
@@ -64,7 +64,7 @@ runs:
         sudo chown -R $(whoami) /usr/lib/postgresql/${{ inputs.postgres-version }}
 
     - name: Cache postgresql-client
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       id: pg-client-cache
       with:
         path: /usr/lib/postgresql/${{ inputs.postgres-version }}
