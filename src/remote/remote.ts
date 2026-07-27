@@ -99,6 +99,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * quick succession.
    */
   private lastStatsPushAt?: number;
+  /** Earliest time a failed refresh may be retried. See {@link Remote.STATS_RETRY_BACKOFF_MS}. */
+  private retryStatsAfter?: number;
+  private static readonly STATS_RETRY_BACKOFF_MS = 15 * 60 * 1000;
   private pgStatStatementsStatus: PgStatStatementsStatus =
     PgStatStatementsStatus.Unknown;
 
@@ -390,8 +393,14 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * baseline for it would push someone else's numbers as this project's
    * production statistics.
    */
-  private async refreshStatsIfDrifted(source: Connectable): Promise<void> {
+  private async refreshStatsIfStale(source: Connectable): Promise<void> {
     if (!this.statsBaseline || this.refreshingStats) {
+      return;
+    }
+    // Back off after a failure. `lastStatsPushAt` only advances on success, so
+    // without this a dump that keeps throwing (a statement_timeout on a large
+    // pg_statistic read, say) would be retried on every 60s poll.
+    if (this.retryStatsAfter !== undefined && Date.now() < this.retryStatsAfter) {
       return;
     }
     const connector = this.sourceManager.getConnectorFor(source);
@@ -413,6 +422,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
       // applyStatistics records the new baseline and emits `statsApplied`,
       // which is what carries the dump back to the server.
       await this.applyStatistics(await this.dumpSourceStats(source));
+      this.retryStatsAfter = undefined;
+    } catch (error) {
+      this.retryStatsAfter = Date.now() + Remote.STATS_RETRY_BACKOFF_MS;
+      throw error;
     } finally {
       this.refreshingStats = false;
     }
@@ -466,6 +479,13 @@ export class Remote extends EventEmitter<RemoteEvents> {
       return;
     }
     this.statsBaseline = baselineFromDump(stats);
+    // Arm the daily floor too. The sync path reaches the optimizer directly
+    // rather than through `applyStatistics`, so without this `lastStatsPushAt`
+    // stays undefined and the floor never fires for a seeded analyzer — which
+    // is every analyzer that hasn't happened to drift. Dated from now rather
+    // than the snapshot's capture time, which the RPC doesn't carry: the floor
+    // then fires 24h after connect instead of immediately.
+    this.lastStatsPushAt = Date.now();
   }
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
@@ -529,7 +549,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     // The schema poll is also the drift tick: it already runs every 60s, so
     // checking here costs one `pg_class` read and no extra schedule.
     this.schemaLoader.on("polled", () => {
-      this.refreshStatsIfDrifted(source).catch((error) => {
+      this.refreshStatsIfStale(source).catch((error) => {
         log.error("Failed to check statistics drift", "remote");
         console.error(error);
       });
