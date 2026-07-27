@@ -54,6 +54,16 @@ interface DisplayNewQuery {
   costLabel: string;
 }
 
+/** Matches the cap in Site's `modeledTablesWarning` (mcp-server/src/apply-stats.ts). */
+const MODELED_TABLES_SHOWN = 10;
+
+interface ModeledTablesNotice {
+  /** Total modeled tables, including any beyond the cap. */
+  count: number;
+  /** Backticked names, capped, with a trailing "and N more" when truncated. */
+  list: string;
+}
+
 export function formatCost(cost: number): string {
   return Math.round(cost).toLocaleString("en-US");
 }
@@ -147,10 +157,35 @@ function buildSchemaChange(ctx: ReportContext): SchemaChangeView {
   return buildSchemaChangeView(change.operations);
 }
 
+/**
+ * Caveat for tables the production snapshot never saw: the synthesizer estimated
+ * their row counts, so costs touching them are modeled rather than measured. The
+ * cap and phrasing mirror `modeledTablesWarning` in Site's mcp-server so the CI
+ * comment and the MCP tools tell a developer the same thing.
+ *
+ * Named `modeledTablesNotice`, not `modeledTables`: the reporter renders with
+ * `{...ctx, ...viewModel}`, and reusing the key would shadow `ctx.modeledTables`
+ * with a different shape — correct only for as long as the spread order holds.
+ */
+function buildModeledTablesNotice(
+  ctx: ReportContext,
+): ModeledTablesNotice | null {
+  const tables = ctx.modeledTables ?? [];
+  if (tables.length === 0) return null;
+  const shown = tables.slice(0, MODELED_TABLES_SHOWN);
+  const rest = tables.length - shown.length;
+  const names = shown.map((t) => `\`${t}\``).join(", ");
+  return {
+    count: tables.length,
+    list: rest > 0 ? `${names}, and ${rest} more` : names,
+  };
+}
+
 export function buildViewModel(ctx: ReportContext) {
   const hasComparison = !!ctx.comparison;
   const queryLinks = buildQueryLinks(ctx);
   const schemaChange = buildSchemaChange(ctx);
+  const modeledTablesNotice = buildModeledTablesNotice(ctx);
 
   if (!hasComparison) {
     return {
@@ -167,6 +202,7 @@ export function buildViewModel(ctx: ReportContext) {
       schemaChange,
       schemaChangeHeading,
       schemaChangeLabel,
+      modeledTablesNotice,
     };
   }
 
@@ -230,6 +266,7 @@ export function buildViewModel(ctx: ReportContext) {
     schemaChange,
     schemaChangeHeading,
     schemaChangeLabel,
+    modeledTablesNotice,
   };
 }
 

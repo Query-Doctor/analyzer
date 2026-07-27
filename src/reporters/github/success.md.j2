@@ -37,6 +37,11 @@
 > _{{ testPresenceVerdict.triageHint }}_
 
 {% endif %}
+{% if modeledTablesNotice %}
+> [!NOTE]
+> **{{ modeledTablesNotice.count }} table(s) in your schema aren't covered by the statistics you loaded**, so their costs are modeled, not verified against real data: {{ modeledTablesNotice.list }}. A query touching one isn't a clean pass.
+
+{% endif %}
 {% if hasComparison %}
 {{ queryStats.analyzed | default('?') }} queries analyzed
 {% elif comparisonUnavailable %}

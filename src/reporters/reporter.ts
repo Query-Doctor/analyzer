@@ -134,7 +134,7 @@ export interface ReportContext {
    * Tables ("schema.table") in the analyzed schema the production snapshot
    * doesn't cover, so their costs were modeled by the synthesizer rather than
    * verified against real data. Empty when the snapshot covers the whole schema.
-   * Not yet rendered in the comment — plumbed for the surfacing that follows.
+   * Rendered as a non-blocking note at the top of the GitHub comment.
    */
   modeledTables?: string[];
 }
