@@ -22,6 +22,11 @@ import { EventEmitter } from "node:events";
 import { log } from "../log.ts";
 import { QueryLoader } from "./query-loader.ts";
 import { SchemaLoader } from "./schema-loader.ts";
+import {
+  baselineFromDump,
+  detectDrift,
+  type StatsBaseline,
+} from "./stats-drift.ts";
 
 type RemoteEvents = {
   dumpLog: [line: string];
@@ -77,6 +82,16 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private isPolling = false;
   private queryLoader?: QueryLoader;
   private schemaLoader?: SchemaLoader;
+  /**
+   * Tables and row counts as of the last statistics dump this analyzer pushed.
+   * Drift is measured against this, not against the previous poll, so a slow
+   * steady change still eventually earns a re-dump (ADR 0007 §2). Undefined
+   * until the first push, and only maintained for `fromSource` stats — an
+   * imported or synthetic snapshot has no live baseline to drift against.
+   */
+  private statsBaseline?: StatsBaseline;
+  /** Guards against a second drift dump starting while one is in flight. */
+  private refreshingStats = false;
   private pgStatStatementsStatus: PgStatStatementsStatus =
     PgStatStatementsStatus.Unknown;
 
@@ -359,6 +374,40 @@ export class Remote extends EventEmitter<RemoteEvents> {
     return { mode: await this.dumpSourceStats(source), strategy: "fromSource" };
   }
 
+  /**
+   * Re-dump and push the source's statistics when they've drifted far enough
+   * from what we last pushed (ADR 0007 §2). Runs on the schema poll tick.
+   *
+   * No-ops until a `fromSource` dump has established a baseline: a synthetic or
+   * imported snapshot has nothing meaningful to drift against, and inventing a
+   * baseline for it would push someone else's numbers as this project's
+   * production statistics.
+   */
+  private async refreshStatsIfDrifted(source: Connectable): Promise<void> {
+    if (!this.statsBaseline || this.refreshingStats) {
+      return;
+    }
+    const connector = this.sourceManager.getConnectorFor(source);
+    const reltuples = await connector.getReltuplesByTable();
+    const verdict = detectDrift(this.statsBaseline, { reltuples });
+    if (!verdict.drifted) {
+      return;
+    }
+
+    this.refreshingStats = true;
+    try {
+      log.info(
+        `${verdict.kind === "shape" ? "Shape" : "Size"} Drift — ${verdict.reason}. Re-dumping production statistics`,
+        "remote",
+      );
+      // applyStatistics records the new baseline and emits `statsApplied`,
+      // which is what carries the dump back to the server.
+      await this.applyStatistics(await this.dumpSourceStats(source));
+    } finally {
+      this.refreshingStats = false;
+    }
+  }
+
   private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
     const pg = this.sourceManager.getOrCreateConnection(
       source,
@@ -391,6 +440,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
     await this.optimizer.setStatistics(statsMode);
     const stats = this.optimizer.ownMetadata;
     if (stats) {
+      // Record what we're about to push as the drift baseline. Only meaningful
+      // for source-derived stats; an imported snapshot describes someone else's
+      // database, so drifting against it would be nonsense.
+      if (statsMode.kind === "fromStatisticsExport") {
+        this.statsBaseline = baselineFromDump(stats);
+      }
       this.emit("statsApplied", stats);
     }
     // don't block the reply by awaiting all optimizations
@@ -437,6 +492,14 @@ export class Remote extends EventEmitter<RemoteEvents> {
     this.schemaLoader = new SchemaLoader(this.sourceManager, source);
     this.schemaLoader.on("diff", (diffs, schema) => {
       this.emit("schemaDiffed", diffs, schema);
+    });
+    // The schema poll is also the drift tick: it already runs every 60s, so
+    // checking here costs one `pg_class` read and no extra schedule.
+    this.schemaLoader.on("polled", () => {
+      this.refreshStatsIfDrifted(source).catch((error) => {
+        log.error("Failed to check statistics drift", "remote");
+        console.error(error);
+      });
     });
     this.schemaLoader.on("pollError", (error) => {
       log.error("Failed to poll schema", "remote");
