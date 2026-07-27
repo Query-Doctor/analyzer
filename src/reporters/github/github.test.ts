@@ -975,3 +975,84 @@ describe("test-presence verdict rendering", () => {
     );
   });
 });
+
+describe("modeled-tables notice (Site#3420)", () => {
+  const MODELED_SENTENCE = "aren't covered by the statistics you loaded";
+
+  test("builds the notice on the comparison path", () => {
+    const vm = buildViewModel(
+      makeContext({
+        comparison: makeComparison(),
+        modeledTables: ["public.invoices"],
+      }),
+    );
+    expect(vm.modeledTablesNotice).toEqual({
+      count: 1,
+      list: "`public.invoices`",
+    });
+  });
+
+  // The no-baseline run is the one that matters: buildViewModel returns early
+  // for it from a separate object literal, so a field added only to the other
+  // return vanishes here — silently, and exactly where an unverified cost is
+  // most likely to read as a clean pass.
+  test("builds the notice on the non-comparison path too", () => {
+    const vm = buildViewModel(
+      makeContext({ modeledTables: ["public.invoices"] }),
+    );
+    expect(vm.hasComparison).toBe(false);
+    expect(vm.modeledTablesNotice).toEqual({
+      count: 1,
+      list: "`public.invoices`",
+    });
+  });
+
+  test("caps the list at ten names and counts the rest", () => {
+    const tables = Array.from({ length: 13 }, (_, i) => `public.t${i}`);
+    const vm = buildViewModel(makeContext({ modeledTables: tables }));
+    expect(vm.modeledTablesNotice?.count).toBe(13);
+    expect(vm.modeledTablesNotice?.list).toBe(
+      "`public.t0`, `public.t1`, `public.t2`, `public.t3`, `public.t4`, `public.t5`, `public.t6`, `public.t7`, `public.t8`, `public.t9`, and 3 more",
+    );
+  });
+
+  test("is null when the snapshot covers the whole schema", () => {
+    expect(buildViewModel(makeContext({ modeledTables: [] })).modeledTablesNotice).toBeNull();
+  });
+
+  test("is null when the run carries no modeled-tables list at all", () => {
+    expect(buildViewModel(makeContext()).modeledTablesNotice).toBeNull();
+  });
+
+  test("renders a non-blocking note naming the tables", () => {
+    const output = renderTemplate(
+      makeContext({
+        comparison: makeComparison(),
+        modeledTables: ["public.invoices", "public.line_items"],
+      }),
+    );
+    expect(output).toContain("[!NOTE]");
+    expect(output).not.toContain("[!CAUTION]");
+    expect(output).not.toContain("[!WARNING]");
+    expect(output).toContain(
+      "**2 table(s) in your schema aren't covered by the statistics you loaded**",
+    );
+    expect(output).toContain("`public.invoices`, `public.line_items`");
+    expect(output).toContain("A query touching one isn't a clean pass.");
+  });
+
+  test("renders the note on a run with no baseline", () => {
+    const output = renderTemplate(
+      makeContext({ modeledTables: ["public.invoices"] }),
+    );
+    expect(output).toContain(MODELED_SENTENCE);
+    expect(output).toContain("`public.invoices`");
+  });
+
+  test("renders nothing when there are no modeled tables", () => {
+    expect(renderTemplate(makeContext({ modeledTables: [] }))).not.toContain(
+      MODELED_SENTENCE,
+    );
+    expect(renderTemplate(makeContext())).not.toContain(MODELED_SENTENCE);
+  });
+});
