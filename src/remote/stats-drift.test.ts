@@ -3,6 +3,7 @@ import type { ExportedStats } from "@query-doctor/core";
 import {
   baselineFromDump,
   detectDrift,
+  isPastRefreshFloor,
   SIZE_DRIFT_MIN_ROWS,
 } from "./stats-drift.ts";
 
@@ -147,5 +148,33 @@ describe("detectDrift — Size Drift", () => {
     });
 
     expect(verdict.drifted).toBe(false);
+  });
+});
+
+describe("isPastRefreshFloor", () => {
+  const NOW = 1_800_000_000_000;
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it("is false before the analyzer has ever pushed", () => {
+    // Nothing to compare against, and dumping on a timer for an analyzer with
+    // no baseline would publish statistics the server never asked for.
+    expect(isPastRefreshFloor(undefined, NOW)).toBe(false);
+  });
+
+  it("is false while the last push is recent", () => {
+    expect(isPastRefreshFloor(NOW - DAY / 2, NOW)).toBe(false);
+  });
+
+  it("is true once a full day has passed", () => {
+    expect(isPastRefreshFloor(NOW - DAY, NOW)).toBe(true);
+  });
+
+  it("is true well past the floor", () => {
+    expect(isPastRefreshFloor(NOW - DAY * 40, NOW)).toBe(true);
+  });
+
+  it("honours a custom floor", () => {
+    expect(isPastRefreshFloor(NOW - 5_000, NOW, 1_000)).toBe(true);
+    expect(isPastRefreshFloor(NOW - 500, NOW, 1_000)).toBe(false);
   });
 });

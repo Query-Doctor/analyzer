@@ -143,3 +143,31 @@ function summarize(keys: TableKey[]): string {
   const rest = keys.length - shown.length;
   return rest > 0 ? `${shown.join(", ")}, and ${rest} more` : shown.join(", ");
 }
+
+/**
+ * How long a snapshot may stand without a re-dump, regardless of drift.
+ *
+ * Shape Drift and Size Drift both watch structure and row counts. Neither sees
+ * a database whose tables and sizes hold steady while the *distribution* of its
+ * data moves: histograms, most-common-value lists and correlation all age with
+ * the values, not the row count. A floor bounds how wrong those can get.
+ */
+export const DEFAULT_REFRESH_FLOOR_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Whether the last push is old enough to earn a re-dump on its own.
+ *
+ * Never true before a first push: with no baseline there is nothing to compare
+ * against, and dumping on a timer for an analyzer that has never pushed would
+ * publish statistics for a database the server may not expect.
+ */
+export function isPastRefreshFloor(
+  lastPushedAt: number | undefined,
+  now: number,
+  floorMs: number = DEFAULT_REFRESH_FLOOR_MS,
+): boolean {
+  if (lastPushedAt === undefined) {
+    return false;
+  }
+  return now - lastPushedAt >= floorMs;
+}

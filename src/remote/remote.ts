@@ -25,6 +25,7 @@ import { SchemaLoader } from "./schema-loader.ts";
 import {
   baselineFromDump,
   detectDrift,
+  isPastRefreshFloor,
   type StatsBaseline,
 } from "./stats-drift.ts";
 
@@ -92,6 +93,12 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private statsBaseline?: StatsBaseline;
   /** Guards against a second drift dump starting while one is in flight. */
   private refreshingStats = false;
+  /**
+   * When this analyzer last pushed a dump, for the daily floor. A drift-
+   * triggered push updates it too, so the two triggers can't dump twice in
+   * quick succession.
+   */
+  private lastStatsPushAt?: number;
   private pgStatStatementsStatus: PgStatStatementsStatus =
     PgStatStatementsStatus.Unknown;
 
@@ -390,14 +397,17 @@ export class Remote extends EventEmitter<RemoteEvents> {
     const connector = this.sourceManager.getConnectorFor(source);
     const reltuples = await connector.getReltuplesByTable();
     const verdict = detectDrift(this.statsBaseline, { reltuples });
-    if (!verdict.drifted) {
+    const pastFloor = isPastRefreshFloor(this.lastStatsPushAt, Date.now());
+    if (!verdict.drifted && !pastFloor) {
       return;
     }
 
     this.refreshingStats = true;
     try {
       log.info(
-        `${verdict.kind === "shape" ? "Shape" : "Size"} Drift — ${verdict.reason}. Re-dumping production statistics`,
+        verdict.drifted
+          ? `${verdict.kind === "shape" ? "Shape" : "Size"} Drift — ${verdict.reason}. Re-dumping production statistics`
+          : "Production statistics are past the daily floor. Re-dumping",
         "remote",
       );
       // applyStatistics records the new baseline and emits `statsApplied`,
@@ -467,6 +477,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
       // database, so drifting against it would be nonsense.
       if (statsMode.kind === "fromStatisticsExport") {
         this.statsBaseline = baselineFromDump(stats);
+        this.lastStatsPushAt = Date.now();
       }
       this.emit("statsApplied", stats);
     }
