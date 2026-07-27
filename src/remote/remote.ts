@@ -490,16 +490,18 @@ export class Remote extends EventEmitter<RemoteEvents> {
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
     await this.optimizer.setStatistics(statsMode);
-    const stats = this.optimizer.ownMetadata;
-    if (stats) {
-      // Record what we're about to push as the drift baseline. Only meaningful
-      // for source-derived stats; an imported snapshot describes someone else's
-      // database, so drifting against it would be nonsense.
-      if (statsMode.kind === "fromStatisticsExport") {
-        this.statsBaseline = baselineFromDump(stats);
-        this.lastStatsPushAt = Date.now();
-      }
-      this.emit("statsApplied", stats);
+    // Push the statistics we were handed, not `optimizer.ownMetadata`. That is
+    // a dump of the *optimizing* database, which is restored with
+    // `--exclude-table-data-and-children` and never durably analyzed, so every
+    // table in it reports `reltuples = -1` and every column `stats: null`.
+    // Sending it would overwrite the project's real snapshot with an empty one.
+    //
+    // `fromAssumption` carries no real numbers at all, so it pushes nothing —
+    // synthetic defaults are not this project's production statistics.
+    if (statsMode.kind === "fromStatisticsExport" && statsMode.stats.length > 0) {
+      this.statsBaseline = baselineFromDump(statsMode.stats);
+      this.lastStatsPushAt = Date.now();
+      this.emit("statsApplied", statsMode.stats);
     }
     // don't block the reply by awaiting all optimizations
     this.optimizer.restart();
