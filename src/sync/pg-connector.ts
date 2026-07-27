@@ -407,6 +407,36 @@ ORDER BY
     return `${value.table}:${value.data[ctidSymbol]}` as Hash;
   }
 
+  /**
+   * Per-table `reltuples` for every user table, keyed `"schema.table"`.
+   *
+   * The Size/Shape Drift probe (ADR 0007 §2). Reads `pg_class` only — never
+   * `pg_statistic` — so it is cheap enough to fold into the 60s schema poll,
+   * unlike the full statistics dump it decides whether to run.
+   */
+  public async getReltuplesByTable(): Promise<Map<string, number>> {
+    const results = await this.db.exec<{
+      schema_name: string;
+      table_name: string;
+      reltuples: string;
+    }>(
+      `SELECT n.nspname AS schema_name, c.relname AS table_name, c.reltuples::bigint AS reltuples
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relkind = 'r'
+         AND n.nspname NOT IN ('pg_catalog', 'information_schema', 'tiger', 'tiger_data', 'topology')
+         AND c.relname NOT IN ('pg_stat_statements', 'pg_stat_statements_info')`,
+    );
+    const byTable = new Map<string, number>();
+    for (const row of results) {
+      // A never-analyzed table reports -1; treat it as 0 so it doesn't read as
+      // a size change on the next poll.
+      const reltuples = Math.max(0, Number(row.reltuples));
+      byTable.set(`${row.schema_name}.${row.table_name}`, reltuples);
+    }
+    return byTable;
+  }
+
   public async getTotalRowCount(
     tables: { schemaName: PgIdentifier; tableName: PgIdentifier }[],
   ): Promise<number> {

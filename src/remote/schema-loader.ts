@@ -8,6 +8,12 @@ import type { MetadataLoader, MetadataLoaderEvents } from "./metadata-loader.ts"
 
 export type SchemaLoaderEvents = MetadataLoaderEvents & {
   diff: [diffs: Op[], schema: FullSchema];
+  /**
+   * Emitted after every successful poll, whether or not the schema changed.
+   * Statistics drift rides this tick: row counts move without the schema
+   * moving, so `diff` alone would miss Size Drift entirely.
+   */
+  polled: [schema: FullSchema];
 };
 
 export class SchemaLoader extends EventEmitter<SchemaLoaderEvents>
@@ -75,6 +81,9 @@ export class SchemaLoader extends EventEmitter<SchemaLoaderEvents>
       this.consecutiveErrors = 0;
       if (diffs.length > 0 && this.latestSchema) {
         this.emit("diff", diffs, this.latestSchema);
+      }
+      if (this.latestSchema) {
+        this.emit("polled", this.latestSchema);
       }
     } catch (error) {
       this.consecutiveErrors++;
