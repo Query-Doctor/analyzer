@@ -84,14 +84,15 @@ runs:
     - name: Start PostgreSQL
       shell: bash
       run: |
-        PORT=$(shuf -i 10000-65000 -n 1)
-        echo "PG_PORT=$PORT" >> $GITHUB_ENV
         echo "PG_DUMP_BINARY=/usr/lib/postgresql/${{ inputs.postgres-version }}/bin/pg_dump" >> $GITHUB_ENV
         echo "PG_RESTORE_BINARY=/usr/lib/postgresql/${{ inputs.postgres-version }}/bin/pg_restore" >> $GITHUB_ENV
+        # An empty host port makes the kernel pick a free one and bind it in the
+        # same operation, so nothing can claim it in between.
         docker run -d \
           --name query-doctor-postgres \
-          -p $PORT:5432 \
+          -p 127.0.0.1::5432 \
           ghcr.io/query-doctor/postgres:pg-${{ inputs.postgres-version }}
+        echo "PG_PORT=$(docker port query-doctor-postgres 5432/tcp | sed -n '1s/.*://p')" >> $GITHUB_ENV
         until docker exec query-doctor-postgres pg_isready -U postgres; do
           sleep 1
         done
