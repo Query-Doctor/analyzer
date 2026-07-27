@@ -436,6 +436,28 @@ export class Remote extends EventEmitter<RemoteEvents> {
     return connector.getDatabaseInfo();
   }
 
+  /**
+   * Adopt the server's stored snapshot as the drift baseline, without pushing.
+   *
+   * Drift is measured against the last dump this process pushed, so an analyzer
+   * that has never pushed has no baseline and never drifts — which is every
+   * project whose snapshot was seeded by hand. Seeding on connect closes that
+   * gap: the first schema poll can then compare the live schema against what
+   * the server holds and re-dump if it has fallen behind.
+   *
+   * Deliberately does not push. These numbers came from the server; echoing
+   * them back would republish a stale snapshot as if it were fresh.
+   *
+   * Ignored once a baseline exists, so a reconnect can't discard a fresher
+   * local one in favour of the server's older copy.
+   */
+  seedStatsBaseline(stats: ExportedStats[]): void {
+    if (this.statsBaseline || stats.length === 0) {
+      return;
+    }
+    this.statsBaseline = baselineFromDump(stats);
+  }
+
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
     await this.optimizer.setStatistics(statsMode);
     const stats = this.optimizer.ownMetadata;

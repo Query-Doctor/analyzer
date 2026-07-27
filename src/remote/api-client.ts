@@ -134,6 +134,24 @@ export class ApiClient extends RpcTarget implements ClientApi {
         });
         log.info(`Connected to the api`, this.#name);
         cleanup = hookUpApiReporter(api, remote);
+        // Adopt the stored snapshot as the drift baseline so a stale one gets
+        // refreshed on the next schema poll. Without this, drift only ever
+        // arms for analyzers that already pushed once in this process.
+        api.getProductionStats().then((stats) => {
+          if (!stats || stats.length === 0) return;
+          remote.seedStatsBaseline(stats);
+          log.info(
+            `Seeded the statistics drift baseline from the stored snapshot (${stats.length} tables)`,
+            this.#name,
+          );
+        }).catch((err) => {
+          // Non-fatal. Drift stays inert until a local dump sets a baseline,
+          // which is the behaviour before this seeding existed.
+          log.warn(
+            `Could not seed the statistics drift baseline: ${err}`,
+            this.#name,
+          );
+        });
       } catch (err) {
         if (err instanceof Error && err.message === "Unauthorized") {
           log.error(`Invalid TOKEN, cannot connect to the api`, this.#name);
