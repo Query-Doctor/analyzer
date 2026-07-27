@@ -84,3 +84,29 @@ describe("Remote.seedStatsBaseline", () => {
     expect(pushed).toBe(false);
   });
 });
+
+describe("Remote.seedStatsBaseline — daily floor interaction", () => {
+  function floorArmedAt(remote: Remote): number | undefined {
+    return (remote as unknown as { lastStatsPushAt?: number }).lastStatsPushAt;
+  }
+
+  it("arms the daily floor, so a seeded analyzer still refreshes eventually", () => {
+    // The sync path reaches the optimizer directly rather than through
+    // applyStatistics, so seeding is the only chance to set this. Left unset,
+    // isPastRefreshFloor short-circuits on undefined and the floor never fires
+    // for any analyzer that hasn't happened to drift.
+    const remote = makeRemote();
+
+    remote.seedStatsBaseline([table("users", 10_000)]);
+
+    expect(floorArmedAt(remote)).toBeTypeOf("number");
+  });
+
+  it("leaves the floor unarmed when there is no snapshot to seed from", () => {
+    const remote = makeRemote();
+
+    remote.seedStatsBaseline([]);
+
+    expect(floorArmedAt(remote)).toBeUndefined();
+  });
+});
