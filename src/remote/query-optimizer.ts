@@ -155,11 +155,27 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     const version = PostgresVersion.parse("17");
     const pg = this.manager.getOrCreateConnection(this.connectable);
     const ownStats = await Statistics.dumpStats(pg, version);
-    // Pass the current schema so tables the exported snapshot doesn't cover
-    // (added on this branch / since the snapshot was captured) are sized by the
-    // synthesizer instead of the flat default. No-op when statsMode isn't
-    // fromStatisticsExport.
-    const statistics = new Statistics(pg, version, ownStats, statsMode, schema);
+    // The current schema lets tables the exported snapshot doesn't cover — added
+    // on this branch, or since the snapshot was captured — be sized by the
+    // synthesizer instead of a flat default.
+    const statistics =
+      statsMode.kind === "fromStatisticsExport"
+        ? Statistics.forExport({
+            postgresVersion: version,
+            plannerTables: ownStats,
+            snapshot: statsMode.stats,
+            // Absent only before the first schema sync. An empty schema gives
+            // the synthesizer nothing to size, so those tables keep the default.
+            schema: schema ?? FullSchema.parse({}),
+            scale: statsMode.scale,
+            source: statsMode.source,
+          })
+        : Statistics.forAssumption({
+            postgresVersion: version,
+            plannerTables: ownStats,
+            reltuples: statsMode.reltuples,
+            scale: statsMode.scale,
+          });
     this.existingIndexes = schema?.indexes ?? [];
     const filteredIndexes = this.filterDisabledIndexes(this.existingIndexes);
     const optimizer = new IndexOptimizer(pg, statistics, filteredIndexes, {
