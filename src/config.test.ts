@@ -1,5 +1,5 @@
 import { test, expect, vi } from "vitest";
-import { DEFAULT_CONFIG } from "./config.ts";
+import { configuredStatisticsScale, DEFAULT_CONFIG } from "./config.ts";
 import type { ServerApi } from "@query-doctor/core";
 import type { RpcStub } from "capnweb";
 
@@ -54,4 +54,20 @@ test("passes repo and branch to getRepoConfig", async () => {
 
   await resolveConfig(api, "org/repo", "feat/my-branch");
   expect(getRepoConfig).toHaveBeenCalledWith("org/repo", "feat/my-branch");
+});
+
+test("reads the scale the repo is configured at", () => {
+  expect(configuredStatisticsScale({ ...DEFAULT_CONFIG, statisticsScale: 10 }))
+    .toBe(10);
+});
+
+test("falls back to the current data size when the repo config has no scale", () => {
+  // A Site that predates the setting, or a run with no repo config at all.
+  expect(configuredStatisticsScale(DEFAULT_CONFIG)).toBe(1);
+  expect(configuredStatisticsScale(undefined)).toBe(1);
+});
+
+test("ignores a scale the Site could not have meant", () => {
+  expect(configuredStatisticsScale({ statisticsScale: 0 })).toBe(1);
+  expect(configuredStatisticsScale({ statisticsScale: "10" })).toBe(1);
 });

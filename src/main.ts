@@ -21,7 +21,7 @@ import { gateRegression } from "./gate/regression.ts";
 import { gateNewQuery } from "./gate/new-query.ts";
 import { gateSchemaChange } from "./gate/schema-change.ts";
 import { resolveVerdict } from "./gate/policy.ts";
-import { DEFAULT_CONFIG } from "./config.ts";
+import { configuredStatisticsScale, DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
@@ -99,6 +99,14 @@ async function runInCI(
       ? new PgbadgerSource(logPath)
       : remoteDbManager.getConnectorFor(sourcePostgresUrl);
 
+    const statisticsScale = configuredStatisticsScale(config);
+    if (statisticsScale !== 1) {
+      log.info(
+        `Modeling queries at ${statisticsScale}x the current data size`,
+        "main",
+      );
+    }
+
     const runner = await Runner.build({
       targetPostgresUrl,
       sourcePostgresUrl,
@@ -107,6 +115,7 @@ async function runInCI(
       ignoredQueryHashes: config.ignoredQueryHashes,
       remote,
       productionStats: productionStats ?? undefined,
+      statisticsScale,
     });
     let allResults: QueryProcessResult[];
     let reportContext;
