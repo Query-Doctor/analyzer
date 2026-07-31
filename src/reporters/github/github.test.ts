@@ -781,11 +781,11 @@ describe("schema change section", () => {
     });
     const output = renderTemplate(ctx);
 
-    expect(output).toContain("Added");
-    expect(output).toContain("**Added**");
-    expect(output).toContain("table public.orders");
-    expect(output).toContain("**Removed**");
-    expect(output).toContain("index (removed)");
+    // Each line states its own kind, so the block needs no heading above it.
+    expect(output).toContain("<sub>Added table public.orders</sub>");
+    expect(output).toContain("<sub>Removed index</sub>");
+    expect(output).not.toContain("**Added**");
+    expect(output).not.toContain("**Removed**");
   });
 
   test("closes the schema list so the gates after it are not nested inside it", () => {
@@ -800,15 +800,22 @@ describe("schema change section", () => {
       }),
     });
     const lines = renderTemplate(ctx).split("\n");
+    const gateRow = lines.findIndex((l) => l.includes("**Schema drift**"));
+    const entries = lines.filter((l) => l.startsWith("<sub>"));
 
-    // A line straight after a list item is lazy continuation: markdown folds it
-    // into that `<li>`, so every gate row below renders inside the list.
-    const lastEntry = lines.findLastIndex((l) => l.startsWith("- "));
+    // Every expansion sits tight under its gate row, the way the regression and
+    // recommendation blocks do. A blank line here would drop the block further
+    // than any other caption in the comment.
+    expect(lines[gateRow + 1]).toBe(entries[0]);
+
+    // But the block must close, or the roster's leading is computed against a
+    // 12px line box and the next gate row is pulled up tighter than the rest.
+    const lastEntry = lines.lastIndexOf(entries.at(-1)!);
     expect(lines[lastEntry + 1]).toBe("");
 
-    // And a line straight after the gate row is a soft break inside the gate's
-    // own paragraph, so the group heading loses the space above it.
-    expect(lines[lines.indexOf("**Added**") - 1]).toBe("");
+    // Caption size, not body size — otherwise the detail reads as loud as the
+    // gate rows it sits beneath.
+    expect(entries.every((l) => l.endsWith("</sub>"))).toBe(true);
   });
 
   test("template renders no schema section when unchanged", () => {
@@ -830,8 +837,7 @@ describe("schema change section", () => {
       }),
     });
     const output = renderTemplate(ctx);
-    expect(output).toContain("**Added**");
-    expect(output).toContain("table public.orders");
+    expect(output).toContain("<sub>Added table public.orders</sub>");
   });
 });
 

@@ -119,7 +119,10 @@ function entryFromOp(op: Op): SchemaChangeEntry | null {
     return { kind: "added", object, name: name ?? "(unknown)" };
   }
   if (op.op === "remove" && isElementRoot) {
-    return { kind: "removed", object, name: "(removed)" };
+    // A `remove` op carries no value, so there is no name to print. The line
+    // reads "removed index" — the kind prefix already says what happened, which
+    // the old "(removed)" placeholder was standing in for.
+    return { kind: "removed", object, name: "" };
   }
   // Property-level add/replace, or a nested remove — all "changed" on the object.
   const detail = parsed.rest.length > 0 ? parsed.rest.join(".") : undefined;
@@ -152,18 +155,20 @@ export function buildSchemaChangeView(operations: Op[]): SchemaChangeView {
   };
 }
 
-const KIND_HEADINGS: Record<SchemaChangeKind, string> = {
+const KIND_LABELS: Record<SchemaChangeKind, string> = {
   added: "Added",
   removed: "Removed",
   changed: "Changed",
 };
 
-export function schemaChangeHeading(kind: SchemaChangeKind): string {
-  return KIND_HEADINGS[kind];
-}
-
-/** One-line label for an entry, e.g. "table public.users" or "index users.idx · isUnique". */
+/**
+ * One-line label for an entry, e.g. "Added table public.users" or
+ * "Changed index users.idx · isUnique". Each line states its own kind, so the
+ * entries need no group heading above them — which is what lets the block sit
+ * tight under its gate row the way every other expansion does.
+ */
 export function schemaChangeLabel(entry: SchemaChangeEntry): string {
-  const base = entry.name ? `${entry.object} ${entry.name}` : entry.object;
+  const object = entry.name ? `${entry.object} ${entry.name}` : entry.object;
+  const base = `${KIND_LABELS[entry.kind]} ${object}`;
   return entry.detail ? `${base} · ${entry.detail}` : base;
 }

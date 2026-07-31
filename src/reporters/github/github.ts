@@ -21,7 +21,6 @@ import {
 import type { CiQueryPayload, ImprovedQuery, RegressedQuery } from "../site-api.ts";
 import {
   buildSchemaChangeView,
-  schemaChangeHeading,
   schemaChangeLabel,
   type SchemaChangeView,
 } from "./schema-change.ts";
@@ -242,7 +241,6 @@ export function buildViewModel(ctx: ReportContext) {
       hasComparison: false,
       queryLinks,
       schemaChange,
-      schemaChangeHeading,
       schemaChangeLabel,
       modeledTablesNotice,
       gateSummary,
@@ -310,7 +308,6 @@ export function buildViewModel(ctx: ReportContext) {
     hasComparison: true,
     queryLinks,
     schemaChange,
-    schemaChangeHeading,
     schemaChangeLabel,
     modeledTablesNotice,
     gateSummary,
