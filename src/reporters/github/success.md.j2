@@ -15,6 +15,15 @@
 {% endfor %}```
 {% endfor %}
 {% endif %}
+{% if g.condition == "regression-beyond-threshold" and g.fired %}
+{% for q in displayRegressed %}
+{% set link = queryLinks[q.hash] %}
+{% if q.site %}{% if link %}[`{{ q.site.name }}`]({{ link }}){% else %}`{{ q.site.name }}`{% endif %}{% else %}{% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% endif %}
+
+<sub>{% if q.site and q.site.file %}{{ q.site.file }} · {% endif %}{{ formatCost(q.previousCost) }} on the baseline, {{ formatCost(q.currentCost) }} here (+{{ q.regressionPercentage | round(0) }}%)</sub>
+
+{% endfor %}
+{% endif %}
 {% if g.condition == "schema-drift" and g.fired and schemaChange.hasChanges %}
 {% for group in schemaChange.groups %}
 **{{ schemaChangeHeading(group.kind) }}**

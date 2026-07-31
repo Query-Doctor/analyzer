@@ -1055,6 +1055,41 @@ describe("callSite", () => {
   });
 });
 
+describe("cost regression detail", () => {
+  test("a fired regression gate lists the queries that got more expensive", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        regressed: [
+          { hash: "h1", query: "q", formattedQuery: "SELECT 1", tags: [],
+            previousCost: 1211, currentCost: 1289, regressionPercentage: 6.4 },
+        ],
+      }),
+      gates: [
+        { condition: "regression-beyond-threshold", label: "Cost regression", fired: true, conclusion: "failure", found: "1 query got more expensive" },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("1,211");
+    expect(output).toContain("1,289");
+  });
+});
+
+describe("regression rows carry the call site", () => {
+  test("names the function instead of the SQL preview", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        regressed: [{ hash: "h1", query: "q", formattedQuery: "SELECT 1",
+          tags: [{ key: "func_name", value: "DashboardRepository.findFunnelCounts" }],
+          previousCost: 20965, currentCost: 37205, regressionPercentage: 77 }],
+      }),
+      gates: [{ condition: "regression-beyond-threshold", label: "Cost regression", fired: true, conclusion: "failure", found: "1 query got more expensive" }],
+    });
+
+    expect(renderTemplate(ctx)).toContain("DashboardRepository.findFunnelCounts");
+  });
+});
+
 describe("gate icons", () => {
   test("wraps each glyph so GitHub does not turn it into a link", () => {
     const ctx = makeContext({

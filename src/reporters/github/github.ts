@@ -103,6 +103,7 @@ function addRegressionPreviews(
   return regressions.map((r) => ({
     ...r,
     queryPreview: queryPreview(r.formattedQuery),
+    site: callSite(r.tags),
   }));
 }
 
