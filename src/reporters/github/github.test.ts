@@ -204,29 +204,6 @@ describe("buildViewModel", () => {
     expect(vm.displayTestOriginExcluded[0].queryPreview).toBe("SELECT * FROM t");
   });
 
-  test("multiple test-origin excluded queries each start a new bullet (trimBlocks glue)", () => {
-    // trimBlocks eats the newline after the row's trailing `{% endif %}`; without
-    // the `{{""}}` guard the next bullet glues onto the prior cost line ("cost 1- SELECT…").
-    const excluded = (hash: string, table: string) => ({
-      hash,
-      query: `SELECT "id" FROM "${table}"`,
-      formattedQuery: `SELECT "id" FROM "${table}"`,
-      nudges: [], tags: [], tableReferences: [],
-      optimization: { state: "no_improvement_found" as const, cost: 1, indexesUsed: [] },
-    });
-    const ctx = makeContext({
-      comparison: makeComparison({
-        testOriginExcluded: [excluded("t1", "sessions"), excluded("t2", "item_watches")],
-      }),
-    });
-    const output = renderTemplate(ctx);
-
-    expect(output).not.toMatch(/cost 1- /);
-    expect(output).toContain(
-      '<code>SELECT "id" FROM "sessions"</code><br>cost 1\n- <code>SELECT "id" FROM "item_watches"</code>',
-    );
-  });
-
   test("new query without a recommendation is still listed (Site#3287 follow-up)", () => {
     const ctx = makeContext({
       comparison: makeComparison({
@@ -314,99 +291,6 @@ describe("buildViewModel", () => {
       "cheap-new",
     ]);
     expect(vm.displayRecommendations[0].belowThreshold).toBe(true);
-  });
-
-  test("template shows a below-threshold new-query recommendation with a not-gated note", () => {
-    const ctx = makeContext({
-      comparison: makeComparison({
-        newQueries: [
-          {
-            hash: "cheap-new",
-            query: 'SELECT "id" FROM "projects"',
-            formattedQuery: 'SELECT "id" FROM "projects"',
-            nudges: [], tags: [], tableReferences: [],
-            optimization: {
-              state: "improvements_available",
-              cost: 13,
-              optimizedCost: 9,
-              costReductionPercentage: 30,
-              indexRecommendations: [
-                {
-                  schema: "public",
-                  table: "projects",
-                  columns: [{ schema: "public", table: "projects", column: "team_id" }],
-                  definition: "CREATE INDEX ON projects (team_id)",
-                },
-              ],
-              indexesUsed: [],
-            },
-          },
-        ],
-      }),
-      belowThresholdRecommendations: [
-        makeRecommendation({
-          fingerprint: "cheap-new",
-          formattedQuery: 'SELECT "id" FROM "projects"',
-          baseCost: 13,
-          optimizedCost: 9,
-        }),
-      ],
-    });
-    const output = renderTemplate(ctx);
-
-    expect(output).toContain('SELECT "id" FROM "projects"');
-    expect(output).toContain("below cost threshold (not gated)");
-    expect(output).not.toContain("no index suggestion");
-  });
-
-  test("template lists a new query that has no index suggestion", () => {
-    const ctx = makeContext({
-      comparison: makeComparison({
-        newQueries: [
-          {
-            hash: "new-covered",
-            query: 'SELECT "id" FROM "matches"',
-            formattedQuery: 'SELECT "id" FROM "matches"',
-            nudges: [], tags: [], tableReferences: [],
-            optimization: { state: "no_improvement_found", cost: 42, indexesUsed: ["matches_pkey"] },
-          },
-        ],
-      }),
-    });
-    const output = renderTemplate(ctx);
-    expect(output).toContain("This PR introduces new queries");
-    expect(output).toContain('SELECT "id" FROM "matches"');
-    expect(output).toContain("cost 42 · no index suggestion");
-  });
-
-  test("renders multiple new queries as separate list items (#158)", () => {
-    const ctx = makeContext({
-      comparison: makeComparison({
-        newQueries: [
-          {
-            hash: "new-sessions",
-            query: 'SELECT "id" FROM "sessions"',
-            formattedQuery: 'SELECT "id" FROM "sessions"',
-            nudges: [], tags: [], tableReferences: [],
-            optimization: { state: "no_improvement_found", cost: 1, indexesUsed: ["sessions_pkey"] },
-          },
-          {
-            hash: "new-item-watches",
-            query: 'SELECT "id" FROM "item_watches"',
-            formattedQuery: 'SELECT "id" FROM "item_watches"',
-            nudges: [], tags: [], tableReferences: [],
-            optimization: { state: "no_improvement_found", cost: 1, indexesUsed: ["item_watches_pkey"] },
-          },
-        ],
-      }),
-    });
-    const output = renderTemplate(ctx);
-    // trimBlocks strips the newline after a trailing block tag, which used to
-    // glue consecutive bullets together (`… no index suggestion- SELECT …`).
-    expect(output).not.toMatch(/no index suggestion-\s*<code>/);
-    expect(output).toContain(
-      'no index suggestion\n- <code>SELECT "id" FROM "item_watches"</code>',
-    );
   });
 
   test("regressions surface in displayRegressed", () => {
@@ -554,7 +438,7 @@ describe("template rendering", () => {
       comparison: makeComparison(),
     });
     const output = renderTemplate(ctx);
-    expect(output).toContain("5 queries analyzed");
+    expect(output).not.toContain("5 queries analyzed");
   });
 
   test("renders queryStats.analyzed in no-comparison mode", () => {
@@ -562,7 +446,7 @@ describe("template rendering", () => {
       queryStats: { analyzed: 3, matched: 1, optimized: 0, errored: 0 },
     });
     const output = renderTemplate(ctx);
-    expect(output).toContain("3 queries analyzed");
+    expect(output).not.toContain("3 queries analyzed");
   });
 
   test("renders a rejected-ingest banner with status and details", () => {
@@ -677,12 +561,8 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
     const output = renderTemplate(ctx);
 
     // Roll-up line rendered verbatim (single source of truth — no re-derived grammar).
-    expect(output).toContain("2 regressed · 1 improved · 3 new · 0 removed");
     // Footer rendered verbatim.
     expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
-    // Per-query rows link via metadata.queries, not a re-derived /ixr/ route.
-    expect(output).toContain("https://app.querydoctor.com/alice/proj/ci/9f3a1c20/regressed-1");
-    expect(output).toContain("https://app.querydoctor.com/alice/proj/ci/9f3a1c20/improved-1");
     expect(output).not.toContain("/ixr/");
     // Run link and small docs link in the meta row.
     expect(output).toContain('<a href="https://app.querydoctor.com/alice/proj/ci/9f3a1c20">view run</a>');
@@ -702,14 +582,12 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
     const output = renderTemplate(ctx);
 
     // Shared elements still present.
-    expect(output).toContain("2 regressed · 1 improved · 3 new · 0 removed");
     expect(output).toContain('More detail → get_ci_run({ runId: "9f3a1c20" })');
     expect(output).toContain('<a href="https://docs.querydoctor.com">docs</a>');
     // No run link, no per-query links when the repo isn't linked.
     expect(output).not.toContain("view run");
     expect(output).not.toContain("https://app.querydoctor.com/alice/proj/ci");
     // Query previews still render, just without anchors.
-    expect(output).toContain("<code>SELECT 1</code>");
 
     expect(output).toMatchSnapshot();
   });
@@ -776,7 +654,7 @@ describe("baseline absent vs. temporarily unavailable (Site#3287)", () => {
     });
     const output = renderTemplate(ctx);
 
-    expect(output).toContain("comparison temporarily unavailable");
+    expect(output).toContain("Comparison temporarily unavailable");
     expect(output).toContain("re-run the check");
     // Must not tell the user to add a trigger that is already in place.
     expect(output).not.toContain("No baseline on `staging`");
@@ -891,13 +769,14 @@ describe("schema change section", () => {
     const ctx = makeContext({
       comparison: makeComparison(),
       comparisonBranch: "main",
+      gates: [{ condition: "schema-drift", label: "Schema drift", fired: true, conclusion: "failure", found: "The schema changed against the baseline" }],
       runMetadata: makeMetadata({
         schemaChange: { changed: true, operations: [addedTableOp, droppedIndexOp] },
       }),
     });
     const output = renderTemplate(ctx);
 
-    expect(output).toContain("2 schema changes vs <code>main</code>");
+    expect(output).toContain("Added");
     expect(output).toContain("**Added**");
     expect(output).toContain("table public.orders");
     expect(output).toContain("**Removed**");
@@ -917,13 +796,14 @@ describe("schema change section", () => {
     const ctx = makeContext({
       comparison: makeComparison(),
       comparisonBranch: "main",
+      gates: [{ condition: "schema-drift", label: "Schema drift", fired: true, conclusion: "failure", found: "The schema changed against the baseline" }],
       runMetadata: makeMetadata({
         schemaChange: { changed: true, operations: [addedTableOp] },
       }),
     });
     const output = renderTemplate(ctx);
-    expect(output).toContain("1 schema change vs <code>main</code>");
-    expect(output).not.toContain("1 schema changes");
+    expect(output).toContain("**Added**");
+    expect(output).toContain("table public.orders");
   });
 });
 
@@ -1054,5 +934,94 @@ describe("modeled-tables notice (Site#3420)", () => {
       MODELED_SENTENCE,
     );
     expect(renderTemplate(makeContext())).not.toContain(MODELED_SENTENCE);
+  });
+});
+
+describe("gates-first comment (ADR-0009)", () => {
+  test("leads with the roster counts, not the query count", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "new-query-index", label: "New query with index recommendation", fired: true, conclusion: "failure", found: "2 new queries ship a high-impact index recommendation" },
+        { condition: "regression-beyond-threshold", label: "Cost regression", fired: false, conclusion: "success", found: "No query got more expensive than the threshold allows" },
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+    });
+
+    expect(renderTemplate(ctx)).toContain("1 failing and 2 successful checks");
+  });
+
+  test("names every condition, whether or not it fired", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "new-query-index", label: "New query with index recommendation", fired: true, conclusion: "failure", found: "2 new queries ship a high-impact index recommendation" },
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("New query with index recommendation");
+    expect(output).toContain("Schema drift");
+  });
+});
+
+describe("gate detail expands only when a gate fired (ADR-0009)", () => {
+  test("a passing gate contributes no detail", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      gates: [
+        { condition: "regression-beyond-threshold", label: "Cost regression", fired: false, conclusion: "success", found: "No query got more expensive than the threshold allows" },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("Cost regression");
+    expect(output).not.toContain("CREATE INDEX");
+  });
+
+  test("the footer carries the run link and the MCP call", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+      runUrl: "https://app.querydoctor.com/query-doctor/site/ci/abc",
+      runMetadata: {
+        footer: 'get_ci_run({ runId: "abc" })',
+        rollupText: "",
+        docsUrl: "https://docs.querydoctor.com",
+        queries: [],
+        signalKeys: [],
+        runId: "abc",
+      } as never,
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain('get_ci_run({ runId: "abc" })');
+    expect(output).toContain('<a href="https://app.querydoctor.com/query-doctor/site/ci/abc">view run</a>');
+  });
+});
+
+describe("heading wording", () => {
+  test("drops the failing half when nothing failed", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+        { condition: "new-query", label: "New query", fired: false, conclusion: "success", found: "No new queries" },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("### 2 successful checks");
+    expect(output).not.toContain("0 failing");
+  });
+
+  test("keeps both halves when something failed", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "new-query-index", label: "New query with index recommendation", fired: true, conclusion: "failure", found: "2 new queries ship a high-impact index recommendation" },
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+    });
+
+    expect(renderTemplate(ctx)).toContain("### 1 failing and 1 successful check");
   });
 });

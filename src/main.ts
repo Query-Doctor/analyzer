@@ -19,6 +19,7 @@ import { fetchPrChangedFiles } from "./gate/changed-files.ts";
 import { evaluateTestPresence } from "./gate/test-presence.ts";
 import { gateRegression } from "./gate/regression.ts";
 import { gateNewQuery } from "./gate/new-query.ts";
+import { evaluateGates } from "./gate/evaluate.ts";
 import { gateSchemaChange } from "./gate/schema-change.ts";
 import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
@@ -256,6 +257,35 @@ async function runInCI(
       } else {
         reportContext.testPresenceVerdict = undefined;
       }
+    }
+
+    // Resolve every gate condition *before* the report renders, so the comment can
+    // state its own check result. The check annotations below read the same roster,
+    // which is what stops the comment and the check disagreeing (ADR-0009).
+    {
+      const policyConfig: RepoPolicyConfig =
+        ("conditionPolicies" in config ? config.conditionPolicies : undefined) ??
+        {};
+      const eligible = reportContext.comparison
+        ? gateEligibleNewQueries(
+            reportContext.comparison.newQueries,
+            config.regressionThreshold,
+            config.acknowledgedQueryHashes,
+            config.minimumCost,
+          )
+        : [];
+      reportContext.gates = evaluateGates(
+        {
+          regressedCount: reportContext.comparison?.regressed.length ?? 0,
+          newQueryCount: reportContext.comparison?.newQueries.length ?? 0,
+          indexedNewQueryCount: eligible.length,
+          schemaChanged:
+            reportContext.runMetadata?.schemaChange?.changed === true,
+          untestedDataAccessFileCount:
+            reportContext.testPresenceVerdict?.dataAccessFiles.length ?? 0,
+        },
+        policyConfig,
+      );
     }
 
     console.log("Creating report...")

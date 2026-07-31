@@ -1,4 +1,50 @@
+{% if gateSummary %}
+### {% if gateSummary.failing > 0 %}{{ gateSummary.failing }} failing and {% endif %}{{ gateSummary.successful }} successful check{{ "" if gateSummary.successful == 1 else "s" }}
+
+{% for g in gates %}
+<img src="{{ gateIconBase }}/{{ "fail" if g.conclusion == "failure" else ("warn" if g.conclusion == "neutral" else "pass") }}.svg" width="14" height="16" align="absmiddle" alt=""> &nbsp;**{{ g.label }}** — {{ g.found }}
+{% if g.condition == "new-query-index" and g.fired %}
+{% for r in displayRecommendations %}
+{% set link = queryLinks[r.fingerprint] %}
+{% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}
+
+<sub>plans at {{ formatCost(r.baseCost) }}, or <b>{{ formatCost(r.optimizedCost) }}</b> with {{ "this index" if r.proposedIndexes.length == 1 else "these indexes" }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% improvement)</sub>
+
+```sql
+{% for idx in r.proposedIndexes %}CREATE INDEX ON {{ idx }};
+{% endfor %}```
+{% endfor %}
+{% endif %}
+{% if g.condition == "schema-drift" and g.fired and schemaChange.hasChanges %}
+{% for group in schemaChange.groups %}
+**{{ schemaChangeHeading(group.kind) }}**
+
+{% for entry in group.entries %}
+- {{ schemaChangeLabel(entry) }}
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% endfor %}
+
+---
+{% else %}
 ### Query Doctor Analysis
+{% endif %}
+{% if hasComparison %}
+{% elif comparisonUnavailable %}
+Comparison temporarily unavailable.
+
+> **Couldn't load the baseline for `{{ comparisonBranch }}` this run**, so the comparison was skipped. This is temporary and doesn't mean the baseline is missing — re-run the check to retry.
+{% else %}
+No baseline found to compare against.
+
+> **No baseline on `{{ comparisonBranch }}`** — the analyzer cannot detect regressions without a previous run. To establish a baseline, add a `push` trigger for your comparison branch so the analyzer runs on merges to `{{ comparisonBranch }}`. See the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger) for setup instructions.
+{% endif %}
+{% if hasComparison and runMetadata and runMetadata.baseline and runMetadata.baseline.unset %}
+
+> [!WARNING]
+> **No comparison branch configured** — regressions and new queries are compared against `{{ runMetadata.baseline.resolvedBranch }}`{% if runMetadata.baseline.headVsHead %}, this PR's own branch, so the counts above can read "0 new" on a PR full of new queries{% else %}, a fallback that can diverge from the dashboard and breaks on non-PR runs{% endif %}. Set a comparison branch (typically your default branch) in the project's CI settings — or inspect it with <code>{{ runMetadata.baseline.mcpCall }}</code>.
+{% endif %}
 
 {% if ingestError %}
 > [!CAUTION]
@@ -42,111 +88,13 @@
 > **{{ modeledTablesNotice.count }} table(s) in your schema aren't covered by the statistics you loaded**, so their costs are modeled, not verified against real data: {{ modeledTablesNotice.list }}. A query touching one isn't a clean pass.
 
 {% endif %}
-{% if hasComparison %}
-{{ queryStats.analyzed | default('?') }} queries analyzed
-{% elif comparisonUnavailable %}
-{{ queryStats.analyzed | default('?') }} queries analyzed — comparison temporarily unavailable.
-
-> **Couldn't load the baseline for `{{ comparisonBranch }}` this run**, so the comparison was skipped. This is temporary and doesn't mean the baseline is missing — re-run the check to retry.
-{% else %}
-{{ queryStats.analyzed | default('?') }} queries analyzed — no baseline found to compare against.
-
-> **No baseline on `{{ comparisonBranch }}`** — the analyzer cannot detect regressions without a previous run. To establish a baseline, add a `push` trigger for your comparison branch so the analyzer runs on merges to `{{ comparisonBranch }}`. See the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger) for setup instructions.
-{% endif %}
-{% if runMetadata and runMetadata.rollupText %}
-
-{{ runMetadata.rollupText }}
-{% endif %}
-{% if hasComparison and runMetadata and runMetadata.baseline and runMetadata.baseline.unset %}
-
-> [!WARNING]
-> **No comparison branch configured** — regressions and new queries are compared against `{{ runMetadata.baseline.resolvedBranch }}`{% if runMetadata.baseline.headVsHead %}, this PR's own branch, so the counts above can read "0 new" on a PR full of new queries{% else %}, a fallback that can diverge from the dashboard and breaks on non-PR runs{% endif %}. Set a comparison branch (typically your default branch) in the project's CI settings — or inspect it with <code>{{ runMetadata.baseline.mcpCall }}</code>.
-{% endif %}
-
-{% if displayImproved.length > 0 %}
-#### This PR improves queries
-
-{% for q in displayImproved %}
-{% set link = queryLinks[q.hash] %}
-- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} ({{ q.improvementPercentage | round(0) }}% reduction){% if q.indexesChanged %}{% if q.previousIndexes.length > 0 %}<br>was using: {% for idx in q.previousIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% if q.currentIndexes.length > 0 %}<br>now using: {% for idx in q.currentIndexes %}<code>{{ idx }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}{% endif %}{{""}}
-{% endfor %}
-{% endif %}
-
-{% if displayRegressed.length > 0 %}
-#### This PR has regressions on queries
-
-{% for q in displayRegressed %}
-{% set link = queryLinks[q.hash] %}
-- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}<br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
-{% endfor %}
-{% endif %}
-
-{% if displayAcknowledgedRegressed.length > 0 %}
-<details>
-<summary>{{ displayAcknowledgedRegressed.length }} acknowledged regression{{ "s" if displayAcknowledgedRegressed.length != 1 else "" }} (not blocking)</summary>
-
-{% for q in displayAcknowledgedRegressed %}
-- <code>{{ q.queryPreview }}</code><br>cost {{ formatCost(q.previousCost) }} → {{ formatCost(q.currentCost) }} (+{{ q.regressionPercentage | round(0) }}%)
-{% endfor %}
-</details>
-{% endif %}
-
-{% if displayTestOriginExcluded.length > 0 %}
-<details>
-<summary>{{ displayTestOriginExcluded.length }} test-origin quer{{ "ies" if displayTestOriginExcluded.length != 1 else "y" }} excluded from the gate</summary>
-
-{% for q in displayTestOriginExcluded %}
-- <code>{{ q.queryPreview }}</code>{% if q.costLabel %}<br>{{ q.costLabel }}{% endif %}{{""}}
-{% endfor %}
-</details>
-{% endif %}
-
-{% if displayRecommendations.length > 0 %}
-#### This PR introduces queries with recommendations
-
-{% for r in displayRecommendations %}
-{% set link = queryLinks[r.fingerprint] %}
-- {% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>recommended index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction){% if r.belowThreshold %} · below cost threshold (not gated){% endif %}{{""}}
-{% endfor %}
-{% endif %}
-
-{% if displayNewQueries.length > 0 %}
-#### This PR introduces new queries
-
-{% for q in displayNewQueries %}
-{% set link = queryLinks[q.hash] %}
-- {% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% if q.costLabel %}<br>{{ q.costLabel }} · no index suggestion{% endif %}{{""}}
-{% endfor %}
-{% endif %}
-
-{% if hasComparison and preExistingRecommendations.length > 0 %}
-<details>
-<summary>{{ preExistingRecommendations.length }} pre-existing issue{{ "s" if preExistingRecommendations.length != 1 else "" }}</summary>
-
-{% for r in preExistingRecommendations %}
-{% set link = queryLinks[r.fingerprint] %}
-- {% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}<br>index <code>{{ r.proposedIndexes | join("</code>, <code>") }}</code><br>cost {{ formatCost(r.baseCost) }} → {{ formatCost(r.optimizedCost) }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% reduction)
-{% endfor %}
-</details>
-{% endif %}
-
-{% if schemaChange.hasChanges %}
-<details>
-<summary>{{ schemaChange.total }} schema change{{ "s" if schemaChange.total != 1 else "" }} vs <code>{{ comparisonBranch }}</code></summary>
-
-{% for group in schemaChange.groups %}
-**{{ schemaChangeHeading(group.kind) }}**
-
-{% for entry in group.entries %}
-- {{ schemaChangeLabel(entry) }}
-{% endfor %}
-{% endfor %}
-</details>
-{% endif %}
-{% if statisticsMode.kind == "fromAssumption" %}
+{% if statisticsMode.kind == "fromAssumption" and not gateSummary %}
 <sub>Using assumed statistics ({{ statisticsMode.reltuples }} rows/table). For better results, <a href="https://docs.querydoctor.com/reference/statistics">sync production stats</a>.</sub>
 {% endif %}
 {% if runMetadata %}
+<sub>{% if gateSummary %}More details via MCP → <code>{{ runMetadata.footer | replace("More detail → ", "") }}</code>{% else %}{{ runMetadata.footer }}{% endif %}{% if runUrl %} · <a href="{{ runUrl }}">view run</a>{% endif %}{% if runMetadata.docsUrl %} · <a href="{{ runMetadata.docsUrl }}">docs</a>{% endif %}</sub>
+{% if gateSummary %}
+<sub>{{ queryStats.analyzed | default('?') }} queries read against <code>{{ comparisonBranch }}</code>{% if statisticsMode.kind == 'fromStatisticsExport' %} on this project's exported production statistics.</sub>{% elif statisticsMode.kind == 'fromAssumption' %} on assumed statistics of {{ formatCost(statisticsMode.reltuples) }} rows per table. <a href="https://docs.querydoctor.com/reference/statistics">Sync production stats</a> for costs measured against your real data.</sub>{% else %}.</sub>{% endif %}
 
-<sub>{{ runMetadata.footer }}{% if runUrl %} · <a href="{{ runUrl }}">view run</a>{% endif %}{% if runMetadata.docsUrl %} · <a href="{{ runMetadata.docsUrl }}">docs</a>{% endif %}</sub>
+{% endif %}
 {% endif %}
