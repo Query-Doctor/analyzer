@@ -223,6 +223,8 @@ export interface RegressedQuery {
   hash: string;
   query: string;
   formattedQuery: string;
+  /** SQLCommenter tags from the current run: `func_name`, `file`, `db_driver`. */
+  tags: SQLCommenterTag[];
   previousCost: number;
   currentCost: number;
   regressionPercentage: number;
@@ -232,6 +234,8 @@ export interface ImprovedQuery {
   hash: string;
   query: string;
   formattedQuery: string;
+  /** SQLCommenter tags from the current run: `func_name`, `file`, `db_driver`. */
+  tags: SQLCommenterTag[];
   previousCost: number;
   currentCost: number;
   improvementPercentage: number;
@@ -414,6 +418,7 @@ export async function compareRuns(
         hash: current.hash,
         query: current.query,
         formattedQuery: current.formattedQuery,
+        tags: current.tags,
         previousCost: prevCost,
         currentCost,
         regressionPercentage: changePct,
@@ -432,6 +437,7 @@ export async function compareRuns(
         hash: current.hash,
         query: current.query,
         formattedQuery: current.formattedQuery,
+        tags: current.tags,
         previousCost: prevCost,
         currentCost,
         improvementPercentage: Math.abs(changePct),
