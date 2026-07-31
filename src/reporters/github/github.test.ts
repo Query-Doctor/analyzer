@@ -1130,3 +1130,15 @@ describe("table growth explains a regression", () => {
     expect(renderTemplate(ctx)).not.toContain("grew");
   });
 });
+
+describe("branding", () => {
+  test("names Query Doctor above the roster", () => {
+    const ctx = makeContext({
+      gates: [{ condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" }],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("**Query Doctor**");
+    expect(output).toContain("assets/brand/mark.svg");
+  });
+});

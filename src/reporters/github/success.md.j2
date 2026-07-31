@@ -1,4 +1,6 @@
 {% if gateSummary %}
+<picture><img src="{{ brandMark }}" width="16" height="18" align="absmiddle" alt=""></picture> &nbsp;**Query Doctor**
+
 ### {% if gateSummary.failing > 0 %}{{ gateSummary.failing }} failing and {% endif %}{{ gateSummary.successful }} successful check{{ "" if gateSummary.successful == 1 else "s" }}
 
 {% for g in gates %}
