@@ -81,6 +81,12 @@ export interface PreviousRun {
   branch: string;
   commitSha: string;
   queries: CiQueryPayload[];
+  /**
+   * The row counts the baseline was planned against. `GET /ci/runs/latest`
+   * has always returned these; the type dropped them, which left the comment
+   * unable to tell a slower query from a bigger table.
+   */
+  computedStats?: ComputedStats;
 }
 
 /**

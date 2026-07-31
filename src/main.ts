@@ -20,6 +20,7 @@ import { evaluateTestPresence } from "./gate/test-presence.ts";
 import { gateRegression } from "./gate/regression.ts";
 import { gateNewQuery } from "./gate/new-query.ts";
 import { evaluateGates } from "./gate/evaluate.ts";
+import { tableGrowth } from "./gate/table-growth.ts";
 import { gateSchemaChange } from "./gate/schema-change.ts";
 import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
@@ -274,6 +275,10 @@ async function runInCI(
             config.minimumCost,
           )
         : [];
+      reportContext.tableGrowth = tableGrowth(
+        previousRun?.computedStats,
+        reportContext.computedStats,
+      );
       reportContext.gates = evaluateGates(
         {
           regressedCount: reportContext.comparison?.regressed.length ?? 0,
