@@ -60,6 +60,10 @@ export interface GateFacts {
   untestedDataAccessFileCount?: number;
   /** Queries carrying a high-value rewrite or index nudge. */
   highValueNudgeCount?: number;
+  /** The repo's regression threshold, as a percentage. Named in the gate's line. */
+  regressionThreshold?: number;
+  /** The repo's cost floor. A regression under it on both sides is ignored. */
+  minimumCost?: number;
 }
 
 
@@ -74,10 +78,19 @@ function describe(condition: GateCondition, facts: GateFacts): string {
   const nudges = facts.highValueNudgeCount ?? 0;
 
   switch (condition) {
-    case "regression-beyond-threshold":
+    case "regression-beyond-threshold": {
+      // Name the rule, not just the count: the run page reports every increase,
+      // so a bare number here reads as a contradiction of it.
+      const pct = facts.regressionThreshold;
+      const bar = pct === undefined ? "" : ` more than ${pct}%`;
+      const floor =
+        facts.minimumCost && facts.minimumCost > 0
+          ? `, where either cost is at least ${facts.minimumCost}`
+          : "";
       return regressed > 0
-        ? `${regressed} ${plural(regressed, "query", "queries")} got more expensive`
-        : "No query got more expensive than the threshold allows";
+        ? `${regressed} ${plural(regressed, "query went up", "queries went up")}${bar}${floor}`
+        : `No query went up${bar}`;
+    }
     case "untested-data-access":
       return untested > 0
         ? `${untested} changed data-access ${plural(untested, "file ships", "files ship")} with no related test`
