@@ -226,6 +226,8 @@ export function buildViewModel(ctx: ReportContext) {
   // fetched over HTTP and Camo-proxied into the comment.
   const gateIconBase =
     "https://raw.githubusercontent.com/Query-Doctor/analyzer/main/assets/gate";
+  const brandMark =
+    "https://raw.githubusercontent.com/Query-Doctor/analyzer/main/assets/brand/mark.svg";
 
   if (!hasComparison) {
     return {
@@ -245,6 +247,7 @@ export function buildViewModel(ctx: ReportContext) {
       modeledTablesNotice,
       gateSummary,
       gateIconBase,
+      brandMark,
       gates,
     };
   }
@@ -312,6 +315,7 @@ export function buildViewModel(ctx: ReportContext) {
     modeledTablesNotice,
     gateSummary,
     gateIconBase,
+    brandMark,
     gates,
   };
 }
