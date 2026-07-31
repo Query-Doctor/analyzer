@@ -1054,3 +1054,17 @@ describe("callSite", () => {
     expect(callSite([])).toBeUndefined();
   });
 });
+
+describe("gate icons", () => {
+  test("wraps each glyph so GitHub does not turn it into a link", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("<picture><img src=");
+    expect(output).toContain("</picture>");
+  });
+});

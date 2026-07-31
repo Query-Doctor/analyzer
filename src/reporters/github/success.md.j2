@@ -2,7 +2,7 @@
 ### {% if gateSummary.failing > 0 %}{{ gateSummary.failing }} failing and {% endif %}{{ gateSummary.successful }} successful check{{ "" if gateSummary.successful == 1 else "s" }}
 
 {% for g in gates %}
-<img src="{{ gateIconBase }}/{{ "fail" if g.conclusion == "failure" else ("warn" if g.conclusion == "neutral" else "pass") }}.svg" width="14" height="16" align="absmiddle" alt=""> &nbsp;**{{ g.label }}** — {{ g.found }}
+<picture><img src="{{ gateIconBase }}/{{ "fail" if g.conclusion == "failure" else ("warn" if g.conclusion == "neutral" else "pass") }}.svg" width="14" height="16" align="absmiddle" alt=""></picture> &nbsp;**{{ g.label }}** — {{ g.found }}
 {% if g.condition == "new-query-index" and g.fired %}
 {% for r in displayRecommendations %}
 {% set link = queryLinks[r.fingerprint] %}
