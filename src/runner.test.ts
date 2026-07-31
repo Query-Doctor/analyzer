@@ -80,3 +80,53 @@ describe("Runner.determineStatsMode precedence", () => {
     expect(await Runner.determineStatsMode()).toEqual(syntheticMode);
   });
 });
+
+describe("Runner.determineStatsMode at a configured scale", () => {
+  const TABLE: ExportedStats = {
+    tableName: "users",
+    schemaName: "public",
+    relpages: 10,
+    reltuples: 166_000,
+    relallvisible: 8,
+    columns: [],
+    indexes: [],
+  };
+
+  /** CI always resolves a static mode; this narrows the union to read it. */
+  async function staticMode(
+    productionStats?: ExportedStats[],
+    scale?: number,
+  ) {
+    const strategy = await Runner.determineStatsMode(
+      undefined,
+      productionStats,
+      scale,
+    );
+    if (strategy.type !== "static") {
+      throw new Error(`expected a static stats mode, got ${strategy.type}`);
+    }
+    return strategy.stats;
+  }
+
+  test("models production stats at the repo's scale", async () => {
+    const stats = await staticMode([TABLE], 10);
+
+    expect(stats.kind).toBe("fromStatisticsExport");
+    expect(stats.scale).toBe(10);
+  });
+
+  test("models the synthetic assumption at the repo's scale", async () => {
+    const stats = await staticMode(undefined, 1000);
+
+    expect(stats.kind).toBe("fromAssumption");
+    expect(stats.scale).toBe(1000);
+  });
+
+  test("leaves the mode unscaled when the repo is configured at 1x", async () => {
+    expect((await staticMode([TABLE], 1)).scale).toBeUndefined();
+  });
+
+  test("leaves the mode unscaled when no scale is configured", async () => {
+    expect((await staticMode([TABLE])).scale).toBeUndefined();
+  });
+});

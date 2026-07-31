@@ -14,7 +14,7 @@ import { Connectable } from "./sync/connectable.ts";
 import { Remote, StatisticsStrategy } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import type { OptimizedQuery } from "./sql/recent-query.ts";
-import { ExportedStats, Statistics } from "@query-doctor/core";
+import { ExportedStats, Statistics, type StatisticsMode } from "@query-doctor/core";
 import { readFile } from "node:fs/promises";
 import { buildQueries } from "./reporters/site-api.ts";
 
@@ -37,6 +37,10 @@ export class Runner {
     // Real production statistics pulled from the Site API. When present, queries
     // are costed against true prod cardinality instead of synthetic assumptions.
     productionStats?: ExportedStats[];
+    // The repo's configured statistics scale. Queries are then planned against
+    // this multiple of the data, which answers whether they hold up at a size
+    // the database hasn't reached yet.
+    statisticsScale?: number;
   }) {
     const remote = options.remote ?? new Remote(
       options.targetPostgresUrl,
@@ -45,7 +49,7 @@ export class Runner {
       { disableQueryLoader: true }
     );
     await remote.syncFrom(options.sourcePostgresUrl,
-      await Runner.determineStatsMode(options.statisticsPath, options.productionStats)
+      await Runner.determineStatsMode(options.statisticsPath, options.productionStats, options.statisticsScale)
     );
     await remote.optimizer.finish;
     return new Runner(
@@ -59,14 +63,23 @@ export class Runner {
   // Stats-mode precedence for CI: real production stats pulled from the Site API
   // win, then an explicit stats file, then synthetic assumptions. CI never dumps
   // stats from the ephemeral target database itself.
+  //
+  // `scale` applies to whichever mode wins: core multiplies the planner's view
+  // of table and index size by it and leaves column statistics alone. A scale of
+  // 1 is left off the mode entirely, so a repo at the default size posts exactly
+  // the payload it did before.
   static async determineStatsMode(
     statsPath?: string,
     productionStats?: ExportedStats[],
+    scale?: number,
   ): Promise<StatisticsStrategy> {
+    const atScale = <T extends StatisticsMode>(stats: T): T =>
+      scale && scale !== 1 ? { ...stats, scale } : stats;
+
     if (productionStats && productionStats.length > 0) {
       return {
         type: "static",
-        stats: Statistics.statsModeFromExport(productionStats),
+        stats: atScale(Statistics.statsModeFromExport(productionStats)),
       };
     }
     if (statsPath) {
@@ -75,20 +88,20 @@ export class Runner {
       const stats = ExportedStats.array().parse(rawStats);
       return {
         type: "static",
-        stats: {
+        stats: atScale({
           kind: "fromStatisticsExport",
           source: { kind: "path", path: statsPath },
           stats
-        }
+        })
       }
     }
 
     return {
       type: "static",
-      stats: {
+      stats: atScale({
         kind: "fromAssumption",
         reltuples: 10_000_000,
-      }
+      })
     }
   }
 
