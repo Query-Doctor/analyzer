@@ -1,7 +1,5 @@
 {% if gateSummary %}
-<picture><img src="{{ brandMark }}" width="16" height="18" align="absmiddle" alt=""></picture> &nbsp;**Query Doctor**
-
-### {% if gateSummary.failing > 0 %}{{ gateSummary.failing }} failing and {% endif %}{{ gateSummary.successful }} successful check{{ "" if gateSummary.successful == 1 else "s" }}
+### <picture><img src="{{ brandMark }}" width="18" height="20" align="absmiddle" alt=""></picture> Query Doctor — {% if gateSummary.failing > 0 %}{{ gateSummary.failing }} failing and {% endif %}{{ gateSummary.successful }} successful check{{ "" if gateSummary.successful == 1 else "s" }}
 
 {% for g in gates %}
 <picture><img src="{{ gateIconBase }}/{{ "fail" if g.conclusion == "failure" else ("warn" if g.conclusion == "neutral" else "pass") }}.svg" width="14" height="16" align="absmiddle" alt=""></picture> &nbsp;**{{ g.label }}** — {{ g.found }}

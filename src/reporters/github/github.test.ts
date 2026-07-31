@@ -1015,7 +1015,7 @@ describe("heading wording", () => {
     });
     const output = renderTemplate(ctx);
 
-    expect(output).toContain("### 2 successful checks");
+    expect(output).toContain("Query Doctor — 2 successful checks");
     expect(output).not.toContain("0 failing");
   });
 
@@ -1027,7 +1027,7 @@ describe("heading wording", () => {
       ],
     });
 
-    expect(renderTemplate(ctx)).toContain("### 1 failing and 1 successful check");
+    expect(renderTemplate(ctx)).toContain("Query Doctor — 1 failing and 1 successful check");
   });
 });
 
@@ -1132,13 +1132,13 @@ describe("table growth explains a regression", () => {
 });
 
 describe("branding", () => {
-  test("names Query Doctor above the roster", () => {
+  test("names Query Doctor in the heading", () => {
     const ctx = makeContext({
       gates: [{ condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" }],
     });
     const output = renderTemplate(ctx);
 
-    expect(output).toContain("**Query Doctor**");
+    expect(output).toContain("Query Doctor");
     expect(output).toContain("assets/brand/mark.svg");
   });
 });
