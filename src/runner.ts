@@ -1,3 +1,4 @@
+import { recommendationClearsFloor } from "./gate/cost-floor.ts";
 import * as core from "@actions/core";
 import { PgbadgerSource } from "./sql/pgbadger.ts";
 import type { RecentQuerySource } from "./sql/recent-query.ts";
@@ -170,14 +171,14 @@ export class Runner {
 
     const filteredRecommendations =
       config.minimumCost > 0
-        ? recommendations.filter((r) => r.baseCost > config.minimumCost)
+        ? recommendations.filter((r) => recommendationClearsFloor(r.baseCost, config.minimumCost))
         : recommendations;
     // Kept, not discarded: still shown in the comment (marked below-threshold) so
     // a below-floor query isn't mislabeled "no index suggestion", but excluded
     // from gating and index statistics.
     const belowThresholdRecommendations =
       config.minimumCost > 0
-        ? recommendations.filter((r) => r.baseCost <= config.minimumCost)
+        ? recommendations.filter((r) => !recommendationClearsFloor(r.baseCost, config.minimumCost))
         : [];
     const filteredThresholdWarnings =
       config.minimumCost > 0
