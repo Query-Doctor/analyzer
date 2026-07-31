@@ -35,22 +35,26 @@ n.configure({ autoescape: false, trimBlocks: true, lstripBlocks: true });
 
 interface DisplayRecommendation extends ReportIndexRecommendation {
   queryPreview: string;
+  site?: { name: string; file: string | undefined };
   /** Below the `minimumCost` floor: shown for context, but does not gate the PR. */
   belowThreshold: boolean;
 }
 
 interface DisplayRegression extends RegressedQuery {
   queryPreview: string;
+  site?: { name: string; file: string | undefined };
 }
 
 interface DisplayImprovement extends ImprovedQuery {
   queryPreview: string;
+  site?: { name: string; file: string | undefined };
   indexesChanged: boolean;
 }
 
 interface DisplayNewQuery {
   hash: string;
   queryPreview: string;
+  site?: { name: string; file: string | undefined };
   /** Pre-rendered "cost N" label, or "" when the query has no extractable cost. */
   costLabel: string;
 }
@@ -88,6 +92,7 @@ function addPreviews(
   return recs.map((r) => ({
     ...r,
     queryPreview: queryPreview(r.formattedQuery),
+    site: callSite((r as { tags?: { key: string; value: string }[] }).tags),
     belowThreshold,
   }));
 }
@@ -180,6 +185,26 @@ function buildModeledTablesNotice(
     count: tables.length,
     list: rest > 0 ? `${names}, and ${rest} more` : names,
   };
+}
+
+
+/**
+ * Name a query by where it is written, from its SQLCommenter tags. The stored
+ * preview truncates at the column list, so a hash is otherwise the only handle a
+ * reader gets. `file` arrives absolute from the CI runner, so it is trimmed to a
+ * repo-relative path. Returns undefined when the run carries no tags at all.
+ */
+export function callSite(
+  tags: { key: string; value: string }[] | undefined,
+): { name: string; file: string | undefined } | undefined {
+  const get = (key: string) => tags?.find((t) => t.key === key)?.value;
+  const funcName = get("func_name");
+  const raw = get("file");
+  const file = raw?.includes("/Site/")
+    ? raw.slice(raw.lastIndexOf("/Site/") + "/Site/".length)
+    : raw;
+  if (!funcName && !file) return undefined;
+  return funcName ? { name: funcName, file } : { name: file!, file: undefined };
 }
 
 export function buildViewModel(ctx: ReportContext) {

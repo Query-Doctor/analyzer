@@ -6,9 +6,9 @@
 {% if g.condition == "new-query-index" and g.fired %}
 {% for r in displayRecommendations %}
 {% set link = queryLinks[r.fingerprint] %}
-{% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}
+{% if r.site %}{% if link %}[`{{ r.site.name }}`]({{ link }}){% else %}`{{ r.site.name }}`{% endif %}{% else %}{% if link %}[<code>{{ r.queryPreview }}</code>]({{ link }}){% else %}<code>{{ r.queryPreview }}</code>{% endif %}{% endif %}
 
-<sub>plans at {{ formatCost(r.baseCost) }}, or <b>{{ formatCost(r.optimizedCost) }}</b> with {{ "this index" if r.proposedIndexes.length == 1 else "these indexes" }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% improvement)</sub>
+<sub>{% if r.site and r.site.file %}{{ r.site.file }} · {% endif %}plans at {{ formatCost(r.baseCost) }}, or <b>{{ formatCost(r.optimizedCost) }}</b> with {{ "this index" if r.proposedIndexes.length == 1 else "these indexes" }} ({{ (((r.baseCost - r.optimizedCost) / r.baseCost) * 100) | round(0) }}% improvement)</sub>
 
 ```sql
 {% for idx in r.proposedIndexes %}CREATE INDEX ON {{ idx }};

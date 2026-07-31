@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import n from "nunjucks";
-import { formatCost, queryPreview, buildViewModel } from "./github.ts";
+import { formatCost, queryPreview, buildViewModel, callSite } from "./github.ts";
 import { isQueryLong, renderExplain, type ReportContext } from "../reporter.ts";
 import type { CiRunMetadata, RunComparison } from "../site-api.ts";
 
@@ -301,6 +301,7 @@ describe("buildViewModel", () => {
             hash: "regressed-1",
             query: "SELECT 1",
             formattedQuery: "SELECT 1",
+            tags: [],
             previousCost: 100,
             currentCost: 500,
             regressionPercentage: 400,
@@ -322,6 +323,7 @@ describe("buildViewModel", () => {
             hash: "improved-1",
             query: "SELECT 1",
             formattedQuery: "SELECT 1",
+            tags: [],
             previousCost: 500,
             currentCost: 100,
             improvementPercentage: 80,
@@ -345,6 +347,7 @@ describe("buildViewModel", () => {
             hash: "improved-1",
             query: "SELECT 1",
             formattedQuery: "SELECT 1",
+            tags: [],
             previousCost: 500,
             currentCost: 100,
             improvementPercentage: 80,
@@ -533,6 +536,7 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
         hash: "regressed-1",
         query: "SELECT 1",
         formattedQuery: "SELECT 1",
+        tags: [],
         previousCost: 120,
         currentCost: 170,
         regressionPercentage: 42,
@@ -543,6 +547,7 @@ describe("CI-signal metadata parity (analyzer#141)", () => {
         hash: "improved-1",
         query: "SELECT 2",
         formattedQuery: "SELECT 2",
+        tags: [],
         previousCost: 500,
         currentCost: 100,
         improvementPercentage: 80,
@@ -1023,5 +1028,29 @@ describe("heading wording", () => {
     });
 
     expect(renderTemplate(ctx)).toContain("### 1 failing and 1 successful check");
+  });
+});
+
+describe("callSite", () => {
+  test("names a query by its function and file", () => {
+    expect(
+      callSite([
+        { key: "func_name", value: "CiRepository.findLatest" },
+        { key: "file", value: "/home/runner/work/Site/Site/apps/api/src/ci/ci.repository.ts:210:8" },
+      ]),
+    ).toEqual({
+      name: "CiRepository.findLatest",
+      file: "apps/api/src/ci/ci.repository.ts:210:8",
+    });
+  });
+
+  test("falls back to the file when the function is missing", () => {
+    expect(
+      callSite([{ key: "file", value: "apps/api/src/ci/ci.repository.ts:12:3" }]),
+    ).toEqual({ name: "apps/api/src/ci/ci.repository.ts:12:3", file: undefined });
+  });
+
+  test("returns nothing when the run carries no tags", () => {
+    expect(callSite([])).toBeUndefined();
   });
 });

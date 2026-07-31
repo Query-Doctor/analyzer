@@ -753,3 +753,41 @@ describe("fetchPreviousRun retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("compareRuns carries the call site (ADR-0009)", () => {
+  const withTags = (hash: string, cost: number, funcName: string) => ({
+    ...makeQuery(hash, cost),
+    tags: [
+      { key: "func_name", value: funcName },
+      { key: "file", value: "apps/api/src/ci/ci.repository.ts:210:8" },
+    ],
+  });
+
+  test("a regressed query keeps the tags that name it", async () => {
+    const previousRun = makePreviousRun([withTags("hash-a", 100, "CiRepository.findLatest")]);
+    const result = await compareRuns(
+      [withTags("hash-a", 200, "CiRepository.findLatest")],
+      previousRun,
+      10,
+    );
+
+    expect(result.regressed[0]?.tags).toContainEqual({
+      key: "func_name",
+      value: "CiRepository.findLatest",
+    });
+  });
+
+  test("an improved query keeps them too", async () => {
+    const previousRun = makePreviousRun([withTags("hash-b", 200, "CiRepository.findAll")]);
+    const result = await compareRuns(
+      [withTags("hash-b", 100, "CiRepository.findAll")],
+      previousRun,
+      10,
+    );
+
+    expect(result.improved[0]?.tags).toContainEqual({
+      key: "func_name",
+      value: "CiRepository.findAll",
+    });
+  });
+});
