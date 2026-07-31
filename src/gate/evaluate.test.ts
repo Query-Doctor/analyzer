@@ -132,3 +132,25 @@ describe("gate copy", () => {
     expect(found("new-query")).toBe("1 new query, with no prior baseline");
   });
 });
+
+describe("gate copy names the rule", () => {
+  it("states the threshold and the cost floor a regression had to clear", () => {
+    const gates = evaluateGates({
+      regressedCount: 9,
+      regressionThreshold: 10,
+      minimumCost: 100,
+    });
+
+    expect(
+      gates.find((g) => g.condition === "regression-beyond-threshold")?.found,
+    ).toBe("9 queries went up more than 10%, where either cost is at least 100");
+  });
+
+  it("names the threshold when nothing crossed it", () => {
+    const gates = evaluateGates({ regressionThreshold: 10, minimumCost: 100 });
+
+    expect(
+      gates.find((g) => g.condition === "regression-beyond-threshold")?.found,
+    ).toBe("No query went up more than 10%");
+  });
+});

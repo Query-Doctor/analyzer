@@ -283,6 +283,8 @@ async function runInCI(
             reportContext.runMetadata?.schemaChange?.changed === true,
           untestedDataAccessFileCount:
             reportContext.testPresenceVerdict?.dataAccessFiles.length ?? 0,
+          regressionThreshold: config.regressionThreshold,
+          minimumCost: config.minimumCost,
         },
         policyConfig,
       );
