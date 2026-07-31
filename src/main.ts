@@ -275,9 +275,18 @@ async function runInCI(
             config.minimumCost,
           )
         : [];
+      // computedStats lists every relation; statisticsMode carries the table
+      // names, so growth is reported per table rather than once per index.
+      const knownTables =
+        reportContext.statisticsMode.kind === "fromStatisticsExport"
+          ? new Set(
+              reportContext.statisticsMode.stats.map((s) => s.tableName),
+            )
+          : undefined;
       reportContext.tableGrowth = tableGrowth(
         previousRun?.computedStats,
         reportContext.computedStats,
+        knownTables,
       );
       reportContext.gates = evaluateGates(
         {

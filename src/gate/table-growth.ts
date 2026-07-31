@@ -33,6 +33,12 @@ const MIN_GROWTH_PERCENT = 10;
 export function tableGrowth(
   baseline: RunStats | undefined,
   current: RunStats | undefined,
+  /**
+   * The run's actual tables. `computedStats.reltuples` lists every relation,
+   * including indexes, and an index reports its table's row count — so without
+   * this filter one table that grew is reported once per index on it.
+   */
+  tables?: ReadonlySet<string>,
 ): TableGrowth[] {
   if (!baseline?.reltuples || !current?.reltuples) return [];
 
@@ -45,6 +51,7 @@ export function tableGrowth(
   const grown: TableGrowth[] = [];
   for (const row of current.reltuples) {
     if (row.schema_name !== "public") continue;
+    if (tables && !tables.has(row.relname)) continue;
     const was = before.get(row.relname);
     // A table absent from the baseline has no growth to report, and one that
     // was empty would divide by zero.

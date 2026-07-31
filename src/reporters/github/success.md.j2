@@ -19,7 +19,7 @@
 {% endif %}
 {% if g.condition == "regression-beyond-threshold" and g.fired %}
 {% if tableGrowth and tableGrowth.length > 0 %}
-<sub>Bigger tables since the baseline: {% for gr in tableGrowth %}<code>{{ gr.table }}</code> +{{ gr.percent }}% ({{ formatCost(gr.before) }} → {{ formatCost(gr.after) }} rows){% if not loop.last %}, {% endif %}{% endfor %}. A plan costs more against more rows, whatever the diff changed.</sub>
+<sub>Bigger tables since the baseline: {% for gr in tableGrowth.slice(0, 3) %}<code>{{ gr.table }}</code> +{{ gr.percent }}% ({{ formatCost(gr.before) }} → {{ formatCost(gr.after) }} rows){% if not loop.last %}, {% endif %}{% endfor %}{% if tableGrowth.length > 3 %}, and {{ tableGrowth.length - 3 }} more{% endif %}. A plan costs more against more rows, whatever the diff changed.</sub>
 
 {% endif %}
 {% for q in displayRegressed %}
