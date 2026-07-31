@@ -54,7 +54,7 @@ describe("buildSchemaChangeView", () => {
     const ops: Op[] = [{ op: "remove", path: "/constraints/2" }];
     const view = buildSchemaChangeView(ops);
     const removed = entriesFor(view, "removed");
-    expect(removed).toEqual([{ kind: "removed", object: "constraint", name: "(removed)" }]);
+    expect(removed).toEqual([{ kind: "removed", object: "constraint", name: "" }]);
   });
 
   test("property-level replace is a 'changed' entry carrying the sub-path", () => {
@@ -106,12 +106,12 @@ describe("schemaChangeLabel", () => {
   test("named entry", () => {
     expect(
       schemaChangeLabel({ kind: "added", object: "table", name: "public.users" }),
-    ).toBe("table public.users");
+    ).toBe("Added table public.users");
   });
 
   test("changed entry with detail and no name", () => {
     expect(
       schemaChangeLabel({ kind: "changed", object: "index", name: "", detail: "isUnique" }),
-    ).toBe("index · isUnique");
+    ).toBe("Changed index · isUnique");
   });
 });
