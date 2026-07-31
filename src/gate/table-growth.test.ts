@@ -35,3 +35,24 @@ describe("tableGrowth", () => {
     expect(tableGrowth(undefined, stats([["users", 1]]))).toEqual([]);
   });
 });
+
+describe("tables only", () => {
+  it("drops index relations, which mirror their table's row count", () => {
+    const grown = tableGrowth(
+      stats([["oauth_tokens", 111], ["oauth_tokens_pkey", 111]]),
+      stats([["oauth_tokens", 142], ["oauth_tokens_pkey", 142]]),
+      new Set(["oauth_tokens"]),
+    );
+
+    expect(grown.map((g) => g.table)).toEqual(["oauth_tokens"]);
+  });
+
+  it("keeps every relation when no table list is known", () => {
+    const grown = tableGrowth(
+      stats([["oauth_tokens", 111]]),
+      stats([["oauth_tokens", 142]]),
+    );
+
+    expect(grown).toHaveLength(1);
+  });
+});

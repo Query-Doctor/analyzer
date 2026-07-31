@@ -1142,3 +1142,26 @@ describe("branding", () => {
     expect(output).toContain("assets/brand/mark.svg");
   });
 });
+
+describe("table growth is capped", () => {
+  test("names the three biggest and counts the rest", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        regressed: [{ hash: "h1", query: "q", formattedQuery: "SELECT 1", tags: [],
+          previousCost: 200, currentCost: 400, regressionPercentage: 100 }],
+      }),
+      gates: [{ condition: "regression-beyond-threshold", label: "Cost regression", fired: true, conclusion: "failure", found: "1 query went up" }],
+      tableGrowth: [
+        { table: "project_queries", before: 3503, after: 6290, percent: 80 },
+        { table: "oauth_tokens", before: 111, after: 142, percent: 28 },
+        { table: "sessions", before: 12, after: 15, percent: 25 },
+        { table: "project_schemas", before: 584, after: 693, percent: 19 },
+      ],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("project_queries");
+    expect(output).not.toContain("project_schemas");
+    expect(output).toContain("1 more");
+  });
+});
