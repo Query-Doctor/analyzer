@@ -1,3 +1,4 @@
+import { comparisonClearsFloor } from "../gate/cost-floor.ts";
 import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import * as github from "@actions/github";
@@ -410,10 +411,7 @@ export async function compareRuns(
 
     const changePct = ((currentCost - prevCost) / prevCost) * 100;
     if (changePct > regressionThreshold) {
-      // Skip regressions where both costs are below minimumCost
-      if (minimumCost > 0 && prevCost < minimumCost && currentCost < minimumCost) {
-        continue;
-      }
+      if (!comparisonClearsFloor(prevCost, currentCost, minimumCost)) continue;
       const entry: RegressedQuery = {
         hash: current.hash,
         query: current.query,
@@ -429,10 +427,7 @@ export async function compareRuns(
         regressed.push(entry);
       }
     } else if (changePct < -regressionThreshold) {
-      // Skip improvements where both costs are below minimumCost
-      if (minimumCost > 0 && prevCost < minimumCost && currentCost < minimumCost) {
-        continue;
-      }
+      if (!comparisonClearsFloor(prevCost, currentCost, minimumCost)) continue;
       improved.push({
         hash: current.hash,
         query: current.query,
