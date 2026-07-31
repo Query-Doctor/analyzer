@@ -1,4 +1,5 @@
 import type { GateOutcome } from "../gate/evaluate.ts";
+import type { TableGrowth } from "../gate/table-growth.ts";
 import type { CiConclusion, ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
 import type {
   CiRunMetadata,
@@ -144,6 +145,12 @@ export interface ReportContext {
    * roster, so the two cannot disagree (ADR-0009).
    */
   gates?: GateOutcome[];
+  /**
+   * Tables that grew between the baseline and this run. A cost comparison
+   * cannot tell a slower query from a bigger table, so the comment names the
+   * growth rather than leaving the reader to blame their own diff.
+   */
+  tableGrowth?: TableGrowth[];
 }
 
 export interface IndexStatistic {

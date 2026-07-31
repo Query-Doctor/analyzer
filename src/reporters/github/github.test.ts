@@ -1103,3 +1103,30 @@ describe("gate icons", () => {
     expect(output).toContain("</picture>");
   });
 });
+
+describe("table growth explains a regression", () => {
+  test("names the table that grew under a fired regression gate", () => {
+    const ctx = makeContext({
+      comparison: makeComparison({
+        regressed: [{ hash: "h1", query: "q", formattedQuery: "SELECT 1", tags: [],
+          previousCost: 20965, currentCost: 37205, regressionPercentage: 77 }],
+      }),
+      gates: [{ condition: "regression-beyond-threshold", label: "Cost regression", fired: true, conclusion: "failure", found: "1 query went up more than 10%" }],
+      tableGrowth: [{ table: "project_queries", before: 3503, after: 6290, percent: 80 }],
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("project_queries");
+    expect(output).toContain("80%");
+  });
+
+  test("says nothing when no table grew", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      gates: [{ condition: "regression-beyond-threshold", label: "Cost regression", fired: true, conclusion: "failure", found: "1 query went up more than 10%" }],
+      tableGrowth: [],
+    });
+
+    expect(renderTemplate(ctx)).not.toContain("grew");
+  });
+});

@@ -16,6 +16,10 @@
 {% endfor %}
 {% endif %}
 {% if g.condition == "regression-beyond-threshold" and g.fired %}
+{% if tableGrowth and tableGrowth.length > 0 %}
+<sub>Bigger tables since the baseline: {% for gr in tableGrowth %}<code>{{ gr.table }}</code> +{{ gr.percent }}% ({{ formatCost(gr.before) }} → {{ formatCost(gr.after) }} rows){% if not loop.last %}, {% endif %}{% endfor %}. A plan costs more against more rows, whatever the diff changed.</sub>
+
+{% endif %}
 {% for q in displayRegressed %}
 {% set link = queryLinks[q.hash] %}
 {% if q.site %}{% if link %}[`{{ q.site.name }}`]({{ link }}){% else %}`{{ q.site.name }}`{% endif %}{% else %}{% if link %}[<code>{{ q.queryPreview }}</code>]({{ link }}){% else %}<code>{{ q.queryPreview }}</code>{% endif %}{% endif %}
