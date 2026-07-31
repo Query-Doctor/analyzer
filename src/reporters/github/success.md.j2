@@ -29,12 +29,14 @@
 {% endfor %}
 {% endif %}
 {% if g.condition == "schema-drift" and g.fired and schemaChange.hasChanges %}
+
 {% for group in schemaChange.groups %}
 **{{ schemaChangeHeading(group.kind) }}**
 
 {% for entry in group.entries %}
 - {{ schemaChangeLabel(entry) }}
 {% endfor %}
+
 {% endfor %}
 {% endif %}
 {% endfor %}

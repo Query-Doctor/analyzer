@@ -788,6 +788,29 @@ describe("schema change section", () => {
     expect(output).toContain("index (removed)");
   });
 
+  test("closes the schema list so the gates after it are not nested inside it", () => {
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      gates: [
+        { condition: "schema-drift", label: "Schema drift", fired: true, conclusion: "failure", found: "The schema changed against the baseline" },
+        { condition: "high-value-nudge", label: "High-value nudge", fired: false, conclusion: "success", found: "No index or rewrite past the threshold" },
+      ],
+      runMetadata: makeMetadata({
+        schemaChange: { changed: true, operations: [addedTableOp] },
+      }),
+    });
+    const lines = renderTemplate(ctx).split("\n");
+
+    // A line straight after a list item is lazy continuation: markdown folds it
+    // into that `<li>`, so every gate row below renders inside the list.
+    const lastEntry = lines.findLastIndex((l) => l.startsWith("- "));
+    expect(lines[lastEntry + 1]).toBe("");
+
+    // And a line straight after the gate row is a soft break inside the gate's
+    // own paragraph, so the group heading loses the space above it.
+    expect(lines[lines.indexOf("**Added**") - 1]).toBe("");
+  });
+
   test("template renders no schema section when unchanged", () => {
     const ctx = makeContext({
       comparison: makeComparison(),
