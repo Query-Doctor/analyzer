@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const success = readFileSync(join(__dirname, "success.md.j2"), "utf-8");
 import n from "nunjucks";
+import { summarizeGates } from "../../gate/evaluate.ts";
 import {
   deriveIndexStatistics,
   isQueryLong,
@@ -186,6 +187,19 @@ export function buildViewModel(ctx: ReportContext) {
   const queryLinks = buildQueryLinks(ctx);
   const schemaChange = buildSchemaChange(ctx);
   const modeledTablesNotice = buildModeledTablesNotice(ctx);
+  // The roster the comment leads with. Derived from the same array the check
+  // annotations read, so the heading cannot contradict the check (ADR-0009).
+  const gateSummary = ctx.gates ? summarizeGates(ctx.gates) : undefined;
+  // Failing first: the reader's question is what is blocking them, and the
+  // roster otherwise reads in catalogue order regardless of what happened.
+  const RANK = { failure: 0, neutral: 1, success: 2 } as const;
+  const gates = ctx.gates
+    ? [...ctx.gates].sort((a, b) => RANK[a.conclusion] - RANK[b.conclusion])
+    : undefined;
+  // Status glyphs live in this repo; GitHub strips inline <svg>, so they are
+  // fetched over HTTP and Camo-proxied into the comment.
+  const gateIconBase =
+    "https://raw.githubusercontent.com/Query-Doctor/analyzer/main/assets/gate";
 
   if (!hasComparison) {
     return {
@@ -203,6 +217,9 @@ export function buildViewModel(ctx: ReportContext) {
       schemaChangeHeading,
       schemaChangeLabel,
       modeledTablesNotice,
+      gateSummary,
+      gateIconBase,
+      gates,
     };
   }
 
@@ -267,6 +284,9 @@ export function buildViewModel(ctx: ReportContext) {
     schemaChangeHeading,
     schemaChangeLabel,
     modeledTablesNotice,
+    gateSummary,
+    gateIconBase,
+    gates,
   };
 }
 

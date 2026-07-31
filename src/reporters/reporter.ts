@@ -1,3 +1,4 @@
+import type { GateOutcome } from "../gate/evaluate.ts";
 import type { CiConclusion, ComputedStats, IndexIdentifier, StatisticsMode } from "@query-doctor/core";
 import type {
   CiRunMetadata,
@@ -137,6 +138,12 @@ export interface ReportContext {
    * Rendered as a non-blocking note at the top of the GitHub comment.
    */
   modeledTables?: string[];
+  /**
+   * Every gate condition's outcome, resolved before this context renders so the
+   * comment can state the check result. The check annotations read the same
+   * roster, so the two cannot disagree (ADR-0009).
+   */
+  gates?: GateOutcome[];
 }
 
 export interface IndexStatistic {
