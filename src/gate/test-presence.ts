@@ -138,6 +138,18 @@ function addedLines(patch: string): string {
     .join("\n");
 }
 
+/**
+ * Drop `/* … *\/` spans before the line rules run. A block comment is only
+ * recognisable line by line when every line is decorated (`*` prefix, JSDoc
+ * style); a JSX `{/* … *\/}` opens with `{` and continues in bare prose, so its
+ * middle lines survived line stripping and "select stay … away from" read as a
+ * query (Site#3615). An unterminated span — a hunk that opens a comment it
+ * doesn't close — is dropped to the end, the gate's usual under-fire side.
+ */
+function stripBlockComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+}
+
 /** Drop lines that are plainly comments, so prose mentioning SQL keywords doesn't match. */
 function stripCommentLines(text: string): string {
   return text
@@ -155,13 +167,36 @@ function stripCommentLines(text: string): string {
     .join("\n");
 }
 
+/** `import … from "…"`. */
+const IMPORT_LINE = /^\s*import\s/;
+/**
+ * `export { … } from "…"` / `export * from "…"` — an import that re-exports.
+ * Matched by its own shape rather than a bare `export` prefix so a declaration
+ * like ``export const q = sql`SELECT id FROM "users"` `` is still inspected.
+ */
+const REEXPORT_LINE = /^\s*export\s+(\*|type\s+\{|\{)[^;]*\bfrom\b/;
+
+/**
+ * Drop module-import statements. An import is never a query, but a component
+ * named `Select` puts `Select } from "…"` in the text, which completes the raw
+ * `select … from` shape and reddens a frontend-only PR (Site#3650).
+ */
+function stripImportLines(text: string): string {
+  return text
+    .split("\n")
+    .filter((line) => !IMPORT_LINE.test(line) && !REEXPORT_LINE.test(line))
+    .join("\n");
+}
+
 /** True when the diff's *added* lines contain query code. */
 export function patchAddsQueryCode(
   patch: string | undefined,
   config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
 ): boolean {
   if (!patch) return false;
-  const added = stripCommentLines(addedLines(patch));
+  const added = stripImportLines(
+    stripCommentLines(stripBlockComments(addedLines(patch))),
+  );
   return matchesAny(added, config.queryCodePatterns);
 }
 
