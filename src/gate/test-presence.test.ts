@@ -40,6 +40,46 @@ describe("patchAddsQueryCode", () => {
     expect(patchAddsQueryCode(addPatch("const total = items.length + 1;"))).toBe(false);
   });
 
+  test("ignores an import of a component named Select", () => {
+    // The Site#3650 false positive: `Select } from "…"` completes the raw
+    // `select … from` shape, so importing a UI component read as a query and
+    // failed the build on a frontend-only PR.
+    expect(
+      patchAddsQueryCode(addPatch('import { Button, Select } from "@query-doctor/ui";')),
+    ).toBe(false);
+  });
+
+  test("ignores a re-export of a component named Select", () => {
+    // Same shape one keyword over. A barrel file re-exporting the component
+    // (packages/ui/src/index.tsx in the Site repo) hits it without an import.
+    expect(
+      patchAddsQueryCode(
+        addPatch('export { default as Select } from "./components/select";'),
+      ),
+    ).toBe(false);
+  });
+
+  test("still detects a query in an exported declaration", () => {
+    // The recall boundary of the re-export rule: `export` starts this line too,
+    // but the statement declares a query rather than re-exporting a binding.
+    expect(
+      patchAddsQueryCode(addPatch('export const q = sql`SELECT id FROM "users"`;')),
+    ).toBe(true);
+  });
+
+  test("ignores prose spanning a JSX block comment", () => {
+    // The Site#3615 false positive: a comment explaining a sort control. Line
+    // stripping missed it twice — the opening line trims to `{/*`, not `/*`,
+    // and the continuation lines are bare prose — leaving "select stay … away
+    // from" to complete the raw select shape.
+    const patch =
+      "@@ -1,0 +1,3 @@\n" +
+      "+        {/* Icon, label and select stay one unwrappable unit: once the label is\n" +
+      "+            hidden the icon is the only thing saying \"sort\", so it must not\n" +
+      "+            wrap away from the control it labels. */}";
+    expect(patchAddsQueryCode(patch)).toBe(false);
+  });
+
   test("ignores DDL keywords in a prose string literal", () => {
     // The Site#3539 false positive: an MCP tool description mentioning the
     // fix it returns. Prose, not a statement — no ON clause, no column list.
