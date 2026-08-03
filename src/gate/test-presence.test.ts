@@ -323,6 +323,24 @@ describe("evaluateTestPresence", () => {
     expect(verdict).toBeNull();
   });
 
+  test("credits a spec that runs a .sql script from another directory", () => {
+    // The Site#3650 false positive: an operational script under `scripts/` whose
+    // real-DB spec lives under `src/db/` and reads the file back. Different
+    // directory, so only the stem rule can link them, and it compared
+    // `backfill-personal-teams.sql` against `backfill-personal-teams`.
+    const verdict = evaluateTestPresence([
+      changed(
+        "apps/api/scripts/backfill-personal-teams.sql",
+        "INSERT INTO teams (id, name) SELECT gen_random_uuid(), u.name FROM users u;",
+      ),
+      changed(
+        "apps/api/src/db/backfill-personal-teams.spec.ts",
+        'await db.execute(readFileSync("scripts/backfill-personal-teams.sql", "utf8"));',
+      ),
+    ]);
+    expect(verdict).toBeNull();
+  });
+
   test("does not fire on the route-tree regeneration from Site#3614", () => {
     // The reported false positive: a routeTree.gen.ts regeneration (import
     // re-ordering) whose `select-plan` route path read as `SELECT ... FROM`.

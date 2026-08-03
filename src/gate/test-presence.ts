@@ -238,7 +238,10 @@ function baseStem(path: string): string {
   return name
     .replace(/\.(test|spec)\./i, ".")
     .replace(/\.[cm]?[jt]sx?$/i, "")
-    .replace(/\.(py|go|rb)$/i, "");
+    // `.sql` belongs here for a script whose spec reads and runs the file:
+    // `scripts/backfill.sql` ↔ `src/db/backfill.spec.ts`. Leaving it on made the
+    // stem `backfill.sql`, which no test stem can contain (Site#3650).
+    .replace(/\.(py|go|rb|sql)$/i, "");
 }
 
 /**
