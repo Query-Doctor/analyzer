@@ -50,7 +50,11 @@ Comparison temporarily unavailable.
 {% else %}
 No baseline found to compare against.
 
-> **No baseline on `{{ comparisonBranch }}`** — the analyzer cannot detect regressions without a previous run. To establish a baseline, add a `push` trigger for your comparison branch so the analyzer runs on merges to `{{ comparisonBranch }}`. See the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger) for setup instructions.
+{% if comparisonBranch %}
+> **No baseline on `{{ comparisonBranch }}`.** The analyzer records a baseline when it runs on a push to `{{ comparisonBranch }}`, and compares later runs against it. If this run is the first, the next one has something to compare against. If the workflow has no `push` trigger for `{{ comparisonBranch }}`, add one: see the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger).
+{% else %}
+> **No comparison branch is set**, so nothing was compared. Set one in the project's CI settings, then push to it once so the analyzer records a baseline. See the [CI integration guide](https://docs.querydoctor.com/guides/ci-integration/#workflow-trigger).
+{% endif %}
 {% endif %}
 {% if hasComparison and runMetadata and runMetadata.baseline and runMetadata.baseline.unset %}
 
