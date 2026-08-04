@@ -28,6 +28,7 @@ import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { PgbadgerSource } from "./sql/pgbadger.ts";
+import { baselineNotFoundMessage } from "./reporters/baseline-notice.ts";
 import type { RecentQuerySource } from "./sql/recent-query.ts";
 import type { FullSchema, RepoPolicyConfig } from "@query-doctor/core";
 
@@ -189,12 +190,7 @@ async function runInCI(
       if (result.kind === "found") {
         previousRun = result.run;
       } else if (result.kind === "not-found") {
-        log.info(
-          "main",
-          `No baseline found on branch "${comparisonBranch}". Comparison will be skipped. ` +
-          `To establish a baseline, run the analyzer on pushes to "${comparisonBranch}" ` +
-          `(add "push: branches: [${comparisonBranch}]" to your workflow trigger).`,
-        );
+        log.info("main", baselineNotFoundMessage(comparisonBranch));
       } else {
         // Transient fetch failure after retries — flag it so the comment says
         // "temporarily unavailable, re-run" rather than claiming there is no

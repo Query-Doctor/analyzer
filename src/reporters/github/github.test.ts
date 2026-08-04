@@ -648,8 +648,36 @@ describe("baseline absent vs. temporarily unavailable (Site#3287)", () => {
     const output = renderTemplate(ctx);
 
     expect(output).toContain("No baseline on `staging`");
-    expect(output).toContain("add a `push` trigger");
+    // Still points at the push trigger, now as a condition rather than an
+    // instruction, because a correctly configured first run lands here too.
+    expect(output).toContain("`push` trigger");
     expect(output).not.toContain("temporarily unavailable");
+  });
+
+  // "" is what a first push run on a project with no configured branch actually
+  // produces: main.ts resolves the configured branch, then the PR base, then the
+  // current branch, and on that path all three can be absent.
+  test.each([
+    ["absent", {}],
+    ["empty", { comparisonBranch: "" }],
+  ])("never names a branch it does not have: %s", (_case, overrides) => {
+    const output = renderTemplate(makeContext(overrides));
+
+    // An empty inline code span is the shape of the bug — `{{ comparisonBranch }}`
+    // interpolated to nothing, leaving "No baseline on ``" above instructions
+    // for a branch that was never named.
+    expect(output).not.toMatch(/``/);
+    // "is set", not just "No comparison branch": the unset-baseline warning
+    // lower in the template opens "No comparison branch configured", so the
+    // looser string would pass on the wrong block.
+    expect(output).toContain("No comparison branch is set");
+  });
+
+  test("names the branch and keeps the push-trigger guidance when it has one", () => {
+    const output = renderTemplate(makeContext({ comparisonBranch: "staging" }));
+
+    expect(output).toContain("No baseline on `staging`");
+    expect(output).toContain("`push` trigger");
   });
 
   test("transient fetch failure renders a re-run message, not the no-baseline copy", () => {
@@ -663,7 +691,7 @@ describe("baseline absent vs. temporarily unavailable (Site#3287)", () => {
     expect(output).toContain("re-run the check");
     // Must not tell the user to add a trigger that is already in place.
     expect(output).not.toContain("No baseline on `staging`");
-    expect(output).not.toContain("add a `push` trigger");
+    expect(output).not.toContain("`push` trigger");
   });
 });
 
