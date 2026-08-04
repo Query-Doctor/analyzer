@@ -12,6 +12,7 @@ import {
 } from "@query-doctor/core";
 import { type Connectable } from "../sync/connectable.ts";
 import { DumpCommand, RestoreCommand } from "../sync/schema-link.ts";
+import { describeCommandFailure } from "../sync/command-failure.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { ExtensionNotInstalledError } from "../sync/errors.ts";
 import { type OptimizedQuery, type RecentQuery } from "../sql/recent-query.ts";
@@ -326,11 +327,18 @@ export class Remote extends EventEmitter<RemoteEvents> {
     source: Connectable,
   ): Promise<void> {
     const dump = DumpCommand.spawn(source, "native-postgres");
-    // is copying up events like this a good idea?
+    // Keep what these emit, not just forward it. The listeners below reach a
+    // websocket the live UI subscribes to, and CI has no such subscriber — so
+    // a failed CI restore reported an exit code while pg_restore had already
+    // named the extension or collation it could not create.
+    const dumpOutput: string[] = [];
+    const restoreOutput: string[] = [];
     dump.on("dump", (data) => {
+      dumpOutput.push(data);
       this.emit("dumpLog", data);
     });
     dump.on("restore", (data) => {
+      restoreOutput.push(data);
       this.emit("restoreLog", data);
     });
 
@@ -340,12 +348,16 @@ export class Remote extends EventEmitter<RemoteEvents> {
     );
     if (!dumpResult.status.success) {
       throw new Error(
-        `Dump failed with status ${dumpResult.status.code}`,
+        describeCommandFailure("pg_dump", dumpResult.status.code, dumpOutput),
       );
     }
     if (restoreResult && !restoreResult.status.success) {
       throw new Error(
-        `Restore failed with status ${restoreResult.status.code}`,
+        describeCommandFailure(
+          "pg_restore",
+          restoreResult.status.code,
+          restoreOutput,
+        ),
       );
     }
   }
