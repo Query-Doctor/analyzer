@@ -103,6 +103,9 @@ export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
     /\.repo\./i,
     /integration/i,
     /(^|\/)(dal|data-access)\//i,
+    // A `pg/` directory is the common name for a real-Postgres suite (Site#3550).
+    // Anchored to a whole path segment: a bare `pg` would match `upgrade`.
+    /(^|\/)pg\//i,
   ],
   migrationFilePatterns: [
     /(^|\/)migrations?\/.*\.sql$/i, // .../migrations/**/*.sql (Rails, Prisma, ...)

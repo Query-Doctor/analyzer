@@ -259,6 +259,16 @@ describe("classifyChangedFiles", () => {
     expect(surface.dataAccessChanged).toEqual([]);
   });
 
+  test("does not read `pg` inside another word as a real-Postgres suite", () => {
+    // The recall boundary of the `pg/` rule: `upgrade` contains `pg`, so an
+    // unanchored pattern would silently credit unrelated suites as data-layer
+    // coverage and make the gate miss genuinely untested queries.
+    const surface = classifyChangedFiles([
+      changed("tests/upgrade/upgrade.test.ts", "expect(migrate(config)).toBe(true);"),
+    ]);
+    expect(surface.dataLayerTestChanged).toEqual([]);
+  });
+
   test("still flags a raw SELECT ... FROM query in application code", () => {
     // The tightened `select`-shape must keep its recall: real SQL has whitespace
     // after the keyword. This trips only the raw select shape (no `db.`, no
@@ -318,6 +328,24 @@ describe("evaluateTestPresence", () => {
       changed(
         "tests/pg/postgres.test.ts",
         "expect(await db.select().from(projects)).toEqual([p]);",
+      ),
+    ]);
+    expect(verdict).toBeNull();
+  });
+
+  test("credits a tests/pg suite covering a changed query file (#3550)", () => {
+    // The reported false positive: `src/db/postgres.ts` gained two repo methods
+    // and the same PR added the pg test that exercises them. The test's own added
+    // line calls the repo rather than a query builder, so nothing in its content
+    // marks it as data-layer; only its path can, and `tests/pg/` said nothing.
+    const verdict = evaluateTestPresence([
+      changed(
+        "src/db/postgres.ts",
+        "const rows = await db.select().from(projects).where(eq(projects.userId, id));",
+      ),
+      changed(
+        "tests/pg/postgres.test.ts",
+        "expect(await db.projects.findByUser(u)).toEqual([p]);",
       ),
     ]);
     expect(verdict).toBeNull();
