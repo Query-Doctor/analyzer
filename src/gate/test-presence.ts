@@ -50,6 +50,7 @@ const SOURCE_FILE_PATTERNS = [
 // high-precision ORM / query-builder calls; a small set of raw-SQL shapes
 // catches string queries. Comment lines are stripped before matching, so a
 // code comment mentioning "select" won't trip it.
+//
 // Each rule carries a stable name. The name is the whole point: it is what a
 // reader sees when the gate flags their file, and what a bug report can cite.
 // Six precision fixes so far were each diagnosed by rebuilding, by hand, which
@@ -244,6 +245,17 @@ export interface QuerySiteEvidence {
   matched: string;
 }
 
+/** A changed file the gate reads as a query site, and why. */
+export interface FlaggedFile {
+  path: string;
+  /**
+   * Which rule matched and where. Absent when GitHub supplied no patch (large
+   * or binary file) and the filename prior decided instead — there is no
+   * matched text to point at.
+   */
+  evidence?: QuerySiteEvidence;
+}
+
 /** How much matched text to carry into the verdict. */
 const MATCH_EXCERPT_LIMIT = 120;
 
@@ -284,16 +296,21 @@ export function patchAddsQueryCode(patch: string | undefined): boolean {
  * available; falls back to the filename prior only when the patch is missing
  * (large/binary files), where content can't be inspected.
  */
-function changedQueryCode(
-  file: ChangedFile,
-): boolean {
-  if (!matchesAny(file.path, SOURCE_FILE_PATTERNS)) return false;
+function changedQueryCode(file: ChangedFile): FlaggedFile | null {
+  if (!matchesAny(file.path, SOURCE_FILE_PATTERNS)) return null;
   // A migration `.sql` is schema DDL, not a query site. Its `CREATE/ALTER TABLE`
   // would match the DDL query pattern, but there is no co-located test to link it
   // to, so treating it as changed query code false-positives on every migration.
-  if (matchesAny(file.path, MIGRATION_FILE_PATTERNS)) return false;
-  if (file.patch !== undefined) return patchAddsQueryCode(file.patch);
-  return matchesAny(file.path, DATA_ACCESS_PATH_PATTERNS);
+  if (matchesAny(file.path, MIGRATION_FILE_PATTERNS)) return null;
+  if (file.patch !== undefined) {
+    const evidence = findQueryCode(file.patch);
+    return evidence ? { path: file.path, evidence } : null;
+  }
+  // No patch: GitHub omits it for large or binary files, so there is no text to
+  // match and no evidence to show. The filename prior decides alone.
+  return matchesAny(file.path, DATA_ACCESS_PATH_PATTERNS)
+    ? { path: file.path }
+    : null;
 }
 
 /** A test counts as a data-layer test if it exercises query code or is named like one. */
@@ -335,8 +352,8 @@ function isRelated(dataAccessPath: string, testPath: string): boolean {
 }
 
 export interface ChangedSurface {
-  /** Non-test files whose diff added/altered query code. */
-  dataAccessChanged: string[];
+  /** Non-test files whose diff added/altered query code, with why each matched. */
+  dataAccessChanged: FlaggedFile[];
   /** Real-DB data-layer tests the PR added or changed. */
   dataLayerTestChanged: string[];
 }
@@ -344,14 +361,15 @@ export interface ChangedSurface {
 export function classifyChangedFiles(
   files: ChangedFile[],
 ): ChangedSurface {
-  const dataAccessChanged: string[] = [];
+  const dataAccessChanged: FlaggedFile[] = [];
   const dataLayerTestChanged: string[] = [];
   for (const file of files) {
     if (!isChanged(file.status)) continue;
     if (isTestFile(file.path)) {
       if (isDataLayerTest(file)) dataLayerTestChanged.push(file.path);
-    } else if (changedQueryCode(file)) {
-      dataAccessChanged.push(file.path);
+    } else {
+      const flagged = changedQueryCode(file);
+      if (flagged) dataAccessChanged.push(flagged);
     }
   }
   return { dataAccessChanged, dataLayerTestChanged };
@@ -370,7 +388,7 @@ export interface TestPresenceVerdict {
   nextStep: string;
   triageHint: string;
   /** The changed data-access files with no related data-layer test — what to cover. */
-  dataAccessFiles: string[];
+  dataAccessFiles: FlaggedFile[];
 }
 
 const REASON =
@@ -412,7 +430,7 @@ export function evaluateTestPresence(
   const { dataAccessChanged, dataLayerTestChanged } =
     classifyChangedFiles(files);
   const untested = dataAccessChanged.filter(
-    (path) => !dataLayerTestChanged.some((test) => isRelated(path, test)),
+    (file) => !dataLayerTestChanged.some((test) => isRelated(file.path, test)),
   );
   if (untested.length === 0) return null;
 

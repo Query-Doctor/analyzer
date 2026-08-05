@@ -905,7 +905,12 @@ describe("test-presence verdict rendering", () => {
     reason: "This PR changes data-access code but could not verify it.",
     nextStep: "Add a repository/integration test that exercises it.",
     triageHint: "Note why on the PR if no test is needed.",
-    dataAccessFiles: ["apps/api/src/users/user.repository.ts"],
+    dataAccessFiles: [
+      {
+        path: "apps/api/src/users/user.repository.ts",
+        evidence: { rule: "db-query-method", line: 1, matched: "db.insert" },
+      },
+    ],
   };
 
   test("renders a blocking caution block, reason, next step, and flagged file — never a Warning heading", () => {

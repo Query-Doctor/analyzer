@@ -248,14 +248,14 @@ describe("classifyChangedFiles", () => {
     const surface = classifyChangedFiles([
       changed("apps/api/src/users/user.service.ts", "return db.select().from(users);"),
     ]);
-    expect(surface.dataAccessChanged).toEqual(["apps/api/src/users/user.service.ts"]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual(["apps/api/src/users/user.service.ts"]);
   });
 
   test("does NOT flag a comment-only edit to a repository file", () => {
     const surface = classifyChangedFiles([
       changed("apps/api/src/users/user.repository.ts", "// clarify the join order"),
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("classes a query-bearing test as a data-layer test", () => {
@@ -268,21 +268,21 @@ describe("classifyChangedFiles", () => {
     expect(surface.dataLayerTestChanged).toEqual([
       "apps/api/src/users/user.repository.spec.ts",
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("falls back to the filename prior when a patch is unavailable", () => {
     const surface = classifyChangedFiles([
       { path: "apps/api/src/users/user.repository.ts", status: "modified" },
     ]);
-    expect(surface.dataAccessChanged).toEqual(["apps/api/src/users/user.repository.ts"]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual(["apps/api/src/users/user.repository.ts"]);
   });
 
   test("does not count a removed file as a change", () => {
     const surface = classifyChangedFiles([
       changed("apps/api/src/users/user.repository.ts", "db.select().from(users)", "removed"),
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("does NOT class a Drizzle migration .sql as changed data-access", () => {
@@ -293,7 +293,7 @@ describe("classifyChangedFiles", () => {
         "CREATE TABLE projects (id uuid PRIMARY KEY);",
       ),
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("excludes migration .sql under a migrations/ directory too", () => {
@@ -303,7 +303,7 @@ describe("classifyChangedFiles", () => {
         "ALTER TABLE plans ADD COLUMN project_id uuid;",
       ),
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("still classes DDL inside a .ts source file as data-access", () => {
@@ -314,7 +314,7 @@ describe("classifyChangedFiles", () => {
         "await db.execute(sql`CREATE TABLE projects (id uuid)`);",
       ),
     ]);
-    expect(surface.dataAccessChanged).toEqual(["apps/api/src/schema.ts"]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual(["apps/api/src/schema.ts"]);
   });
 
   test("does not read a `select-plan` route path as a SELECT ... FROM query", () => {
@@ -331,7 +331,7 @@ describe("classifyChangedFiles", () => {
           "+import { Route as MembershipRegisterRouteImport } from './routes/membership/register'",
       },
     ]);
-    expect(surface.dataAccessChanged).toEqual([]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual([]);
   });
 
   test("does not read `pg` inside another word as a real-Postgres suite", () => {
@@ -351,7 +351,7 @@ describe("classifyChangedFiles", () => {
     const surface = classifyChangedFiles([
       changed("apps/api/src/reports.ts", "const sql = `SELECT id, name FROM users`;"),
     ]);
-    expect(surface.dataAccessChanged).toEqual(["apps/api/src/reports.ts"]);
+    expect(surface.dataAccessChanged.map((f) => f.path)).toEqual(["apps/api/src/reports.ts"]);
   });
 });
 
@@ -363,8 +363,36 @@ describe("evaluateTestPresence", () => {
     expect(verdict).toMatchObject({
       condition: "untested-data-access",
       verdictClass: "uncertain-conservative-flag",
-      dataAccessFiles: ["apps/api/src/users/user.repository.ts"],
+      dataAccessFiles: [
+        {
+          path: "apps/api/src/users/user.repository.ts",
+          evidence: { rule: "db-query-method", line: 1, matched: "db.insert" },
+        },
+      ],
     });
+  });
+
+  test("carries the evidence into the verdict a reader sees", () => {
+    // The point of the whole change: a reader can judge the flag from the PR
+    // comment, without cloning the analyzer to find out which rule fired.
+    const verdict = evaluateTestPresence([
+      changed("apps/api/src/db/test-db.ts", "const db = drizzle(pool);"),
+    ]);
+    expect(verdict?.dataAccessFiles[0]).toEqual({
+      path: "apps/api/src/db/test-db.ts",
+      evidence: { rule: "drizzle-init", line: 1, matched: "drizzle(" },
+    });
+  });
+
+  test("omits evidence when the path prior decided it", () => {
+    // A large or binary file arrives with no patch, so there is no matched text
+    // to show. The flag stands on the filename alone and says so by omission.
+    const verdict = evaluateTestPresence([
+      { path: "apps/api/src/users/user.repository.ts", status: "modified" },
+    ]);
+    expect(verdict?.dataAccessFiles).toEqual([
+      { path: "apps/api/src/users/user.repository.ts" },
+    ]);
   });
 
   test("passes when a related data-layer test changes alongside the query", () => {
@@ -386,7 +414,7 @@ describe("evaluateTestPresence", () => {
         "expect(await db.select().from(users)).toEqual([u]);",
       ),
     ]);
-    expect(verdict?.dataAccessFiles).toEqual([
+    expect(verdict?.dataAccessFiles.map((f) => f.path)).toEqual([
       "apps/api/src/orders/order.repository.ts",
     ]);
   });
@@ -539,6 +567,8 @@ describe("evaluateTestPresence", () => {
       [changed("src/db/postgres.ts", "return db.select().from(projects);")],
       { newQueryHashes: [] },
     );
-    expect(verdict?.dataAccessFiles).toEqual(["src/db/postgres.ts"]);
+    expect(verdict?.dataAccessFiles.map((f) => f.path)).toEqual([
+      "src/db/postgres.ts",
+    ]);
   });
 });
