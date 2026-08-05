@@ -153,7 +153,21 @@ function stripBlockComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
 }
 
-/** Drop lines that are plainly comments, so prose mentioning SQL keywords doesn't match. */
+/**
+ * A `//` or `--` comment that trails code on the same line, plus everything
+ * after it. The `(?<![:/])` guard keeps `https://…` and `a//b` from reading as
+ * the start of a comment, which would blank real code following a URL.
+ * Deliberately blind to `//` inside a string literal: tracking quote state is
+ * more machinery than this heuristic earns, and the cost is under-firing.
+ */
+const TRAILING_COMMENT = /(?<![:/])(\/\/|--).*$/;
+
+/**
+ * Drop comments, so prose mentioning SQL keywords doesn't match. Whole-line
+ * comments go entirely; a comment trailing code takes only the tail. The gate
+ * flagged its own source before this handled the trailing case: a rule defined
+ * as ``/\bsql`/, // drizzle sql`...` tag`` matched the comment, not the code.
+ */
 function stripCommentLines(text: string): string {
   return text
     .split("\n")
@@ -167,6 +181,7 @@ function stripCommentLines(text: string): string {
         trimmed.startsWith("--")
       );
     })
+    .map((line) => line.replace(TRAILING_COMMENT, ""))
     .join("\n");
 }
 
