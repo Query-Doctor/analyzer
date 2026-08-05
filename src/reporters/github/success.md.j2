@@ -93,7 +93,11 @@ No baseline found to compare against.
 >
 > Changed data-access files with no related data-layer test:
 {% for f in testPresenceVerdict.dataAccessFiles %}
-> - `{{ f }}`
+{% if f.evidence %}
+> - `{{ f.path }}` — matched `{{ f.evidence.rule }}` on line {{ f.evidence.line }}: `{{ f.evidence.matched }}`
+{% else %}
+> - `{{ f.path }}`
+{% endif %}
 {% endfor %}
 >
 > _{{ testPresenceVerdict.triageHint }}_

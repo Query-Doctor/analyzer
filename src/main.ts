@@ -309,7 +309,13 @@ async function runInCI(
     // as "could not verify", never "your query is broken".
     if (reportContext.testPresenceVerdict) {
       const verdict = reportContext.testPresenceVerdict;
-      const files = verdict.dataAccessFiles.map((f) => `  - ${f}`).join("\n");
+      const files = verdict.dataAccessFiles
+        .map((f) =>
+          f.evidence
+            ? `  - ${f.path} — matched ${f.evidence.rule} on line ${f.evidence.line}: ${f.evidence.matched}`
+            : `  - ${f.path}`,
+        )
+        .join("\n");
       const message =
         `${verdict.reason}\n\nNext step: ${verdict.nextStep}\n\n` +
         `Changed data-access files with no related data-layer test:\n${files}`;
