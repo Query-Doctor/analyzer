@@ -227,7 +227,7 @@ async function runInCI(
             ? { newQueryHashes: reportContext.comparison.newQueries.map((q) => q.hash) }
             : undefined;
           reportContext.testPresenceVerdict =
-            evaluateTestPresence(changedFiles, undefined, capture) ?? undefined;
+            evaluateTestPresence(changedFiles, capture) ?? undefined;
         }
       } catch (err) {
         log.warn(`Test-presence gate skipped: ${err}`, "main");

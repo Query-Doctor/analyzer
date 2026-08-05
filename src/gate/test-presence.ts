@@ -25,95 +25,94 @@ export interface ChangedFile {
   patch?: string;
 }
 
-/**
- * Path and content heuristics. Kept as data (not hard-coded regexes) so a later
- * per-repo config (#3500) can override the defaults without touching the gate.
- */
-export interface TestPresenceConfig {
-  /** Marks a path as a test file of any kind. */
-  testFilePatterns: RegExp[];
-  /** Extensions worth inspecting for query code — a doc/config file never is. */
-  sourceFilePatterns: RegExp[];
-  /** Content signals that an added diff line is (part of) a query. */
-  queryCodePatterns: RegExp[];
-  /** Fallback data-access signal, used only when a file's patch is unavailable. */
-  dataAccessPathPatterns: RegExp[];
-  /** Marks a test path as a real-DB data-layer (repository/integration) test. */
-  dataLayerTestPathPatterns: RegExp[];
-  /**
-   * Marks a path as a generated schema-migration `.sql` file. These are DDL, not
-   * a query site, and have no co-located test — their coverage lives in whatever
-   * repository/integration test exercises the new schema, which the stem
-   * heuristic can never link. Excluded from the data-access set so a well-tested
-   * migration doesn't false-positive.
-   */
-  migrationFilePatterns: RegExp[];
-}
+// The path and content heuristics. These were once a caller-supplied config
+// object, on the expectation that #3500 would let a repo override them. #3500
+// shipped as `conditionPolicies`, which sets a condition's severity rather than
+// its patterns, so nothing ever passed a second value — not in production, not
+// in any test. They are the implementation now. Give them back an interface
+// when a repo actually needs to vary them.
 
-export const DEFAULT_TEST_PRESENCE_CONFIG: TestPresenceConfig = {
-  testFilePatterns: [
-    /\.(test|spec)\.[cm]?[jt]sx?$/i, // *.test.ts, *.spec.tsx, ...
-    /(^|\/)__tests__\//i,
-    /(^|\/)tests?\//i,
-    /(^|\/)test_[^/]+\.py$/i, // Python: test_foo.py
-    /_test\.(py|go|rb)$/i, // Go/Python/Ruby: foo_test.go
-  ],
-  sourceFilePatterns: [/\.([cm]?[jt]sx?|py|go|rb|java|kt|rs|php|scala|cs|sql)$/i],
-  // Prefer high-precision ORM / query-builder calls; a small set of raw-SQL
-  // shapes catches string queries. Comment lines are stripped before matching,
-  // so a code comment mentioning "select" won't trip it.
-  queryCodePatterns: [
-    /\bdb\.(select|insert|update|delete)\b/i,
-    /\.(execute|query)\s*\(/i,
-    /\bsql`/, // drizzle sql`...` tag
-    /\bdrizzle\s*\(/i,
-    /\bknex\b/i,
-    /\bprisma\.\w+\.(find\w*|create|update|delete|upsert|count|aggregate)\b/i,
-    /\.createQueryBuilder\s*\(/i,
-    /\bgetRepository\s*\(/i,
-    /\.\$(queryRaw|executeRaw)/,
-    /\.(leftJoin|innerJoin|rightJoin)\s*\(/i,
-    /\binsert\s+into\b/i,
-    /\bdelete\s+from\b/i,
-    /\bupdate\b[^\n]{0,80}\bset\b/i,
-    // `select` must be followed by whitespace, as real `SELECT … FROM` is — so a
-    // hyphenated route segment like `select-plan` (whose `\bselect\b` boundary is
-    // the hyphen) doesn't read as a query when an import `from` follows it
-    // (Site#3615).
-    /\bselect\s[\s\S]{0,300}?\bfrom\b/i,
-    // DDL is matched by statement shape (ON clause, column list, target
-    // identifier), not bare keyword adjacency: prose in a string literal —
-    // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539)
-    // — must not read as a query. Stripping string literals instead would
-    // blind the raw-SQL shapes above, since raw SQL lives in strings; the
-    // statement's own grammar is the discriminator.
-    /\bcreate\s+(unique\s+)?index\b[^\n]{0,120}?\bon\b/i,
-    /\bcreate\s+table\b[^\n]{0,80}?\(/i,
-    /\bcreate\s+(or\s+replace\s+)?(materialized\s+)?view\b[^\n]{0,80}?\bas\b/i,
-    /\balter\s+table\s+(if\s+exists\s+)?["\w]/i,
-    /\bdrop\s+(table|index|view|materialized\s+view)\s+(if\s+exists\s+|concurrently\s+)?["\w]/i,
-  ],
-  dataAccessPathPatterns: [
-    /(^|\/)[^/]*repositor(y|ies)[^/]*\.[cm]?[jt]s$/i,
-    /(^|\/)[^/]*\.repo\.[cm]?[jt]s$/i,
-    /(^|\/)(dal|data-access)\//i,
-  ],
-  dataLayerTestPathPatterns: [
-    /repositor(y|ies)/i,
-    /\.repo\./i,
-    /integration/i,
-    /(^|\/)(dal|data-access)\//i,
-    // A `pg/` directory is the common name for a real-Postgres suite (Site#3550).
-    // Anchored to a whole path segment: a bare `pg` would match `upgrade`.
-    /(^|\/)pg\//i,
-  ],
-  migrationFilePatterns: [
-    /(^|\/)migrations?\/.*\.sql$/i, // .../migrations/**/*.sql (Rails, Prisma, ...)
-    /(^|\/)migrate\/.*\.sql$/i, // .../migrate/**/*.sql
-    /(^|\/)drizzle\/.*\.sql$/i, // Drizzle output dir
-    /(^|\/)\d{4,}_[^/]*\.sql$/i, // numbered migration: 0026_projects_card1_733.sql
-  ],
-};
+/** Marks a path as a test file of any kind. */
+const TEST_FILE_PATTERNS = [
+  /\.(test|spec)\.[cm]?[jt]sx?$/i, // *.test.ts, *.spec.tsx, ...
+  /(^|\/)__tests__\//i,
+  /(^|\/)tests?\//i,
+  /(^|\/)test_[^/]+\.py$/i, // Python: test_foo.py
+  /_test\.(py|go|rb)$/i, // Go/Python/Ruby: foo_test.go
+];
+
+/** Extensions worth inspecting for query code — a doc/config file never is. */
+const SOURCE_FILE_PATTERNS = [
+  /\.([cm]?[jt]sx?|py|go|rb|java|kt|rs|php|scala|cs|sql)$/i,
+];
+
+// Content signals that an added diff line is (part of) a query. Prefer
+// high-precision ORM / query-builder calls; a small set of raw-SQL shapes
+// catches string queries. Comment lines are stripped before matching, so a
+// code comment mentioning "select" won't trip it.
+const QUERY_CODE_PATTERNS = [
+  /\bdb\.(select|insert|update|delete)\b/i,
+  /\.(execute|query)\s*\(/i,
+  /\bsql`/, // drizzle sql`...` tag
+  /\bdrizzle\s*\(/i,
+  /\bknex\b/i,
+  /\bprisma\.\w+\.(find\w*|create|update|delete|upsert|count|aggregate)\b/i,
+  /\.createQueryBuilder\s*\(/i,
+  /\bgetRepository\s*\(/i,
+  /\.\$(queryRaw|executeRaw)/,
+  /\.(leftJoin|innerJoin|rightJoin)\s*\(/i,
+  /\binsert\s+into\b/i,
+  /\bdelete\s+from\b/i,
+  /\bupdate\b[^\n]{0,80}\bset\b/i,
+  // `select` must be followed by whitespace, as real `SELECT … FROM` is — so a
+  // hyphenated route segment like `select-plan` (whose `\bselect\b` boundary is
+  // the hyphen) doesn't read as a query when an import `from` follows it
+  // (Site#3615).
+  /\bselect\s[\s\S]{0,300}?\bfrom\b/i,
+  // DDL is matched by statement shape (ON clause, column list, target
+  // identifier), not bare keyword adjacency: prose in a string literal —
+  // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539)
+  // — must not read as a query. Stripping string literals instead would
+  // blind the raw-SQL shapes above, since raw SQL lives in strings; the
+  // statement's own grammar is the discriminator.
+  /\bcreate\s+(unique\s+)?index\b[^\n]{0,120}?\bon\b/i,
+  /\bcreate\s+table\b[^\n]{0,80}?\(/i,
+  /\bcreate\s+(or\s+replace\s+)?(materialized\s+)?view\b[^\n]{0,80}?\bas\b/i,
+  /\balter\s+table\s+(if\s+exists\s+)?["\w]/i,
+  /\bdrop\s+(table|index|view|materialized\s+view)\s+(if\s+exists\s+|concurrently\s+)?["\w]/i,
+];
+
+/** Fallback data-access signal, used only when a file's patch is unavailable. */
+const DATA_ACCESS_PATH_PATTERNS = [
+  /(^|\/)[^/]*repositor(y|ies)[^/]*\.[cm]?[jt]s$/i,
+  /(^|\/)[^/]*\.repo\.[cm]?[jt]s$/i,
+  /(^|\/)(dal|data-access)\//i,
+];
+
+/** Marks a test path as a real-DB data-layer (repository/integration) test. */
+const DATA_LAYER_TEST_PATH_PATTERNS = [
+  /repositor(y|ies)/i,
+  /\.repo\./i,
+  /integration/i,
+  /(^|\/)(dal|data-access)\//i,
+  // A `pg/` directory is the common name for a real-Postgres suite (Site#3550).
+  // Anchored to a whole path segment: a bare `pg` would match `upgrade`.
+  /(^|\/)pg\//i,
+];
+
+/**
+ * Marks a path as a generated schema-migration `.sql` file. These are DDL, not
+ * a query site, and have no co-located test — their coverage lives in whatever
+ * repository/integration test exercises the new schema, which the stem
+ * heuristic can never link. Excluded from the data-access set so a well-tested
+ * migration doesn't false-positive.
+ */
+const MIGRATION_FILE_PATTERNS = [
+  /(^|\/)migrations?\/.*\.sql$/i, // .../migrations/**/*.sql (Rails, Prisma, ...)
+  /(^|\/)migrate\/.*\.sql$/i, // .../migrate/**/*.sql
+  /(^|\/)drizzle\/.*\.sql$/i, // Drizzle output dir
+  /(^|\/)\d{4,}_[^/]*\.sql$/i, // numbered migration: 0026_projects_card1_733.sql
+];
 
 /**
  * A changed file "changed" for gating purposes when its content could have
@@ -128,8 +127,8 @@ function matchesAny(path: string, patterns: RegExp[]): boolean {
   return patterns.some((p) => p.test(path));
 }
 
-function isTestFile(path: string, config: TestPresenceConfig): boolean {
-  return matchesAny(path, config.testFilePatterns);
+function isTestFile(path: string): boolean {
+  return matchesAny(path, TEST_FILE_PATTERNS);
 }
 
 /** The added lines of a unified diff, with the leading `+` removed. */
@@ -209,13 +208,12 @@ function stripImportLines(text: string): string {
 /** True when the diff's *added* lines contain query code. */
 export function patchAddsQueryCode(
   patch: string | undefined,
-  config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
 ): boolean {
   if (!patch) return false;
   const added = stripImportLines(
     stripCommentLines(stripBlockComments(addedLines(patch))),
   );
-  return matchesAny(added, config.queryCodePatterns);
+  return matchesAny(added, QUERY_CODE_PATTERNS);
 }
 
 /**
@@ -225,23 +223,22 @@ export function patchAddsQueryCode(
  */
 function changedQueryCode(
   file: ChangedFile,
-  config: TestPresenceConfig,
 ): boolean {
-  if (!matchesAny(file.path, config.sourceFilePatterns)) return false;
+  if (!matchesAny(file.path, SOURCE_FILE_PATTERNS)) return false;
   // A migration `.sql` is schema DDL, not a query site. Its `CREATE/ALTER TABLE`
   // would match the DDL query pattern, but there is no co-located test to link it
   // to, so treating it as changed query code false-positives on every migration.
-  if (matchesAny(file.path, config.migrationFilePatterns)) return false;
-  if (file.patch !== undefined) return patchAddsQueryCode(file.patch, config);
-  return matchesAny(file.path, config.dataAccessPathPatterns);
+  if (matchesAny(file.path, MIGRATION_FILE_PATTERNS)) return false;
+  if (file.patch !== undefined) return patchAddsQueryCode(file.patch);
+  return matchesAny(file.path, DATA_ACCESS_PATH_PATTERNS);
 }
 
 /** A test counts as a data-layer test if it exercises query code or is named like one. */
-function isDataLayerTest(file: ChangedFile, config: TestPresenceConfig): boolean {
+function isDataLayerTest(file: ChangedFile): boolean {
   return (
-    isTestFile(file.path, config) &&
-    (patchAddsQueryCode(file.patch, config) ||
-      matchesAny(file.path, config.dataLayerTestPathPatterns))
+    isTestFile(file.path) &&
+    (patchAddsQueryCode(file.patch) ||
+      matchesAny(file.path, DATA_LAYER_TEST_PATH_PATTERNS))
   );
 }
 
@@ -283,15 +280,14 @@ export interface ChangedSurface {
 
 export function classifyChangedFiles(
   files: ChangedFile[],
-  config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
 ): ChangedSurface {
   const dataAccessChanged: string[] = [];
   const dataLayerTestChanged: string[] = [];
   for (const file of files) {
     if (!isChanged(file.status)) continue;
-    if (isTestFile(file.path, config)) {
-      if (isDataLayerTest(file, config)) dataLayerTestChanged.push(file.path);
-    } else if (changedQueryCode(file, config)) {
+    if (isTestFile(file.path)) {
+      if (isDataLayerTest(file)) dataLayerTestChanged.push(file.path);
+    } else if (changedQueryCode(file)) {
       dataAccessChanged.push(file.path);
     }
   }
@@ -348,13 +344,10 @@ export interface TestPresenceCapture {
  */
 export function evaluateTestPresence(
   files: ChangedFile[],
-  config: TestPresenceConfig = DEFAULT_TEST_PRESENCE_CONFIG,
   capture?: TestPresenceCapture,
 ): TestPresenceVerdict | null {
-  const { dataAccessChanged, dataLayerTestChanged } = classifyChangedFiles(
-    files,
-    config,
-  );
+  const { dataAccessChanged, dataLayerTestChanged } =
+    classifyChangedFiles(files);
   const untested = dataAccessChanged.filter(
     (path) => !dataLayerTestChanged.some((test) => isRelated(path, test)),
   );
