@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   classifyChangedFiles,
   evaluateTestPresence,
+  findQueryCode,
   patchAddsQueryCode,
   type ChangedFile,
 } from "./test-presence.ts";
@@ -16,6 +17,50 @@ const changed = (
   line: string,
   status = "modified",
 ): ChangedFile => ({ path, status, patch: addPatch(line) });
+
+describe("findQueryCode", () => {
+  test("names the rule that matched and the line it matched on", () => {
+    // Every false positive so far has been diagnosed by rebuilding this by hand:
+    // which rule fired, on what text. The gate has it and used to discard it.
+    const patch =
+      "@@ -1,0 +1,3 @@\n" +
+      "+const label = 'sort';\n" +
+      "+const q = sql`SELECT id FROM users`;\n" +
+      "+return q;";
+    expect(findQueryCode(patch)).toMatchObject({
+      rule: "drizzle-sql-tag",
+      line: 2,
+    });
+  });
+
+  test("prefers the more specific rule when several match", () => {
+    // Rule order is precedence. `.execute(` names the cause better than the
+    // raw select shape that also matches this line.
+    expect(
+      findQueryCode(addPatch("await db.execute(sql`SELECT id FROM users`);")),
+    ).toMatchObject({ rule: "execute-or-query-call", line: 1 });
+  });
+
+  test("reports the line a comment-stripped match sits on", () => {
+    // Blanking rather than deleting is what keeps this line number honest: the
+    // three comment lines above still occupy their positions.
+    const patch =
+      "@@ -1,0 +1,5 @@\n" +
+      "+// a comment\n" +
+      "+// another comment\n" +
+      "+import { Select } from '@query-doctor/ui';\n" +
+      "+\n" +
+      "+const rows = await db.select().from(users);";
+    expect(findQueryCode(patch)).toMatchObject({
+      rule: "db-query-method",
+      line: 5,
+    });
+  });
+
+  test("is null when no rule matches", () => {
+    expect(findQueryCode(addPatch("const total = items.length + 1;"))).toBeNull();
+  });
+});
 
 describe("patchAddsQueryCode", () => {
   test("detects an ORM query call in added lines", () => {
