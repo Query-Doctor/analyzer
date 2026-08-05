@@ -166,6 +166,12 @@ export interface CiRunMetadata {
     changed: boolean;
     operations: Op[];
     changes?: NamedSchemaChange[];
+    /**
+     * Whether someone validated this pull request's migration and the schema
+     * has not moved since (Site#3289). Absent on a Site API that predates the
+     * field, and read as unapproved so the gate keeps blocking.
+     */
+    approved?: boolean;
   } | null;
 }
 
