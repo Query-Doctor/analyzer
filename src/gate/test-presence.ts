@@ -50,36 +50,55 @@ const SOURCE_FILE_PATTERNS = [
 // high-precision ORM / query-builder calls; a small set of raw-SQL shapes
 // catches string queries. Comment lines are stripped before matching, so a
 // code comment mentioning "select" won't trip it.
-const QUERY_CODE_PATTERNS = [
-  /\bdb\.(select|insert|update|delete)\b/i,
-  /\.(execute|query)\s*\(/i,
-  /\bsql`/, // drizzle sql`...` tag
-  /\bdrizzle\s*\(/i,
-  /\bknex\b/i,
-  /\bprisma\.\w+\.(find\w*|create|update|delete|upsert|count|aggregate)\b/i,
-  /\.createQueryBuilder\s*\(/i,
-  /\bgetRepository\s*\(/i,
-  /\.\$(queryRaw|executeRaw)/,
-  /\.(leftJoin|innerJoin|rightJoin)\s*\(/i,
-  /\binsert\s+into\b/i,
-  /\bdelete\s+from\b/i,
-  /\bupdate\b[^\n]{0,80}\bset\b/i,
-  // `select` must be followed by whitespace, as real `SELECT … FROM` is — so a
+// Each rule carries a stable name. The name is the whole point: it is what a
+// reader sees when the gate flags their file, and what a bug report can cite.
+// Six precision fixes so far were each diagnosed by rebuilding, by hand, which
+// of these fired and on what text.
+const QUERY_CODE_RULES: { name: string; pattern: RegExp }[] = [
+  { name: "db-query-method", pattern: /\bdb\.(select|insert|update|delete)\b/i },
+  { name: "execute-or-query-call", pattern: /\.(execute|query)\s*\(/i },
+  { name: "drizzle-sql-tag", pattern: /\bsql`/ },
+  { name: "drizzle-init", pattern: /\bdrizzle\s*\(/i },
+  { name: "knex", pattern: /\bknex\b/i },
+  {
+    name: "prisma-model-call",
+    pattern: /\bprisma\.\w+\.(find\w*|create|update|delete|upsert|count|aggregate)\b/i,
+  },
+  { name: "typeorm-query-builder", pattern: /\.createQueryBuilder\s*\(/i },
+  { name: "typeorm-get-repository", pattern: /\bgetRepository\s*\(/i },
+  { name: "prisma-raw", pattern: /\.\$(queryRaw|executeRaw)/ },
+  { name: "builder-join", pattern: /\.(leftJoin|innerJoin|rightJoin)\s*\(/i },
+  { name: "raw-insert-into", pattern: /\binsert\s+into\b/i },
+  { name: "raw-delete-from", pattern: /\bdelete\s+from\b/i },
+  { name: "raw-update-set", pattern: /\bupdate\b[^\n]{0,80}\bset\b/i },
+  // `select` must be followed by whitespace, as real `SELECT … FROM` is, so a
   // hyphenated route segment like `select-plan` (whose `\bselect\b` boundary is
   // the hyphen) doesn't read as a query when an import `from` follows it
   // (Site#3615).
-  /\bselect\s[\s\S]{0,300}?\bfrom\b/i,
+  { name: "raw-select-from", pattern: /\bselect\s[\s\S]{0,300}?\bfrom\b/i },
   // DDL is matched by statement shape (ON clause, column list, target
-  // identifier), not bare keyword adjacency: prose in a string literal —
-  // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539)
-  // — must not read as a query. Stripping string literals instead would
-  // blind the raw-SQL shapes above, since raw SQL lives in strings; the
-  // statement's own grammar is the discriminator.
-  /\bcreate\s+(unique\s+)?index\b[^\n]{0,120}?\bon\b/i,
-  /\bcreate\s+table\b[^\n]{0,80}?\(/i,
-  /\bcreate\s+(or\s+replace\s+)?(materialized\s+)?view\b[^\n]{0,80}?\bas\b/i,
-  /\balter\s+table\s+(if\s+exists\s+)?["\w]/i,
-  /\bdrop\s+(table|index|view|materialized\s+view)\s+(if\s+exists\s+|concurrently\s+)?["\w]/i,
+  // identifier), not bare keyword adjacency: prose in a string literal, such as
+  // "its suggested CREATE INDEX fix" in an MCP tool description (Site#3539),
+  // must not read as a query. Stripping string literals instead would blind the
+  // raw-SQL shapes above, since raw SQL lives in strings; the statement's own
+  // grammar is the discriminator.
+  {
+    name: "ddl-create-index",
+    pattern: /\bcreate\s+(unique\s+)?index\b[^\n]{0,120}?\bon\b/i,
+  },
+  { name: "ddl-create-table", pattern: /\bcreate\s+table\b[^\n]{0,80}?\(/i },
+  {
+    name: "ddl-create-view",
+    pattern: /\bcreate\s+(or\s+replace\s+)?(materialized\s+)?view\b[^\n]{0,80}?\bas\b/i,
+  },
+  {
+    name: "ddl-alter-table",
+    pattern: /\balter\s+table\s+(if\s+exists\s+)?["\w]/i,
+  },
+  {
+    name: "ddl-drop",
+    pattern: /\bdrop\s+(table|index|view|materialized\s+view)\s+(if\s+exists\s+|concurrently\s+)?["\w]/i,
+  },
 ];
 
 /** Fallback data-access signal, used only when a file's patch is unavailable. */
@@ -141,15 +160,24 @@ function addedLines(patch: string): string {
 }
 
 /**
- * Drop `/* … *\/` spans before the line rules run. A block comment is only
+ * Blank out `/* … *\/` spans before the line rules run. A block comment is only
  * recognisable line by line when every line is decorated (`*` prefix, JSDoc
  * style); a JSX `{/* … *\/}` opens with `{` and continues in bare prose, so its
  * middle lines survived line stripping and "select stay … away from" read as a
- * query (Site#3615). An unterminated span — a hunk that opens a comment it
- * doesn't close — is dropped to the end, the gate's usual under-fire side.
+ * query (Site#3615). An unterminated span, a hunk that opens a comment it does
+ * not close, is blanked to the end, the gate's usual under-fire side.
+ *
+ * Every stripper here replaces text with spaces rather than removing it, so an
+ * offset into the stripped text still points at the same line of the original.
+ * That is what lets a match report the line it was found on.
  */
 function stripBlockComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, " ");
+  return text.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, blankOut);
+}
+
+/** Replace every character except newlines with a space. */
+function blankOut(text: string): string {
+  return text.replace(/[^\n]/g, " ");
 }
 
 /**
@@ -162,25 +190,24 @@ function stripBlockComments(text: string): string {
 const TRAILING_COMMENT = /(?<![:/])(\/\/|--).*$/;
 
 /**
- * Drop comments, so prose mentioning SQL keywords doesn't match. Whole-line
- * comments go entirely; a comment trailing code takes only the tail. The gate
+ * Blank comments, so prose mentioning SQL keywords doesn't match. A whole-line
+ * comment goes entirely; a comment trailing code takes only the tail. The gate
  * flagged its own source before this handled the trailing case: a rule defined
  * as ``/\bsql`/, // drizzle sql`...` tag`` matched the comment, not the code.
  */
 function stripCommentLines(text: string): string {
   return text
     .split("\n")
-    .filter((line) => {
+    .map((line) => {
       const trimmed = line.trim();
-      return !(
+      const isComment =
         trimmed.startsWith("//") ||
         trimmed.startsWith("*") ||
         trimmed.startsWith("/*") ||
         trimmed.startsWith("#") ||
-        trimmed.startsWith("--")
-      );
+        trimmed.startsWith("--");
+      return isComment ? blankOut(line) : line.replace(TRAILING_COMMENT, blankOut);
     })
-    .map((line) => line.replace(TRAILING_COMMENT, ""))
     .join("\n");
 }
 
@@ -194,26 +221,62 @@ const IMPORT_LINE = /^\s*import\s/;
 const REEXPORT_LINE = /^\s*export\s+(\*|type\s+\{|\{)[^;]*\bfrom\b/;
 
 /**
- * Drop module-import statements. An import is never a query, but a component
+ * Blank module-import statements. An import is never a query, but a component
  * named `Select` puts `Select } from "…"` in the text, which completes the raw
  * `select … from` shape and reddens a frontend-only PR (Site#3650).
  */
 function stripImportLines(text: string): string {
   return text
     .split("\n")
-    .filter((line) => !IMPORT_LINE.test(line) && !REEXPORT_LINE.test(line))
+    .map((line) =>
+      IMPORT_LINE.test(line) || REEXPORT_LINE.test(line) ? blankOut(line) : line,
+    )
     .join("\n");
 }
 
-/** True when the diff's *added* lines contain query code. */
-export function patchAddsQueryCode(
+/** Why a file reads as a query site: which rule matched, where, and on what. */
+export interface QuerySiteEvidence {
+  /** Stable rule name, e.g. `raw-select-from`. */
+  rule: string;
+  /** 1-indexed line within the patch's added lines. */
+  line: number;
+  /** The matched text, collapsed to one line and trimmed for display. */
+  matched: string;
+}
+
+/** How much matched text to carry into the verdict. */
+const MATCH_EXCERPT_LIMIT = 120;
+
+/**
+ * The first rule that matches the diff's added lines, with the line it matched
+ * on. Rule order is precedence: the earlier, higher-precision ORM shapes win
+ * over the broad raw-SQL ones, so the evidence names the most specific cause.
+ */
+export function findQueryCode(
   patch: string | undefined,
-): boolean {
-  if (!patch) return false;
+): QuerySiteEvidence | null {
+  if (!patch) return null;
   const added = stripImportLines(
     stripCommentLines(stripBlockComments(addedLines(patch))),
   );
-  return matchesAny(added, QUERY_CODE_PATTERNS);
+  for (const { name, pattern } of QUERY_CODE_RULES) {
+    const match = added.match(pattern);
+    if (!match || match.index === undefined) continue;
+    return {
+      rule: name,
+      line: added.slice(0, match.index).split("\n").length,
+      matched: match[0]
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, MATCH_EXCERPT_LIMIT),
+    };
+  }
+  return null;
+}
+
+/** True when the diff's *added* lines contain query code. */
+export function patchAddsQueryCode(patch: string | undefined): boolean {
+  return findQueryCode(patch) !== null;
 }
 
 /**
