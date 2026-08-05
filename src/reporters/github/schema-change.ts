@@ -1,4 +1,5 @@
 import type { Op } from "jsondiffpatch/formatters/jsonpatch";
+import type { NamedSchemaChange } from "../site-api.ts";
 
 export type SchemaChangeKind = "added" | "removed" | "changed";
 
@@ -153,6 +154,40 @@ export function buildSchemaChangeView(operations: Op[]): SchemaChangeView {
     total,
     groups,
   };
+}
+
+/**
+ * The view built from the API's named changes. Nothing is inferred here: the
+ * API compared the two schemas and says which object changed, so this only
+ * groups the entries the way the patch-derived view does.
+ */
+export function buildNamedSchemaChangeView(
+  changes: NamedSchemaChange[],
+): SchemaChangeView {
+  const byKind: Record<SchemaChangeKind, SchemaChangeEntry[]> = {
+    added: [],
+    removed: [],
+    changed: [],
+  };
+
+  for (const change of changes) {
+    byKind[change.kind].push({
+      kind: change.kind,
+      object: change.object,
+      name: change.name,
+      detail: change.properties?.length
+        ? change.properties.join(", ")
+        : undefined,
+    });
+  }
+
+  const groups: SchemaChangeGroup[] = KIND_ORDER
+    .map((kind) => ({ kind, entries: byKind[kind] }))
+    .filter((g) => g.entries.length > 0);
+
+  const total = groups.reduce((sum, g) => sum + g.entries.length, 0);
+
+  return { hasChanges: total > 0, total, groups };
 }
 
 const KIND_LABELS: Record<SchemaChangeKind, string> = {

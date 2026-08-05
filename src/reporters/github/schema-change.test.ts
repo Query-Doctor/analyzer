@@ -1,6 +1,7 @@
 import { test, expect, describe } from "vitest";
 import type { Op } from "jsondiffpatch/formatters/jsonpatch";
 import {
+  buildNamedSchemaChangeView,
   buildSchemaChangeView,
   schemaChangeLabel,
   type SchemaChangeKind,
@@ -99,6 +100,41 @@ describe("buildSchemaChangeView", () => {
     const view = buildSchemaChangeView(ops);
     expect(view.total).toBe(3);
     expect(view.groups.map((g) => g.kind)).toEqual(["added", "removed", "changed"]);
+  });
+});
+
+describe("buildNamedSchemaChangeView", () => {
+  test("groups the API's named changes by kind", () => {
+    const view = buildNamedSchemaChangeView([
+      { kind: "changed", object: "table", name: "public.events", properties: ["partitionKeyDef"] },
+      { kind: "added", object: "column", name: "public.ci_runs.statistics_payload_id" },
+      { kind: "removed", object: "index", name: "public.users.users_email_idx" },
+    ]);
+
+    expect(view.total).toBe(3);
+    expect(view.groups.map((g) => g.kind)).toEqual(["added", "removed", "changed"]);
+  });
+
+  test("renders the changed properties as the entry's detail", () => {
+    const view = buildNamedSchemaChangeView([
+      {
+        kind: "changed",
+        object: "column",
+        name: "public.users.email",
+        properties: ["columnType", "isNullable"],
+      },
+    ]);
+
+    expect(schemaChangeLabel(view.groups[0]!.entries[0]!)).toBe(
+      "Changed column public.users.email · columnType, isNullable",
+    );
+  });
+
+  // The API derives `changed` from the patch, which still counts differences the
+  // named list drops — an oid that moved because the two snapshots came from
+  // different databases. Render nothing rather than invent a line for it.
+  test("an empty list renders nothing", () => {
+    expect(buildNamedSchemaChangeView([]).hasChanges).toBe(false);
   });
 });
 
