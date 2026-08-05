@@ -446,7 +446,6 @@ describe("evaluateTestPresence", () => {
           "renamed",
         ),
       ],
-      undefined,
       { newQueryHashes: [] },
     );
     expect(verdict).toBeNull();
@@ -484,7 +483,7 @@ describe("evaluateTestPresence", () => {
       changed("src/db/postgres.ts", "return db.select().from(projects).where(eq(projects.userId, id));"),
     ];
     expect(evaluateTestPresence(files)).not.toBeNull();
-    const verdict = evaluateTestPresence(files, undefined, {
+    const verdict = evaluateTestPresence(files, {
       newQueryHashes: ["f13683ee48e6a487", "53350021ed44ae14"],
     });
     expect(verdict).toBeNull();
@@ -493,7 +492,6 @@ describe("evaluateTestPresence", () => {
   test("still flags when capture reports no new queries", () => {
     const verdict = evaluateTestPresence(
       [changed("src/db/postgres.ts", "return db.select().from(projects);")],
-      undefined,
       { newQueryHashes: [] },
     );
     expect(verdict?.dataAccessFiles).toEqual(["src/db/postgres.ts"]);
