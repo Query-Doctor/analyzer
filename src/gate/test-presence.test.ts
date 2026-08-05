@@ -40,6 +40,36 @@ describe("patchAddsQueryCode", () => {
     expect(patchAddsQueryCode(addPatch("const total = items.length + 1;"))).toBe(false);
   });
 
+  test("ignores a comment trailing code on the same line", () => {
+    // This gate flagged its own source. Line stripping only drops lines whose
+    // trimmed text starts with `//`, so a comment after code survived, and
+    // "drizzle sql`...` tag" read as a drizzle tag. Any repo whose comments
+    // discuss SQL hits this.
+    expect(
+      patchAddsQueryCode(addPatch("  /\\bsql`/, // drizzle sql`...` tag")),
+    ).toBe(false);
+    expect(
+      patchAddsQueryCode(addPatch("const n = 1; // then select the rows from cache")),
+    ).toBe(false);
+  });
+
+  test("still detects a query on a line that also carries a comment", () => {
+    // Only the comment goes. The code before it is still inspected.
+    expect(
+      patchAddsQueryCode(addPatch("await db.select().from(users); // list them")),
+    ).toBe(true);
+  });
+
+  test("does not treat a URL in a string as a comment", () => {
+    // `//` inside a string opens no comment. Truncating there would blank real
+    // code that follows it on the same line.
+    expect(
+      patchAddsQueryCode(
+        addPatch('const url = "https://x.dev"; await db.select().from(users);'),
+      ),
+    ).toBe(true);
+  });
+
   test("ignores an import of a component named Select", () => {
     // The Site#3650 false positive: `Select } from "…"` completes the raw
     // `select … from` shape, so importing a UI component read as a query and
