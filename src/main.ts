@@ -289,8 +289,12 @@ async function runInCI(
           regressedCount: reportContext.comparison?.regressed.length ?? 0,
           newQueryCount: reportContext.comparison?.newQueries.length ?? 0,
           indexedNewQueryCount: eligible.length,
+          // An approved migration is not drift the roll-up should count: a
+          // person has already validated it, so the condition is satisfied
+          // rather than softened.
           schemaChanged:
-            reportContext.runMetadata?.schemaChange?.changed === true,
+            reportContext.runMetadata?.schemaChange?.changed === true &&
+            reportContext.runMetadata.schemaChange.approved !== true,
           untestedDataAccessFileCount:
             reportContext.testPresenceVerdict?.dataAccessFiles.length ?? 0,
           regressionThreshold: config.regressionThreshold,
