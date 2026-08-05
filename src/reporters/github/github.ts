@@ -20,6 +20,7 @@ import {
 
 import type { CiQueryPayload, ImprovedQuery, RegressedQuery } from "../site-api.ts";
 import {
+  buildNamedSchemaChangeView,
   buildSchemaChangeView,
   schemaChangeLabel,
   type SchemaChangeView,
@@ -160,7 +161,13 @@ function buildSchemaChange(ctx: ReportContext): SchemaChangeView {
   if (!change || !change.changed) {
     return { hasChanges: false, total: 0, groups: [] };
   }
-  return buildSchemaChangeView(change.operations);
+  // The API names each changed object; a patch path indexes a baseline schema
+  // this process never holds, so it can only be read positionally. Prefer the
+  // names whenever the API sends them, and fall back to the patch for an API
+  // that predates the field.
+  return change.changes
+    ? buildNamedSchemaChangeView(change.changes)
+    : buildSchemaChangeView(change.operations);
 }
 
 /**

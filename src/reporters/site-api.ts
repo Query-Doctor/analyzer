@@ -91,6 +91,19 @@ export interface PreviousRun {
 }
 
 /**
+ * One object the API found changed between this run's schema and its baseline,
+ * already named. `name` is qualified, e.g.
+ * `public.ci_runs.statistics_payload_id`, and `properties` lists the fields that
+ * differ on a `changed` entry.
+ */
+export interface NamedSchemaChange {
+  kind: "added" | "removed" | "changed";
+  object: string;
+  name: string;
+  properties?: string[];
+}
+
+/**
  * Unified CI-signal metadata returned by `POST /ci/runs` (Site #3067).
  * The analyzer renders these fields verbatim so the PR comment speaks the same
  * language as the Slack/webhook alert. See analyzer#141.
@@ -139,7 +152,10 @@ export interface CiRunMetadata {
    * for the resolved comparison baseline — the same baseline the roll-up uses,
    * so the schema diff and the query signals agree on what "the target branch"
    * is. `operations` is a jsondiffpatch JSON Patch (RFC 6902) over the
-   * {@link FullSchema} shape, keyed by table/index/constraint OID server-side.
+   * {@link FullSchema} shape. `changes` is the same delta with every object
+   * named, which is what the comment renders; only the API can produce it,
+   * because a patch path indexes a baseline schema this process never holds.
+   * It is absent on a Site API that predates it, and the patch is the fallback.
    *
    * Optional/nullable to mirror {@link baseline}: absent on a Site API that
    * predates this field (deploy skew — render nothing), `null` when the API
@@ -149,6 +165,7 @@ export interface CiRunMetadata {
   schemaChange?: {
     changed: boolean;
     operations: Op[];
+    changes?: NamedSchemaChange[];
   } | null;
 }
 

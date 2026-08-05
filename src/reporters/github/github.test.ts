@@ -846,6 +846,35 @@ describe("schema change section", () => {
     expect(entries.every((l) => l.endsWith("</sub>"))).toBe(true);
   });
 
+  // The patch locates this change at /tables/12/columns/17, which is all the
+  // reporter could print from it. The API now names it, so the position never
+  // reaches the comment.
+  test("renders the API's named changes rather than the patch path", () => {
+    const addedColumnOp = {
+      op: "add" as const,
+      path: "/tables/12/columns/17",
+      value: { type: "column", name: "statistics_payload_id", order: 18 },
+    };
+    const ctx = makeContext({
+      comparison: makeComparison(),
+      comparisonBranch: "main",
+      gates: [{ condition: "schema-drift", label: "Schema drift", fired: true, conclusion: "failure", found: "The schema changed against the baseline" }],
+      runMetadata: makeMetadata({
+        schemaChange: {
+          changed: true,
+          operations: [addedColumnOp],
+          changes: [
+            { kind: "added" as const, object: "column", name: "public.ci_runs.statistics_payload_id" },
+          ],
+        },
+      }),
+    });
+    const output = renderTemplate(ctx);
+
+    expect(output).toContain("<sub>Added column public.ci_runs.statistics_payload_id</sub>");
+    expect(output).not.toContain("columns.17");
+  });
+
   test("template renders no schema section when unchanged", () => {
     const ctx = makeContext({
       comparison: makeComparison(),
