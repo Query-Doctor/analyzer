@@ -15,12 +15,21 @@
 /** The methods this depends on. Absent ones are reported, never worked around. */
 const TIMED_METHOD = "optimizeQuery";
 const CANDIDATES_METHOD = "getPotentialIndexCandidates";
+/** Phases outside the per-query loop that a run still pays for. */
+const PHASE_METHODS = ["setStatistics", "vacuum"] as const;
 
 export type Instrumentation = {
   /** Milliseconds spent optimizing each query, keyed by its hash. */
   timings: Map<string, number>;
   /** Index candidates derived for each query, keyed by its hash. */
   candidates: Map<string, number>;
+  /**
+   * Time spent in phases outside the query loop, and how often each ran.
+   * Without these a run is sampled rather than accounted for: setStatistics and
+   * the periodic vacuums are a third of the analyzer's work and would otherwise
+   * be invisible.
+   */
+  phases: Map<string, { totalMs: number; calls: number }>;
   /**
    * The largest number of candidates any single table attracted. This is the
    * input to the permutation count, so it is the number that decides whether a
@@ -62,6 +71,7 @@ export function instrument(optimizerClass: {
   const timings = new Map<string, number>();
   const candidates = new Map<string, number>();
   const missing: string[] = [];
+  const phases = new Map<string, { totalMs: number; calls: number }>();
   const restores: Array<() => void> = [];
   let maxCandidatesPerTable = 0;
 
@@ -123,9 +133,34 @@ export function instrument(optimizerClass: {
     });
   }
 
+  for (const name of PHASE_METHODS) {
+    const original = prototype[name] as AnyFn | undefined;
+    if (typeof original !== "function") {
+      missing.push(name);
+      continue;
+    }
+    prototype[name] = async function (this: unknown, ...args: unknown[]) {
+      const started = process.hrtime.bigint();
+      try {
+        return await (original as AnyFn).apply(this, args);
+      } finally {
+        const spent = Number(process.hrtime.bigint() - started) / 1e6;
+        const running = phases.get(name) ?? { totalMs: 0, calls: 0 };
+        phases.set(name, {
+          totalMs: running.totalMs + spent,
+          calls: running.calls + 1,
+        });
+      }
+    } as unknown as AnyFn;
+    restores.push(() => {
+      prototype[name] = original;
+    });
+  }
+
   return {
     timings,
     candidates,
+    phases,
     get maxCandidatesPerTable() {
       return maxCandidatesPerTable;
     },

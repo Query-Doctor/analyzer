@@ -7,6 +7,12 @@ import { RecentQuery, QueryHash } from "../sql/recent-query.ts";
 import type { StatisticsMode } from "@query-doctor/core";
 
 /**
+ * Bumped whenever the generated schema, data or queries change. Two runs with
+ * different versions measure different work and must never be compared.
+ */
+export const WORKLOAD_VERSION = 2;
+
+/**
  * Schema and query generation for the benchmark shapes.
  *
  * Lifted unchanged out of `optimizer.bench.ts` so the shape runner and the
@@ -44,6 +50,9 @@ export const PG_COMMAND = [
 // Schema & query generators
 // ---------------------------------------------------------------------------
 
+/** Enough rows that an index build and a heap fetch cost something. */
+const ROWS_PER_TABLE = 5_000;
+
 function tName(i: number): string {
   return `t_${String(i).padStart(3, "0")}`;
 }
@@ -61,6 +70,16 @@ function generateDDL(tableCount: number): string {
       active boolean DEFAULT true,
       created_at timestamp DEFAULT now()
     );`);
+    // Rows, not just a schema. Version 1 created empty tables and fabricated
+    // statistics claiming a hundred thousand rows, so CREATE INDEX was free and
+    // EXPLAIN never touched a page: the run measured planning and nothing else.
+    stmts.push(`INSERT INTO ${t} (${hasRef ? "ref_id, " : ""}name, value, status, active)
+      SELECT ${hasRef ? "(g % 50) + 1, " : ""}
+        'name_' || (g % 500),
+        (g % 1000)::numeric / 10,
+        (ARRAY['new','open','closed'])[(g % 3) + 1],
+        g % 2 = 0
+      FROM generate_series(1, ${ROWS_PER_TABLE}) g;`);
     if (i % 3 === 0) stmts.push(`CREATE INDEX ${t}_name_idx ON ${t}(name);`);
     if (hasRef && i % 2 === 0)
       stmts.push(`CREATE INDEX ${t}_ref_idx ON ${t}(ref_id);`);

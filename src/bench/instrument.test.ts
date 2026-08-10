@@ -132,6 +132,8 @@ describe("instrument", () => {
     expect(recording.missing).toStrictEqual([
       "optimizeQuery",
       "getPotentialIndexCandidates",
+      "setStatistics",
+      "vacuum",
     ]);
     recording.restore();
   });
@@ -151,7 +153,11 @@ describe("instrument", () => {
     await new Partial().run("only-timed");
     recording.restore();
 
-    expect(recording.missing).toStrictEqual(["getPotentialIndexCandidates"]);
+    expect(recording.missing).toStrictEqual([
+      "getPotentialIndexCandidates",
+      "setStatistics",
+      "vacuum",
+    ]);
     expect(recording.timings.has("only-timed")).toBe(true);
   });
 });
@@ -211,5 +217,39 @@ describe("the real optimizer", () => {
     const recording = instrument(QueryOptimizer);
     recording.restore();
     expect(recording.missing).toStrictEqual([]);
+  });
+});
+
+describe("phase timing", () => {
+  it("accounts for work outside the query loop", async () => {
+    class WithPhases {
+      private async setStatistics() {
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      private async vacuum() {
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      private async optimizeQuery(recent: { hash: string }) {
+        return recent.hash;
+      }
+      async run() {
+        const self = this as unknown as Record<string, Function>;
+        await self.setStatistics();
+        for (let i = 0; i < 3; i++) {
+          await self.optimizeQuery({ hash: `q${i}` });
+          await self.vacuum();
+        }
+      }
+    }
+    const recording = instrument(WithPhases);
+    await new WithPhases().run();
+    recording.restore();
+
+    // This stand-in has no candidate derivation, which is reported, not fatal.
+    expect(recording.missing).toStrictEqual(["getPotentialIndexCandidates"]);
+    expect(recording.phases.get("setStatistics")!.calls).toBe(1);
+    expect(recording.phases.get("setStatistics")!.totalMs).toBeGreaterThan(20);
+    expect(recording.phases.get("vacuum")!.calls).toBe(3);
+    expect(recording.timings.size).toBe(3);
   });
 });
