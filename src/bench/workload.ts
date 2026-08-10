@@ -10,7 +10,7 @@ import type { StatisticsMode } from "@query-doctor/core";
  * Bumped whenever the generated schema, data or queries change. Two runs with
  * different versions measure different work and must never be compared.
  */
-export const WORKLOAD_VERSION = 3;
+export const WORKLOAD_VERSION = 4;
 
 /**
  * Schema and query generation for the benchmark shapes.
@@ -113,6 +113,35 @@ const QUERY_PATTERNS: ((t: string, ref: string | null) => string)[] = [
  * two, so it never reaches the part that costs anything.
  */
 const FILTERABLE = ["name", "status", "value", "active", "created_at", "ref_id"];
+
+/**
+ * Queries that read columns they do not filter on.
+ *
+ * This is the shape covering indexes are for, and the only one that makes
+ * `deriveIndexes` mark a candidate as payload. A `SELECT *` produces none,
+ * because `*` names no column, so five of the eight breadth patterns cannot
+ * exercise it at all.
+ */
+export function generateCoveringQueries(
+  tableCount: number,
+  queryCount: number,
+): string[] {
+  const reads = [
+    ["name", "status"],
+    ["name", "value", "status"],
+    ["status"],
+    ["name", "created_at", "value", "status"],
+  ];
+  const queries: string[] = [];
+  for (let q = 0; queries.length < queryCount; q++) {
+    const t = tName((q % tableCount) + 1);
+    const selected = reads[Math.floor(q / tableCount) % reads.length];
+    // `active` filters and is never selected, so every other column named here
+    // is read and not filtered: exactly what payload is derived from.
+    queries.push(`SELECT ${selected.join(", ")} FROM ${t} WHERE active = $1`);
+  }
+  return queries.slice(0, queryCount);
+}
 
 /**
  * Queries that filter on `width` columns of one table, so candidate generation
@@ -248,6 +277,8 @@ export async function setupDatabase(
   queryCount: number,
   /** When set, queries filter on this many columns of one table. */
   predicateWidth?: number,
+  /** When set, queries read columns they do not filter on. */
+  covering?: boolean,
 ): Promise<BenchContext> {
   const adminPool = new Pool({ connectionString: baseUrl });
   await adminPool.query(`CREATE DATABASE ${dbName}`);
@@ -262,9 +293,11 @@ export async function setupDatabase(
   const conn = Connectable.fromString(dbUrl);
   const optimizer = new QueryOptimizer(manager, conn);
   const queries = await parseQueries(
-    predicateWidth
-      ? generateDepthQueries(tableCount, queryCount, predicateWidth)
-      : generateQueries(tableCount, queryCount),
+    covering
+      ? generateCoveringQueries(tableCount, queryCount)
+      : predicateWidth
+        ? generateDepthQueries(tableCount, queryCount, predicateWidth)
+        : generateQueries(tableCount, queryCount),
   );
   const stats = generateStats(tableCount);
 

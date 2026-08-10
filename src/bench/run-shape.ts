@@ -2,6 +2,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "../remote/query-optimizer.ts";
 import { instrument, permutationCount } from "./instrument.ts";
 import { reportFromChild } from "./measure.ts";
+import { applySchema, buildReplay, readCiRun, REPLAY_VERSION } from "./replay.ts";
 import { PG_COMMAND, setupDatabase, WORKLOAD_VERSION } from "./workload.ts";
 
 /**
@@ -23,6 +24,10 @@ type Args = {
   image: string;
   /** Columns each query filters on. Absent means the mixed breadth patterns. */
   width?: number;
+  /** Queries read columns they do not filter on. */
+  covering: boolean;
+  /** Path to a recorded CI run, replayed instead of a generated shape. */
+  replay?: string;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -32,9 +37,11 @@ function parseArgs(argv: string[]): Args {
     if (value === undefined) throw new Error(`Missing --${name}`);
     return value;
   };
+  const replay = get("replay");
   return {
     shape: get("shape"),
-    tables: Number(get("tables")),
+    // A replay brings its own tables, so only a generated shape needs a count.
+    tables: replay ? 0 : Number(get("tables")),
     queries: Number(get("queries")),
     // Pinned by the caller. A moving tag would make two runs months apart
     // disagree about what they were measuring.
@@ -42,6 +49,83 @@ function parseArgs(argv: string[]): Args {
     width: argv.some((a) => a.startsWith("--width="))
       ? Number(get("width"))
       : undefined,
+    covering: argv.includes("--covering"),
+    replay,
+  };
+}
+
+/**
+ * A database rebuilt from a recorded run, and that project's own queries.
+ *
+ * The statistics are the ones the run carried, so the planner sees the sizes
+ * production had rather than the sizes this container happens to hold.
+ */
+/**
+ * Node's EventEmitter throws when `error` is emitted with nothing listening,
+ * and the optimizer reports a failed query that way. One query naming a column
+ * the database does not have would otherwise end the whole run instead of being
+ * recorded as one failure among many.
+ */
+function absorbErrors(optimizer: QueryOptimizer, counter: { failed: number }) {
+  optimizer.on("error", () => {
+    counter.failed++;
+  });
+}
+
+async function setupReplay(baseUrl: string, args: Args) {
+  const { Pool } = await import("pg");
+  const { ConnectionManager } = await import("../sync/connection-manager.ts");
+  const { Connectable } = await import("../sync/connectable.ts");
+  const { RecentQuery, QueryHash } = await import("../sql/recent-query.ts");
+
+  const run = readCiRun(args.replay!);
+  const workload = buildReplay(run, { maxQueries: args.queries });
+
+  const dbName = `bench_replay`;
+  const admin = new Pool({ connectionString: baseUrl });
+  await admin.query(`CREATE DATABASE ${dbName}`);
+  await admin.end();
+  const dbUrl = baseUrl.replace(/\/[^/]*$/, `/${dbName}`);
+
+  const schema = await applySchema(dbUrl, workload.statements);
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const optimizer = new QueryOptimizer(manager, Connectable.fromString(dbUrl));
+  const failures = { failed: 0 };
+  absorbErrors(optimizer, failures);
+  const queries = [];
+  for (const q of workload.queries) {
+    const hash = QueryHash.parse(q.hash);
+    queries.push(
+      await RecentQuery.analyze(
+        {
+          query: q.query,
+          formattedQuery: q.query,
+          username: "bench",
+          meanTime: 0,
+          calls: "1",
+          rows: "0",
+          topLevel: true,
+        },
+        hash,
+        hash,
+      ),
+    );
+  }
+
+  return {
+    manager,
+    optimizer,
+    queries,
+    stats: workload.statistics,
+    describe: {
+      repo: workload.repo,
+      tables: workload.tables,
+      queries: workload.queries.length,
+      schemaApplied: schema.applied,
+      schemaFailed: schema.failed.length,
+      failures,
+    },
   };
 }
 
@@ -68,24 +152,38 @@ async function main() {
 
   const recording = instrument(QueryOptimizer);
   let context: Awaited<ReturnType<typeof setupDatabase>> | undefined;
+  let replayed: Awaited<ReturnType<typeof setupReplay>> | undefined;
   try {
-    context = await time("setupDatabase", () =>
-      setupDatabase(
-        container.getConnectionUri(),
-        `bench_${args.shape.replace(/\W/g, "_")}`,
-        args.tables,
-        args.queries,
-        args.width,
-      ),
-    );
-    await time("optimizerStart", () =>
-      context!.optimizer.start(context!.queries, context!.stats),
-    );
+    if (args.replay) {
+      replayed = await time("setupDatabase", () =>
+        setupReplay(container.getConnectionUri(), args),
+      );
+      await time("optimizerStart", () =>
+        replayed!.optimizer.start(replayed!.queries, replayed!.stats),
+      );
+    } else {
+      context = await time("setupDatabase", () =>
+        setupDatabase(
+          container.getConnectionUri(),
+          `bench_${args.shape.replace(/\W/g, "_")}`,
+          args.tables,
+          args.queries,
+          args.width,
+          args.covering,
+        ),
+      );
+      absorbErrors(context.optimizer, { failed: 0 });
+      await time("optimizerStart", () =>
+        context!.optimizer.start(context!.queries, context!.stats),
+      );
+    }
   } finally {
     recording.restore();
     context?.optimizer.stop();
+    replayed?.optimizer.stop();
     await time("teardown", async () => {
       await context?.manager.closeAll().catch(() => {});
+      await replayed?.manager.closeAll().catch(() => {});
       await container.stop().catch(() => {});
     });
   }
@@ -99,7 +197,8 @@ async function main() {
     `${reportFromChild({
       shape: args.shape,
       // Two runs of different workload versions measure different work.
-      workloadVersion: WORKLOAD_VERSION,
+      workloadVersion: args.replay ? -REPLAY_VERSION : WORKLOAD_VERSION,
+      ...(args.replay ? { replay: replayed?.describe } : {}),
       hashes,
       perQueryMs: hashes.map((hash) => recording.timings.get(hash)!),
       // Work outside the query loop. Without it a run is sampled, not
