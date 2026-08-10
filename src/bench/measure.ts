@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 
 /**
  * Runs one benchmark shape in its own process and records what it cost.
@@ -44,6 +44,29 @@ export type ShapeMeasurement<T = unknown> = {
   stderr?: string;
 };
 
+/**
+ * Runs the child inside a container instead of on the host.
+ *
+ * The point is a fixed ceiling. `--max-old-space-size` bounds only the V8 heap,
+ * so a shape whose growth is in buffers runs past it and exhausts the machine;
+ * a cgroup limit holds for every kind of allocation, and the kernel reports the
+ * kill. That makes running out of memory reproducible rather than a function of
+ * whichever machine happened to run it.
+ *
+ * The image is pinned by digest because a tag moves, and two runs months apart
+ * have to agree about what they were measuring.
+ */
+export type ContainerOptions = {
+  image: string;
+  memoryMb: number;
+  cpus?: number;
+  /** Physical cores to pin to, e.g. "0-3", so another shape cannot steal them. */
+  cpuset?: string;
+  /** Paths mounted read-write, as host:container pairs. */
+  mounts?: Array<{ host: string; container: string }>;
+  workdir?: string;
+};
+
 export type MeasureOptions = {
   shape: string;
   command: string;
@@ -64,6 +87,8 @@ export type MeasureOptions = {
   maxHeapMb?: number;
   env?: NodeJS.ProcessEnv;
   cwd?: string;
+  /** Run in a container rather than on the host. */
+  container?: ContainerOptions;
 };
 
 /** What a child writes on its final line. */
@@ -100,6 +125,53 @@ function parseChildReport<T>(stdout: string): ChildReport<T> | undefined {
   }
 }
 
+/** A name the parent can inspect after the container exits. */
+const containerName = (shape: string, nonce: number) =>
+  `qd-bench-${shape.replace(/\W/g, "-")}-${nonce}`;
+
+function dockerCommand(
+  options: MeasureOptions,
+  name: string,
+  inner: string[],
+): { command: string; args: string[] } {
+  const c = options.container!;
+  const args = [
+    "run",
+    "--name",
+    name,
+    // Not --rm: the container has to survive long enough to be inspected for
+    // the out-of-memory flag, which is the whole reason for running in one.
+    `--memory=${c.memoryMb}m`,
+    // Equal to --memory so swap cannot mask a leak as merely slow.
+    `--memory-swap=${c.memoryMb}m`,
+  ];
+  if (c.cpus) args.push(`--cpus=${c.cpus}`);
+  if (c.cpuset) args.push(`--cpuset-cpus=${c.cpuset}`);
+  for (const mount of c.mounts ?? []) {
+    args.push("-v", `${mount.host}:${mount.container}`);
+  }
+  if (c.workdir) args.push("-w", c.workdir);
+  for (const [key, value] of Object.entries(options.env ?? {})) {
+    if (value !== undefined) args.push("-e", `${key}=${value}`);
+  }
+  args.push(c.image, ...inner);
+  return { command: "docker", args };
+}
+
+/** Docker's own account of how the container ended. */
+function inspectContainer(name: string): { oomKilled: boolean } | undefined {
+  try {
+    const raw = execFileSync(
+      "docker",
+      ["inspect", "--format", "{{.State.OOMKilled}}", name],
+      { encoding: "utf8" },
+    ).trim();
+    return { oomKilled: raw === "true" };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function measureShape<T = unknown>(
   options: MeasureOptions,
 ): Promise<ShapeMeasurement<T>> {
@@ -107,8 +179,14 @@ export async function measureShape<T = unknown>(
     ? [`--max-old-space-size=${options.maxHeapMb}`]
     : [];
 
+  const inner = [options.command, ...execArgs, ...options.args];
+  const name = containerName(options.shape, process.pid);
+  const launch = options.container
+    ? dockerCommand(options, name, inner)
+    : { command: options.command, args: [...execArgs, ...options.args] };
+
   const started = process.hrtime.bigint();
-  const child = spawn(options.command, [...execArgs, ...options.args], {
+  const child = spawn(launch.command, launch.args, {
     env: { ...process.env, ...options.env },
     cwd: options.cwd,
     stdio: ["ignore", "pipe", "pipe"],
@@ -143,15 +221,28 @@ export async function measureShape<T = unknown>(
   const wallMs = Number(process.hrtime.bigint() - started) / 1e6;
   const report = parseChildReport<T>(stdout);
 
+  // Asked before the container is removed, and it is the one signal a child
+  // that ran out of memory could never report for itself.
+  const inspected = options.container ? inspectContainer(name) : undefined;
+  if (options.container) {
+    try {
+      execFileSync("docker", ["rm", "-f", name], { stdio: "ignore" });
+    } catch {
+      // Already gone.
+    }
+  }
+
   // A child that ran out of memory never reached its own report, so its cost is
   // only knowable from the outside: it died, and it died big.
   const outcome: ShapeOutcome = timedOut
     ? "timeout"
-    : signal !== null
+    : inspected?.oomKilled
       ? "killed"
-      : code === 0 && report
-        ? "ok"
-        : "failed";
+      : signal !== null
+        ? "killed"
+        : code === 0 && report
+          ? "ok"
+          : "failed";
 
   return {
     shape: options.shape,

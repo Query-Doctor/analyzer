@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -165,4 +166,65 @@ describe("measureShape", () => {
     expect(result.outcome).toBe("failed");
     expect(result.payload).toBeUndefined();
   });
+});
+
+describe("measureShape in a container", () => {
+  // These need Docker. Skipped rather than failed where it is absent, so the
+  // suite still runs on a machine without it.
+  const hasDocker = (() => {
+    try {
+      execFileSync("docker", ["version"], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+
+  it.skipIf(!hasDocker)(
+    "reports a container the kernel killed for exceeding memory",
+    async () => {
+      // Buffers allocate outside the V8 heap, so only the cgroup limit stops
+      // this. That is the case --max-old-space-size cannot cover.
+      const result = await measureShape({
+        shape: "oom",
+        command: "node",
+        args: [
+          "-e",
+          "const held=[];while(true)held.push(Buffer.alloc(1024*1024,1));",
+        ],
+        container: { image: "node:24-alpine", memoryMb: 128 },
+        timeoutMs: 120_000,
+      });
+
+      expect(result.outcome).toBe("killed");
+      expect(result.payload).toBeUndefined();
+      // 137 is 128+SIGKILL, which is how Docker reports a cgroup kill. The
+      // process itself carries no signal, so without the inspect this would
+      // read as an ordinary non-zero exit.
+      expect(result.exitCode).toBe(137);
+      expect(result.signal).toBeNull();
+    },
+    180_000,
+  );
+
+  it.skipIf(!hasDocker)(
+    "reports a container that finished, with its payload",
+    async () => {
+      const result = await measureShape<{ ok: boolean }>({
+        shape: "fine",
+        command: "node",
+        args: [
+          "-e",
+          `const u=process.resourceUsage();process.stdout.write("${RESULT_SENTINEL}"+JSON.stringify({payload:{ok:true},cpuMs:(u.userCPUTime+u.systemCPUTime)/1000,maxRssMb:u.maxRSS/1024})+"\\n")`,
+        ],
+        container: { image: "node:24-alpine", memoryMb: 256 },
+        timeoutMs: 120_000,
+      });
+
+      expect(result.outcome).toBe("ok");
+      expect(result.payload).toStrictEqual({ ok: true });
+      expect(result.maxRssMb).toBeGreaterThan(0);
+    },
+    180_000,
+  );
 });
