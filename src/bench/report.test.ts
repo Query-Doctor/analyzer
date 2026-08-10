@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { compareRuns, renderReport, type ShapePayload } from "./report.ts";
+import {
+  compareRuns,
+  percentiles,
+  renderReport,
+  type ShapePayload,
+} from "./report.ts";
 import type { ShapeMeasurement } from "./measure.ts";
 
 function shape(
@@ -182,5 +187,36 @@ describe("renderReport", () => {
 
   it("says so when nothing ran at all", () => {
     expect(renderReport([])).toBe("No shapes ran.");
+  });
+});
+
+describe("percentiles", () => {
+  it("separates the fast band from the tail", () => {
+    // 90 fast queries and 10 slow ones: the median says nothing happened, the
+    // tail says a tenth of the run is ten times slower.
+    const values = [
+      ...Array.from({ length: 90 }, () => 7),
+      ...Array.from({ length: 10 }, () => 70),
+    ];
+    const p = percentiles(values)!;
+    expect(p.p50).toBe(7);
+    expect(p.p90).toBe(70);
+    expect(p.max).toBe(70);
+    expect(p.totalMs).toBe(90 * 7 + 10 * 70);
+  });
+
+  it("returns nothing for an empty run", () => {
+    expect(percentiles([])).toBeUndefined();
+  });
+
+  it("puts both sides of a comparison in the report", () => {
+    const fast = Array.from({ length: 20 }, (_, i) => 7 + i * 0.1);
+    const slow = Array.from({ length: 20 }, (_, i) => 9 + i * 0.1);
+    const report = renderReport(
+      compareRuns([shape("breadth", fast)], [shape("breadth", slow)]),
+    );
+    expect(report).toContain("Per-query distribution");
+    expect(report).toContain("| control |");
+    expect(report).toContain("| experiment |");
   });
 });

@@ -21,12 +21,45 @@ export type ShapePayload = {
   counts?: Record<string, number>;
 };
 
+/**
+ * Timings here are bimodal in practice: most queries sit in a fast band and
+ * some fall into a slow one, so a median describes the fast band and says
+ * nothing about how many landed outside it. The tail is where a change shows
+ * up first, and where a user feels it.
+ */
+export type Percentiles = {
+  min: number;
+  p50: number;
+  p90: number;
+  p99: number;
+  max: number;
+  /** Total across every query, which is what a run costs end to end. */
+  totalMs: number;
+};
+
+export function percentiles(values: number[]): Percentiles | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (fraction: number) =>
+    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
+  return {
+    min: sorted[0],
+    p50: at(0.5),
+    p90: at(0.9),
+    p99: at(0.99),
+    max: sorted[sorted.length - 1],
+    totalMs: sorted.reduce((sum, value) => sum + value, 0),
+  };
+}
+
 export type ShapeVerdict = {
   shape: string;
   kind: "compared" | "control-only" | "experiment-only" | "did-not-finish";
   timing?: PairedComparison;
   /** Set when either side failed to finish, naming which and how. */
   incident?: string;
+  /** Per-query distribution on each side, which the median alone conceals. */
+  timings?: { control?: Percentiles; experiment?: Percentiles };
   wallMs?: { control: number; experiment: number };
   cpuMs?: { control?: number; experiment?: number };
   maxRssMb?: { control?: number; experiment?: number };
@@ -94,6 +127,10 @@ export function compareRuns(
     }
 
     const resources = {
+      timings: {
+        control: percentiles(a.payload?.perQueryMs ?? []),
+        experiment: percentiles(b.payload?.perQueryMs ?? []),
+      },
       wallMs: { control: a.wallMs, experiment: b.wallMs },
       cpuMs: { control: a.cpuMs, experiment: b.cpuMs },
       maxRssMb: { control: a.maxRssMb, experiment: b.maxRssMb },
@@ -182,6 +219,25 @@ export function renderReport(verdicts: ShapeVerdict[]): string {
       lines.push(
         `| \`${verdict.shape}\` | ${timingCell(verdict)} | ${cpu} | ${rss} |`,
       );
+    }
+    lines.push("");
+  }
+
+  const withTimings = compared.filter(
+    (verdict) => verdict.timings?.control && verdict.timings?.experiment,
+  );
+  if (withTimings.length > 0) {
+    lines.push("**Per-query distribution**");
+    lines.push("");
+    lines.push("| Shape | | min | p50 | p90 | p99 | max | total |");
+    lines.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const verdict of withTimings) {
+      for (const side of ["control", "experiment"] as const) {
+        const p = verdict.timings![side]!;
+        lines.push(
+          `| \`${verdict.shape}\` | ${side} | ${fixed(p.min)} | ${fixed(p.p50)} | ${fixed(p.p90)} | ${fixed(p.p99)} | ${fixed(p.max)} | ${fixed(p.totalMs, 0)} ms |`,
+        );
+      }
     }
     lines.push("");
   }
