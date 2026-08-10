@@ -15,8 +15,12 @@ import type { ShapeMeasurement } from "./measure.ts";
  */
 
 export type ShapePayload = {
+  /** Rejects a comparison across a change to the generated work. */
+  workloadVersion?: number;
   /** One reading per query, in the same order on both sides. */
   perQueryMs: number[];
+  /** Time outside the query loop, keyed by phase. */
+  phases?: Record<string, { totalMs: number; calls: number }>;
   /** Exact counts: index permutations built, statements attempted. */
   counts?: Record<string, number>;
 };
@@ -60,6 +64,11 @@ export type ShapeVerdict = {
   incident?: string;
   /** Per-query distribution on each side, which the median alone conceals. */
   timings?: { control?: Percentiles; experiment?: Percentiles };
+  /** Time outside the query loop, which the per-query series cannot see. */
+  phases?: {
+    control?: Record<string, { totalMs: number; calls: number }>;
+    experiment?: Record<string, { totalMs: number; calls: number }>;
+  };
   wallMs?: { control: number; experiment: number };
   cpuMs?: { control?: number; experiment?: number };
   maxRssMb?: { control?: number; experiment?: number };
@@ -131,6 +140,7 @@ export function compareRuns(
         control: percentiles(a.payload?.perQueryMs ?? []),
         experiment: percentiles(b.payload?.perQueryMs ?? []),
       },
+      phases: { control: a.payload?.phases, experiment: b.payload?.phases },
       wallMs: { control: a.wallMs, experiment: b.wallMs },
       cpuMs: { control: a.cpuMs, experiment: b.cpuMs },
       maxRssMb: { control: a.maxRssMb, experiment: b.maxRssMb },
@@ -148,6 +158,22 @@ export function compareRuns(
         shape,
         kind: "did-not-finish",
         incident: which,
+        ...resources,
+      });
+      continue;
+    }
+
+    // A workload change alters the work itself, so a delta across one measures
+    // the generator rather than the analyzer.
+    if (
+      a.payload?.workloadVersion !== undefined &&
+      b.payload?.workloadVersion !== undefined &&
+      a.payload.workloadVersion !== b.payload.workloadVersion
+    ) {
+      verdicts.push({
+        shape,
+        kind: "did-not-finish",
+        incident: `workload version differs (${a.payload.workloadVersion} vs ${b.payload.workloadVersion}), not comparable`,
         ...resources,
       });
       continue;
@@ -239,6 +265,28 @@ export function renderReport(verdicts: ShapeVerdict[]): string {
         );
       }
     }
+    lines.push("");
+  }
+
+  const phaseRows = compared.flatMap((verdict) => {
+    const keys = new Set([
+      ...Object.keys(verdict.phases?.control ?? {}),
+      ...Object.keys(verdict.phases?.experiment ?? {}),
+    ]);
+    return [...keys].map((name) => {
+      const c = verdict.phases?.control?.[name];
+      const e = verdict.phases?.experiment?.[name];
+      const delta =
+        c && e ? `${signed(percent(c.totalMs, e.totalMs))}%` : "—";
+      return `| \`${verdict.shape}\` | ${name} | ${fixed(c?.totalMs, 0)} ms | ${fixed(e?.totalMs, 0)} ms | ${delta} | ${e?.calls ?? c?.calls ?? "—"} |`;
+    });
+  });
+  if (phaseRows.length > 0) {
+    lines.push("**Outside the query loop**");
+    lines.push("");
+    lines.push("| Shape | Phase | Control | Experiment | Δ | Calls |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    lines.push(...phaseRows);
     lines.push("");
   }
 

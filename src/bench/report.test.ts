@@ -220,3 +220,41 @@ describe("percentiles", () => {
     expect(report).toContain("| experiment |");
   });
 });
+
+describe("phases and workload versions", () => {
+  const withPhases = (
+    name: string,
+    ms: number[],
+    phases: Record<string, { totalMs: number; calls: number }>,
+    version = 2,
+  ) =>
+    shape(name, ms, {
+      payload: { perQueryMs: ms, phases, workloadVersion: version },
+    });
+
+  it("reports work outside the query loop", () => {
+    const ms = [10, 11, 12, 13, 14, 15, 16, 17];
+    const report = renderReport(
+      compareRuns(
+        [withPhases("breadth", ms, { setStatistics: { totalMs: 400, calls: 1 } })],
+        [withPhases("breadth", ms, { setStatistics: { totalMs: 600, calls: 1 } })],
+      ),
+    );
+    expect(report).toContain("Outside the query loop");
+    expect(report).toContain("setStatistics");
+    expect(report).toContain("+50.0%");
+  });
+
+  it("refuses to compare across a workload change", () => {
+    // Seeding the tables altered the work itself, so a delta would measure the
+    // generator rather than the analyzer.
+    const ms = [10, 11, 12, 13, 14, 15, 16, 17];
+    const [verdict] = compareRuns(
+      [withPhases("breadth", ms, {}, 1)],
+      [withPhases("breadth", ms, {}, 2)],
+    );
+    expect(verdict.kind).toBe("did-not-finish");
+    expect(verdict.incident).toContain("workload version differs");
+    expect(verdict.timing).toBeUndefined();
+  });
+});

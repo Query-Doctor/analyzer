@@ -2,7 +2,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { QueryOptimizer } from "../remote/query-optimizer.ts";
 import { instrument, permutationCount } from "./instrument.ts";
 import { reportFromChild } from "./measure.ts";
-import { PG_COMMAND, setupDatabase } from "./workload.ts";
+import { PG_COMMAND, setupDatabase, WORKLOAD_VERSION } from "./workload.ts";
 
 /**
  * Runs one shape and prints what it cost. Spawned by `measureShape`, one
@@ -71,8 +71,13 @@ async function main() {
   process.stdout.write(
     `${reportFromChild({
       shape: args.shape,
+      // Two runs of different workload versions measure different work.
+      workloadVersion: WORKLOAD_VERSION,
       hashes,
       perQueryMs: hashes.map((hash) => recording.timings.get(hash)!),
+      // Work outside the query loop. Without it a run is sampled, not
+      // accounted for, and a change to statistics dumping moves nothing.
+      phases: Object.fromEntries(recording.phases),
       counts: {
         queriesMeasured: hashes.length,
         candidatesTotal: [...recording.candidates.values()].reduce(
