@@ -43,26 +43,47 @@ function parseArgs(argv: string[]): Args {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  const container = await new PostgreSqlContainer(args.image)
-    .withCommand(PG_COMMAND)
-    .start();
+  // Every phase of the run is timed, so the report can state what it did not
+  // account for rather than leaving most of the wall clock unexplained.
+  const clock = process.hrtime.bigint;
+  const started = clock();
+  const spans: Record<string, number> = {};
+  const time = async <T,>(name: string, work: () => Promise<T>): Promise<T> => {
+    const from = clock();
+    try {
+      return await work();
+    } finally {
+      spans[name] = Number(clock() - from) / 1e6;
+    }
+  };
+
+  const container = await time("containerStart", () =>
+    new PostgreSqlContainer(args.image).withCommand(PG_COMMAND).start(),
+  );
 
   const recording = instrument(QueryOptimizer);
   let context: Awaited<ReturnType<typeof setupDatabase>> | undefined;
   try {
-    context = await setupDatabase(
-      container.getConnectionUri(),
-      `bench_${args.shape.replace(/\W/g, "_")}`,
-      args.tables,
-      args.queries,
+    context = await time("setupDatabase", () =>
+      setupDatabase(
+        container.getConnectionUri(),
+        `bench_${args.shape.replace(/\W/g, "_")}`,
+        args.tables,
+        args.queries,
+      ),
     );
-    await context.optimizer.start(context.queries, context.stats);
+    await time("optimizerStart", () =>
+      context!.optimizer.start(context!.queries, context!.stats),
+    );
   } finally {
     recording.restore();
     context?.optimizer.stop();
-    await context?.manager.closeAll().catch(() => {});
-    await container.stop().catch(() => {});
+    await time("teardown", async () => {
+      await context?.manager.closeAll().catch(() => {});
+      await container.stop().catch(() => {});
+    });
   }
+  const insideMain = Number(clock() - started) / 1e6;
 
   // Sorted by hash so the order is the same on every run, which is what lets
   // two runs be paired without carrying the hashes around.
@@ -77,7 +98,28 @@ async function main() {
       perQueryMs: hashes.map((hash) => recording.timings.get(hash)!),
       // Work outside the query loop. Without it a run is sampled, not
       // accounted for, and a change to statistics dumping moves nothing.
-      phases: Object.fromEntries(recording.phases),
+      // Every phase carries the same shape, so a reader (and the report) can
+      // sum them without knowing which came from the recording and which from
+      // the timer around them.
+      phases: {
+        ...Object.fromEntries(recording.phases),
+        ...Object.fromEntries(
+          Object.entries(spans).map(([name, totalMs]) => [
+            name,
+            { totalMs, calls: 1 },
+          ]),
+        ),
+        // optimizerStart covers the query loop, setStatistics and the vacuums,
+        // so summing every phase would count those three twice.
+        queryLoop: {
+          totalMs: [...recording.timings.values()].reduce((a, b) => a + b, 0),
+          calls: recording.timings.size,
+        },
+        // Everything main() did, against everything the process did. The
+        // difference is module loading and transpilation, which belongs to the
+        // harness rather than the analyzer.
+        insideMain: { totalMs: insideMain, calls: 1 },
+      },
       counts: {
         queriesMeasured: hashes.length,
         candidatesTotal: [...recording.candidates.values()].reduce(

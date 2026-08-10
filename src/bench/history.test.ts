@@ -6,7 +6,7 @@ import {
   type CommitRecord,
   HARNESS_VERSION,
   currentEnv,
-  lockfileKey,
+  dependencyKey,
   readRecords,
   recordPath,
   toShapeRecord,
@@ -130,10 +130,35 @@ describe("toShapeRecord", () => {
   });
 });
 
-describe("lockfileKey", () => {
-  it("is stable for the same lockfile and differs for another", () => {
-    expect(lockfileKey("contents")).toBe(lockfileKey("contents"));
-    expect(lockfileKey("contents")).not.toBe(lockfileKey("other"));
-    expect(lockfileKey("contents")).toHaveLength(16);
+describe("dependencyKey", () => {
+  const manifest = (core: string) =>
+    JSON.stringify({ dependencies: { "@query-doctor/core": core } });
+
+  it("is stable for the same lockfile and manifest", () => {
+    expect(dependencyKey("lock", manifest("^0.15.0"))).toBe(
+      dependencyKey("lock", manifest("^0.15.0")),
+    );
+    expect(dependencyKey("lock", manifest("^0.15.0"))).toHaveLength(16);
+  });
+
+  it("differs when the lockfile differs", () => {
+    expect(dependencyKey("lock", manifest("^0.15.0"))).not.toBe(
+      dependencyKey("other", manifest("^0.15.0")),
+    );
+  });
+
+  it("differs when only the manifest moved", () => {
+    // The case that measured a commit against the wrong tree: package.json
+    // asked for ^0.16.0, the lockfile still pinned 0.15.0, and on the lockfile
+    // alone the cache handed back the previous commit's node_modules.
+    expect(dependencyKey("same-lock", manifest("^0.15.0"))).not.toBe(
+      dependencyKey("same-lock", manifest("^0.16.0")),
+    );
+  });
+
+  it("ignores manifest fields that do not affect the tree", () => {
+    const a = JSON.stringify({ version: "1.0.0", dependencies: { x: "^1" } });
+    const b = JSON.stringify({ version: "2.0.0", dependencies: { x: "^1" } });
+    expect(dependencyKey("lock", a)).toBe(dependencyKey("lock", b));
   });
 });

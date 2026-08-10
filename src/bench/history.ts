@@ -142,10 +142,32 @@ export function readRecords(root: string): CommitRecord[] {
 }
 
 /**
- * Identifies a dependency tree. A backfill installs once per distinct lockfile
+ * Identifies a dependency tree. A backfill installs once per distinct tree
  * rather than once per commit, which is the difference between twenty installs
  * and two hundred.
+ *
+ * Keyed on the manifest as well as the lockfile. Two commits can share a
+ * lockfile byte for byte and still want different dependencies, because one of
+ * them bumped `package.json` and never regenerated the lock. On the lockfile
+ * alone the second gets the first's tree from cache, `npm ci` never runs, and
+ * the mismatch that should have been caught is never noticed.
  */
-export function lockfileKey(lockfileContents: string): string {
-  return createHash("sha256").update(lockfileContents).digest("hex").slice(0, 16);
+export function dependencyKey(
+  lockfileContents: string,
+  manifestContents: string,
+): string {
+  const manifest = JSON.parse(manifestContents) as {
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
+  return createHash("sha256")
+    .update(lockfileContents)
+    .update(
+      JSON.stringify({
+        dependencies: manifest.dependencies,
+        devDependencies: manifest.devDependencies,
+      }),
+    )
+    .digest("hex")
+    .slice(0, 16);
 }

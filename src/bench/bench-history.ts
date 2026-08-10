@@ -6,7 +6,7 @@ import {
   type CommitRecord,
   HARNESS_VERSION,
   currentEnv,
-  lockfileKey,
+  dependencyKey,
   toShapeRecord,
   writeRecord,
 } from "./history.ts";
@@ -45,6 +45,7 @@ type Args = {
   worktrees: string;
   publish: boolean;
   push: boolean;
+  keepWorktrees: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -60,6 +61,11 @@ function parseArgs(argv: string[]): Args {
     // Pushing once at the end, not once per commit: a backfill of two hundred
     // commits should produce one push.
     push: argv.includes("--push"),
+    // A worktree costs ~290MB once node_modules is in it. Seventy of them is
+    // twenty gigabytes and seventy entries left registered in the repository,
+    // so each is removed once measured. The dependency cache survives, which is
+    // the expensive part to rebuild.
+    keepWorktrees: argv.includes("--keep-worktrees"),
   };
 }
 
@@ -98,7 +104,10 @@ function prepare(
 
   if (existsSync(join(path, "node_modules"))) return { path, resolved: false };
 
-  const key = lockfileKey(readFileSync(join(path, "package-lock.json"), "utf8"));
+  const key = dependencyKey(
+    readFileSync(join(path, "package-lock.json"), "utf8"),
+    readFileSync(join(path, "package.json"), "utf8"),
+  );
   const cached = join(CACHE, key);
   if (existsSync(cached)) {
     cpSync(cached, join(path, "node_modules"), { recursive: true });
@@ -160,6 +169,16 @@ async function measureCommit(
     console.error(
       `  ${shape.shape}: ${measurement.outcome} ${(measurement.wallMs / 1000).toFixed(1)}s`,
     );
+  }
+
+  if (!args.keepWorktrees) {
+    try {
+      execFileSync("git", ["worktree", "remove", "--force", prepared.path], {
+        stdio: "ignore",
+      });
+    } catch {
+      // Leaving one behind costs disk, not correctness.
+    }
   }
 
   return {
