@@ -10,7 +10,7 @@ import type { StatisticsMode } from "@query-doctor/core";
  * Bumped whenever the generated schema, data or queries change. Two runs with
  * different versions measure different work and must never be compared.
  */
-export const WORKLOAD_VERSION = 2;
+export const WORKLOAD_VERSION = 3;
 
 /**
  * Schema and query generation for the benchmark shapes.
@@ -62,8 +62,12 @@ function generateDDL(tableCount: number): string {
   for (let i = 1; i <= tableCount; i++) {
     const t = tName(i);
     const hasRef = i > 1;
+    // ref_id on every table, including the first. A query that filters on it
+    // has to work whichever table it lands on, and leaving it off table one
+    // made the widest shape fail with "column ref_id does not exist".
     stmts.push(`CREATE TABLE ${t} (
-      id serial PRIMARY KEY,${hasRef ? "\n      ref_id int," : ""}
+      id serial PRIMARY KEY,
+      ref_id int,
       name text,
       value numeric(10,2),
       status text,
@@ -73,8 +77,8 @@ function generateDDL(tableCount: number): string {
     // Rows, not just a schema. Version 1 created empty tables and fabricated
     // statistics claiming a hundred thousand rows, so CREATE INDEX was free and
     // EXPLAIN never touched a page: the run measured planning and nothing else.
-    stmts.push(`INSERT INTO ${t} (${hasRef ? "ref_id, " : ""}name, value, status, active)
-      SELECT ${hasRef ? "(g % 50) + 1, " : ""}
+    stmts.push(`INSERT INTO ${t} (ref_id, name, value, status, active)
+      SELECT (g % 50) + 1,
         'name_' || (g % 500),
         (g % 1000)::numeric / 10,
         (ARRAY['new','open','closed'])[(g % 3) + 1],
@@ -100,6 +104,43 @@ const QUERY_PATTERNS: ((t: string, ref: string | null) => string)[] = [
       : `SELECT * FROM ${t} WHERE name = $1 AND value > $2`,
 ];
 
+/**
+ * Every column a query can filter on, in the order predicates are added.
+ *
+ * Candidates per table decide how much work the optimizer does: it builds
+ * every ordered subset of them, which is 15 index definitions for three
+ * candidates, 1,956 for six and 13,699 for seven. The breadth shape tops out at
+ * two, so it never reaches the part that costs anything.
+ */
+const FILTERABLE = ["name", "status", "value", "active", "created_at", "ref_id"];
+
+/**
+ * Queries that filter on `width` columns of one table, so candidate generation
+ * has something to permute. `width` is the lever: it is the number the
+ * optimizer's cost is a factorial of.
+ */
+export function generateDepthQueries(
+  tableCount: number,
+  queryCount: number,
+  width: number,
+): string[] {
+  const queries: string[] = [];
+  for (let q = 0; queries.length < queryCount; q++) {
+    const t = tName((q % tableCount) + 1);
+    const columns = FILTERABLE.slice(0, Math.min(width, FILTERABLE.length));
+    const predicates = columns
+      .map((column, i) =>
+        column === "value" || column === "created_at"
+          ? `${column} > $${i + 1}`
+          : `${column} = $${i + 1}`,
+      )
+      .join(" AND ");
+    // The sort adds one more candidate without repeating a predicate column.
+    queries.push(`SELECT id FROM ${t} WHERE ${predicates} ORDER BY id LIMIT 50`);
+  }
+  return queries.slice(0, queryCount);
+}
+
 function generateQueries(tableCount: number, queryCount: number): string[] {
   const queries: string[] = [];
   for (let q = 0; queries.length < queryCount; q++) {
@@ -120,9 +161,10 @@ function generateStats(
     const t = tName(i);
     const hasRef = i > 1;
     const reltuples = 100_000 + i * 1_000;
+    // Matches the DDL: every table has ref_id.
     const columns = [
       "id",
-      ...(hasRef ? ["ref_id"] : []),
+      "ref_id",
       "name",
       "value",
       "status",
@@ -204,6 +246,8 @@ export async function setupDatabase(
   dbName: string,
   tableCount: number,
   queryCount: number,
+  /** When set, queries filter on this many columns of one table. */
+  predicateWidth?: number,
 ): Promise<BenchContext> {
   const adminPool = new Pool({ connectionString: baseUrl });
   await adminPool.query(`CREATE DATABASE ${dbName}`);
@@ -217,7 +261,11 @@ export async function setupDatabase(
   const manager = ConnectionManager.forLocalDatabase();
   const conn = Connectable.fromString(dbUrl);
   const optimizer = new QueryOptimizer(manager, conn);
-  const queries = await parseQueries(generateQueries(tableCount, queryCount));
+  const queries = await parseQueries(
+    predicateWidth
+      ? generateDepthQueries(tableCount, queryCount, predicateWidth)
+      : generateQueries(tableCount, queryCount),
+  );
   const stats = generateStats(tableCount);
 
   return { manager, optimizer, queries, stats };

@@ -21,6 +21,8 @@ type Args = {
   tables: number;
   queries: number;
   image: string;
+  /** Columns each query filters on. Absent means the mixed breadth patterns. */
+  width?: number;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -37,6 +39,9 @@ function parseArgs(argv: string[]): Args {
     // Pinned by the caller. A moving tag would make two runs months apart
     // disagree about what they were measuring.
     image: get("image", "postgres:17"),
+    width: argv.some((a) => a.startsWith("--width="))
+      ? Number(get("width"))
+      : undefined,
   };
 }
 
@@ -70,6 +75,7 @@ async function main() {
         `bench_${args.shape.replace(/\W/g, "_")}`,
         args.tables,
         args.queries,
+        args.width,
       ),
     );
     await time("optimizerStart", () =>

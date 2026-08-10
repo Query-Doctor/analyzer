@@ -30,8 +30,18 @@ import type { ShapePayload } from "./report.ts";
  * two commits where neither is an ancestor of the other.
  */
 
+/**
+ * `width` is predicates per query, which becomes candidates per table, which
+ * the optimizer turns into every ordered subset: 15 index definitions at three
+ * candidates, 325 at five, 13,699 at seven.
+ *
+ * breadth covers the ordinary path. depth-4 reaches the permutation work at
+ * 325, which costs about 1.5s a query. Width 6 costs about 5s a query, or two
+ * hours across a backfill, so it is run on its own rather than in the series.
+ */
 const SHAPES = [
   { shape: "breadth", tables: 20, queries: 100 },
+  { shape: "depth-4", tables: 4, queries: 8, width: 4 },
 ] as const;
 
 const PG_IMAGE = "postgres:17";
@@ -131,9 +141,13 @@ function prepare(
 }
 
 async function measureCommit(
-  commit: string,
+  ref: string,
   args: Args,
 ): Promise<CommitRecord | undefined> {
+  // Resolved to the full hash before anything is recorded. A record keyed on
+  // whatever abbreviation the caller typed lands in a different file from the
+  // same commit named in full, and the series gets two points for one commit.
+  const commit = git(["rev-parse", ref]);
   const committedAt = git(["show", "-s", "--format=%cI", commit]);
   const subject = git(["show", "-s", "--format=%s", commit]);
 
@@ -159,6 +173,7 @@ async function measureCommit(
         `--shape=${shape.shape}`,
         `--tables=${shape.tables}`,
         `--queries=${shape.queries}`,
+        ...("width" in shape ? [`--width=${shape.width}`] : []),
         `--image=${PG_IMAGE}`,
       ],
       cwd: prepared.path,
