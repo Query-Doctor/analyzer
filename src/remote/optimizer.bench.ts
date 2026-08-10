@@ -164,7 +164,7 @@ async function parseQueries(rawQueries: string[]): Promise<RecentQuery[]> {
         topLevel: true,
       },
       hash,
-      Date.now(),
+      hash,
     );
     results.push(query);
   }
