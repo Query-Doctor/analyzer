@@ -11,6 +11,7 @@ import {
   writeRecord,
 } from "./history.ts";
 import { measureShape } from "./measure.ts";
+import { publishHistory } from "./publish-history.ts";
 import type { ShapePayload } from "./report.ts";
 
 /**
@@ -42,6 +43,8 @@ type Args = {
   every: number;
   root: string;
   worktrees: string;
+  publish: boolean;
+  push: boolean;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -53,6 +56,10 @@ function parseArgs(argv: string[]): Args {
     every: Number(get("every") ?? 1),
     root: get("root") ?? join(process.cwd(), ".bench-history"),
     worktrees: get("worktrees") ?? join(process.cwd(), ".bench-worktrees"),
+    publish: argv.includes("--publish"),
+    // Pushing once at the end, not once per commit: a backfill of two hundred
+    // commits should produce one push.
+    push: argv.includes("--push"),
   };
 }
 
@@ -178,6 +185,21 @@ async function main() {
     );
     const record = await measureCommit(commit, args);
     if (record) console.error(`  -> ${writeRecord(args.root, record)}`);
+  }
+
+  if (args.publish) {
+    const result = publishHistory({
+      repo: process.cwd(),
+      worktree: join(args.worktrees, "history"),
+      records: args.root,
+      message: `bench: ${commits.length} commit(s), harness ${HARNESS_VERSION}`,
+      push: args.push,
+    });
+    console.error(
+      result.committed
+        ? `published ${result.added} record(s)${result.pushed ? " and pushed" : ""}`
+        : "nothing new to publish",
+    );
   }
 }
 
