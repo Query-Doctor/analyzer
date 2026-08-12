@@ -26,6 +26,7 @@ import { resolveVerdict } from "./gate/policy.ts";
 import { DEFAULT_CONFIG } from "./config.ts";
 import { ApiClient } from "./remote/api-client.ts";
 import { Remote } from "./remote/remote.ts";
+import { watchEventLoopLag } from "./remote/event-loop-lag.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { PgbadgerSource } from "./sql/pgbadger.ts";
 import { baselineNotFoundMessage } from "./reporters/baseline-notice.ts";
@@ -438,6 +439,9 @@ async function runOutsideCI() {
     { disableQueryLoader: false },
     sourceDb,
   );
+  // Only the persistent analyzer holds a connection long enough for a stall to
+  // cost it one; a CI run's session is over in seconds.
+  watchEventLoopLag();
   ApiClient.connectWithReconnect(env.SITE_API_ENDPOINT, env.TOKEN, { kind: "persistent" }, remote);
   const server = await createServer(
     env.HOST,
