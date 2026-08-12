@@ -29,9 +29,16 @@ export function hookUpApiReporter(api: RpcStub<ServerApi>, remote: Remote): () =
     });
   };
   const onStatsApplied = (stats: Parameters<typeof api.pushStats>[0]) => {
-    api.pushStats(stats).catch((err) => {
-      log.error(`Failed to push stats: ${err}`, "api-client");
-    });
+    // Report the outcome back. The daily floor is what stops a project's
+    // statistics going stale, and only this call knows whether the server
+    // actually took the dump.
+    api.pushStats(stats).then(
+      () => remote.markStatsPushed(),
+      (err) => {
+        log.error(`Failed to push stats: ${err}`, "api-client");
+        remote.markStatsPushFailed();
+      },
+    );
   };
   const onQueriesPolled = (queries: RecentQuery[]) => {
     api.pushQuery(JSON.parse(JSON.stringify(queries))).catch((err) => {

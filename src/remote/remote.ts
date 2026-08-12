@@ -110,7 +110,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private lastSkippedRefresh?: { reason: string; loggedAt: number };
   private static readonly SKIP_LOG_INTERVAL_MS = 30 * 60 * 1000;
   /**
-   * When this analyzer last pushed a dump, for the daily floor. A drift-
+   * When the server last *accepted* a dump, for the daily floor. Set by
+   * {@link Remote.markStatsPushed}, not by the emit that starts the push — a
+   * dump that never crossed the wire must not hold the floor down. A drift-
    * triggered push updates it too, so the two triggers can't dump twice in
    * quick succession.
    */
@@ -481,9 +483,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
         "remote",
       );
       // applyStatistics records the new baseline and emits `statsApplied`,
-      // which is what carries the dump back to the server.
+      // which is what carries the dump back to the server. Clearing the backoff
+      // is markStatsPushed's job, not this one's: the push it starts settles on
+      // a microtask, so clearing here would wipe the backoff a push that failed
+      // in the meantime had just set, and re-dump on the very next poll.
       await this.applyStatistics(await this.dumpSourceStats(source));
-      this.retryStatsAfter = undefined;
     } catch (error) {
       this.retryStatsAfter = Date.now() + Remote.STATS_RETRY_BACKOFF_MS;
       throw error;
@@ -580,12 +584,39 @@ export class Remote extends EventEmitter<RemoteEvents> {
     // `fromAssumption` carries no real numbers at all, so it pushes nothing —
     // synthetic defaults are not this project's production statistics.
     if (statsMode.kind === "fromStatisticsExport" && statsMode.stats.length > 0) {
+      // The baseline records what this analyzer dumped, so it moves here even
+      // if the push is later lost — rolling it back would re-trigger Size Drift
+      // on every poll and dump the source over and over. The floor is different:
+      // it means "the server holds these numbers", so only delivery can arm it.
       this.statsBaseline = baselineFromDump(statsMode.stats);
-      this.lastStatsPushAt = Date.now();
       this.emit("statsApplied", statsMode.stats);
     }
     // don't block the reply by awaiting all optimizations
     this.optimizer.restart();
+  }
+
+  /**
+   * The server accepted a pushed dump.
+   *
+   * Arming the floor is deferred to here rather than done at the emit, because
+   * the emit only says the dump left this process. `pushStats` is fire-and-
+   * forget over a socket that can die mid-flight, so arming on the attempt made
+   * a lost push look like a delivered one and shelved the retry for a full day.
+   */
+  markStatsPushed(): void {
+    this.lastStatsPushAt = Date.now();
+    this.retryStatsAfter = undefined;
+  }
+
+  /**
+   * The dump was built but never reached the server.
+   *
+   * Backs off rather than leaving the floor past due, which would earn a fresh
+   * source dump on every 60s schema poll for as long as the connection stays
+   * broken — the case this is most likely to be called in.
+   */
+  markStatsPushFailed(): void {
+    this.retryStatsAfter = Date.now() + Remote.STATS_RETRY_BACKOFF_MS;
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
