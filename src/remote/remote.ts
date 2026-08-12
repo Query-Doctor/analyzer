@@ -25,6 +25,8 @@ import { QueryLoader } from "./query-loader.ts";
 import { SchemaLoader } from "./schema-loader.ts";
 import {
   baselineFromDump,
+  DEFAULT_REFRESH_FLOOR_MS,
+  DEFAULT_SIZE_DRIFT_RATIO,
   detectDrift,
   isPastRefreshFloor,
   type StatsBaseline,
@@ -94,6 +96,19 @@ export class Remote extends EventEmitter<RemoteEvents> {
   private statsBaseline?: StatsBaseline;
   /** Guards against a second drift dump starting while one is in flight. */
   private refreshingStats = false;
+  /** When the in-flight refresh started, so a wedged one can say how long. */
+  private refreshingSince?: number;
+  /**
+   * The last reason a poll declined to refresh, and when it was reported.
+   *
+   * The check runs every 60s and almost always declines, so reporting each one
+   * would bury the log. Reporting only changes would hide a steady state from
+   * any window that opens after it settled, which is exactly the position a
+   * five-day statistics gap left us in. Both, then: on change, and on a slow
+   * heartbeat.
+   */
+  private lastSkippedRefresh?: { reason: string; loggedAt: number };
+  private static readonly SKIP_LOG_INTERVAL_MS = 30 * 60 * 1000;
   /**
    * When this analyzer last pushed a dump, for the daily floor. A drift-
    * triggered push updates it too, so the two triggers can't dump twice in
@@ -406,23 +421,57 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * production statistics.
    */
   private async refreshStatsIfStale(source: Connectable): Promise<void> {
-    if (!this.statsBaseline || this.refreshingStats) {
+    if (!this.statsBaseline) {
+      this.noteSkippedRefresh(
+        "no drift baseline, so nothing can trigger a dump",
+      );
+      return;
+    }
+    if (this.refreshingStats) {
+      this.noteSkippedRefresh(
+        `a refresh has been in flight for ${
+          since(this.refreshingSince)
+        }; nothing else can start while it is`,
+      );
       return;
     }
     // Back off after a failure. `lastStatsPushAt` only advances on success, so
     // without this a dump that keeps throwing (a statement_timeout on a large
     // pg_statistic read, say) would be retried on every 60s poll.
     if (this.retryStatsAfter !== undefined && Date.now() < this.retryStatsAfter) {
+      this.noteSkippedRefresh(
+        `backed off for another ${
+          duration(this.retryStatsAfter - Date.now())
+        } after a failed refresh`,
+      );
       return;
     }
     const connector = this.sourceManager.getConnectorFor(source);
     const reltuples = await connector.getReltuplesByTable();
     const verdict = detectDrift(this.statsBaseline, { reltuples });
-    const pastFloor = isPastRefreshFloor(this.lastStatsPushAt, Date.now());
+    const now = Date.now();
+    const pastFloor = isPastRefreshFloor(this.lastStatsPushAt, now);
     if (!verdict.drifted && !pastFloor) {
+      // The near-miss matters: a table sitting just under the ratio means the
+      // threshold is what is holding the refresh back, not a quiet database.
+      const closest = verdict.closest
+        ? `closest was ${verdict.closest.table} at ${
+          Math.round(verdict.closest.ratio * 100)
+        }% of ${Math.round(DEFAULT_SIZE_DRIFT_RATIO * 100)}%`
+        : "no table was eligible";
+      this.noteSkippedRefresh(
+        `no drift (${closest}), and ${
+          this.lastStatsPushAt === undefined
+            ? "the daily floor is unarmed"
+            : `${
+              duration(DEFAULT_REFRESH_FLOOR_MS - (now - this.lastStatsPushAt))
+            } until the daily floor`
+        }`,
+      );
       return;
     }
 
+    this.refreshingSince = Date.now();
     this.refreshingStats = true;
     try {
       log.info(
@@ -441,6 +490,26 @@ export class Remote extends EventEmitter<RemoteEvents> {
     } finally {
       this.refreshingStats = false;
     }
+  }
+
+  /**
+   * Reports why a poll declined to refresh the statistics.
+   *
+   * Every early return above used to be silent, so a project that had not
+   * captured statistics for days looked identical in the logs to one that
+   * refreshed on schedule.
+   */
+  private noteSkippedRefresh(reason: string): void {
+    const now = Date.now();
+    const last = this.lastSkippedRefresh;
+    if (
+      last && last.reason === reason &&
+      now - last.loggedAt < Remote.SKIP_LOG_INTERVAL_MS
+    ) {
+      return;
+    }
+    this.lastSkippedRefresh = { reason, loggedAt: now };
+    log.info(`Statistics refresh skipped: ${reason}`, "remote");
   }
 
   private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
@@ -643,3 +712,15 @@ const PgStatStatementsStatus = {
 
 type PgStatStatementsStatus =
   typeof PgStatStatementsStatus[keyof typeof PgStatStatementsStatus];
+
+/** Rounded to the largest unit that still reads as a number, for log lines. */
+function duration(ms: number): string {
+  if (ms <= 0) return "0s";
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m`;
+  return `${(ms / 3_600_000).toFixed(1)}h`;
+}
+
+function since(startedAt: number | undefined): string {
+  return startedAt === undefined ? "an unknown time" : duration(Date.now() - startedAt);
+}
