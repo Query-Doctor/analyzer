@@ -93,7 +93,18 @@ export class ApiClient extends RpcTarget implements ClientApi {
 
   static async connect(endpoint: string, token: string, mode: ConnectionMode, remote: Remote, onBroken: (err: unknown) => void): Promise<ApiConnection> {
     const wsEndpoint = `${endpoint}/relay`.replace(/^http/, "ws");
-    const unauthenticated = newWebSocketRpcSession<UnauthenticatedServerApi>(wsEndpoint);
+    // Own the socket rather than letting capnweb open it from the URL, so the
+    // close frame is visible. capnweb reports every death as the same
+    // "WebSocket connection failed", which cannot distinguish the server
+    // reaping us as a half-open client (1006, no reason) from a normal close.
+    const socket = new WebSocket(wsEndpoint);
+    socket.addEventListener("close", (event) => {
+      log.info(
+        `Relay socket closed: code=${event.code} reason="${event.reason}" clean=${event.wasClean}`,
+        this.#name,
+      );
+    });
+    const unauthenticated = newWebSocketRpcSession<UnauthenticatedServerApi>(socket);
     const api = await unauthenticated.authenticate(token, new this(remote), mode) as unknown as RpcStub<ServerApi>;
     let broken = false;
     const triggerBroken = (err: unknown) => {
