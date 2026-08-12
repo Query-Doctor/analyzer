@@ -34,7 +34,13 @@ export interface SourceReltuples {
 }
 
 export type DriftVerdict =
-  | { drifted: false }
+  /**
+   * `closest` is the table that came nearest to the ratio without reaching it,
+   * absent when no table was eligible. A refresh that never fires looks the
+   * same from outside whether nothing moved or one table sat just under the
+   * threshold, and those call for opposite fixes.
+   */
+  | { drifted: false; closest?: { table: TableKey; ratio: number } }
   | { drifted: true; kind: "shape" | "size"; reason: string };
 
 /**
@@ -116,6 +122,7 @@ export function detectDrift(
     };
   }
 
+  let closest: { table: TableKey; ratio: number } | undefined;
   for (const [key, now] of current.reltuples) {
     const before = baseline.reltuples.get(key);
     if (before === undefined) continue;
@@ -133,9 +140,12 @@ export function detectDrift(
         }%)`,
       };
     }
+    if (!closest || moved > closest.ratio) {
+      closest = { table: key, ratio: moved };
+    }
   }
 
-  return { drifted: false };
+  return { drifted: false, closest };
 }
 
 function summarize(keys: TableKey[]): string {

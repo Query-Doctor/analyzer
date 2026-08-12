@@ -178,3 +178,35 @@ describe("isPastRefreshFloor", () => {
     expect(isPastRefreshFloor(NOW - 500, NOW, 1_000)).toBe(false);
   });
 });
+
+/**
+ * A refresh that never fires reads the same from outside whether the database
+ * is quiet or one table is sitting just under the ratio. The first calls for
+ * patience and the second for a different threshold, so the verdict carries the
+ * near miss.
+ */
+describe("detectDrift — the closest table that did not drift", () => {
+  it("names the table nearest the ratio, and how far it moved", () => {
+    const baseline = baselineFromDump([table("users", BIG), table("teams", BIG)]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG * 0.6, teams: BIG * 0.95 }),
+    });
+
+    expect(verdict.drifted).toBe(false);
+    // users moved 40%, teams 5%. The threshold is 50%, so neither fires.
+    expect(verdict.drifted === false && verdict.closest).toEqual({
+      table: "public.users",
+      ratio: expect.closeTo(0.4, 5),
+    });
+  });
+
+  it("reports no closest table when none was eligible", () => {
+    // Both sides below the row floor, so Size Drift never considers them.
+    const baseline = baselineFromDump([table("tiny", 10)]);
+
+    const verdict = detectDrift(baseline, { reltuples: reltuples({ tiny: 900 }) });
+
+    expect(verdict.drifted === false && verdict.closest).toBeUndefined();
+  });
+});
