@@ -105,11 +105,26 @@ describe("detectDrift — Size Drift", () => {
     expect(verdict.drifted).toBe(true);
   });
 
-  it("ignores a move below the ratio", () => {
+  it("fires on a quarter-sized move", () => {
+    // A table a quarter bigger than the snapshot has every query against it
+    // costed a quarter light, which is well past what a planner shrugs off.
     const baseline = baselineFromDump([table("users", BIG)]);
 
     const verdict = detectDrift(baseline, {
-      reltuples: reltuples({ users: Math.round(BIG * 1.2) }),
+      reltuples: reltuples({ users: Math.round(BIG * 1.25) }),
+    });
+
+    expect(verdict.drifted).toBe(true);
+  });
+
+  it("ignores a move below the ratio", () => {
+    // One autoanalyze tick. `pg_class.reltuples` only moves when autovacuum
+    // analyzes the table, so a move this size is as likely to be the sampling
+    // catching up as the data actually growing.
+    const baseline = baselineFromDump([table("users", BIG)]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: Math.round(BIG * 1.1) }),
     });
 
     expect(verdict.drifted).toBe(false);
@@ -190,14 +205,14 @@ describe("detectDrift — the closest table that did not drift", () => {
     const baseline = baselineFromDump([table("users", BIG), table("teams", BIG)]);
 
     const verdict = detectDrift(baseline, {
-      reltuples: reltuples({ users: BIG * 0.6, teams: BIG * 0.95 }),
+      reltuples: reltuples({ users: BIG * 0.85, teams: BIG * 0.95 }),
     });
 
     expect(verdict.drifted).toBe(false);
-    // users moved 40%, teams 5%. The threshold is 50%, so neither fires.
+    // users moved 15%, teams 5%. The threshold is 20%, so neither fires.
     expect(verdict.drifted === false && verdict.closest).toEqual({
       table: "public.users",
-      ratio: expect.closeTo(0.4, 5),
+      ratio: expect.closeTo(0.15, 5),
     });
   });
 

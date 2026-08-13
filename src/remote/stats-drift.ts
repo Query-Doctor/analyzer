@@ -44,11 +44,21 @@ export type DriftVerdict =
   | { drifted: true; kind: "shape" | "size"; reason: string };
 
 /**
- * Ratio a table's `reltuples` must move by before Size Drift fires. 0.5 means
- * the table has to halve or grow by 50%; below that the planner's choices are
- * unlikely to change enough to be worth a full dump.
+ * Ratio a table's `reltuples` must move by before Size Drift fires. 0.2 means
+ * the table has to grow or shrink by a fifth.
+ *
+ * The floor under this number is the resolution of the signal it reads.
+ * `pg_class.reltuples` is only rewritten when autovacuum analyzes the table,
+ * which by default happens once it has changed by `autovacuum_analyze_scale_
+ * factor` — 10%. A threshold below that would be reading sampling noise rather
+ * than the data moving.
+ *
+ * The ceiling is how wrong a cost may be before it stops being worth
+ * reporting. At the old 0.5 a table could sit half again its snapshot size and
+ * still be called current, so every query against it was costed a third light
+ * — a bigger error than most of what we flag.
  */
-export const DEFAULT_SIZE_DRIFT_RATIO = 0.5;
+export const DEFAULT_SIZE_DRIFT_RATIO = 0.2;
 
 /**
  * Tables smaller than this are exempt from Size Drift. A table going from 2 to
