@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ExportedStats } from "@query-doctor/core";
+import type { ExportedStats, FullSchema } from "@query-doctor/core";
+import { PgIdentifier } from "@query-doctor/core";
 import {
   baselineFromDump,
   detectDrift,
@@ -7,16 +8,60 @@ import {
   SIZE_DRIFT_MIN_ROWS,
 } from "./stats-drift.ts";
 
-function table(name: string, reltuples: number): ExportedStats {
+function table(
+  name: string,
+  reltuples: number,
+  covers?: { columns?: string[] },
+): ExportedStats {
   return {
     schemaName: "public",
     tableName: name,
     reltuples,
     relpages: Math.max(1, Math.round(reltuples / 100)),
     relallvisible: 0,
-    columns: [],
+    // `DUMP_STATS_SQL` reads these from `pg_attribute`, unquoted.
+    columns: (covers?.columns ?? []).map((columnName) => ({ columnName })),
     indexes: [],
   } as unknown as ExportedStats;
+}
+
+/**
+ * A live schema as the 60s poll delivers it: names go through the same
+ * `quote_ident` → `PgIdentifier` path the real dump uses, so a test written
+ * with a raw name exercises whatever escaping that path applies.
+ */
+function schema(
+  tables: {
+    name: string;
+    columns?: (string | { name: string; dropped: boolean })[];
+  }[],
+): FullSchema {
+  const identifier = (raw: string) =>
+    PgIdentifier.fromString(quoteIdent(raw)) as unknown as string;
+  return {
+    tables: tables.map((t) => ({
+      type: "table",
+      schemaName: identifier("public"),
+      tableName: identifier(t.name),
+      columns: (t.columns ?? []).map((column) =>
+        typeof column === "string"
+          ? { type: "column", name: identifier(column), dropped: false }
+          : {
+            type: "column",
+            name: identifier(column.name),
+            dropped: column.dropped,
+          }
+      ),
+    })),
+    indexes: [],
+  } as unknown as FullSchema;
+}
+
+/** `quote_ident`, as the schema dump applies it before we ever see the name. */
+function quoteIdent(raw: string): string {
+  return /^[a-z_][a-z0-9_]*$/.test(raw)
+    ? raw
+    : `"${raw.replaceAll('"', '""')}"`;
 }
 
 function reltuples(entries: Record<string, number>): Map<string, number> {
@@ -78,6 +123,166 @@ describe("detectDrift — Shape Drift", () => {
 
     if (!verdict.drifted) throw new Error("expected drift");
     expect(verdict.kind).toBe("shape");
+  });
+});
+
+/**
+ * A migration that adds a column leaves the table set and every `reltuples`
+ * untouched, so neither of the original two signals sees it. The added column
+ * has no `pg_statistic` row in the snapshot, and nothing synthesizes one for a
+ * table the snapshot already covers — it is costed on the planner's
+ * no-statistics defaults instead.
+ */
+describe("detectDrift — Shape Drift on columns", () => {
+  it("fires when the live schema has a column the snapshot doesn't cover", () => {
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id", "email"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([{ name: "users", columns: ["id", "email", "last_seen_at"] }]),
+    });
+
+    expect(verdict.drifted).toBe(true);
+    if (!verdict.drifted) return;
+    expect(verdict.kind).toBe("shape");
+    expect(verdict.reason).toContain("public.users.last_seen_at");
+  });
+
+  it("does not fire once the snapshot covers everything the schema has", () => {
+    // The steady state, and the one that has to hold: a signal that stays lit
+    // after the dump it asked for would re-dump on every 60s poll forever.
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id", "email"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([{ name: "users", columns: ["id", "email"] }]),
+    });
+
+    expect(verdict.drifted).toBe(false);
+  });
+
+  it.each([
+    ["camelCase", "lastSeenAt"],
+    ["a reserved word", "user"],
+    ["an embedded double quote", 'we"ird'],
+  ])(
+    "converges on a name needing quotes: %s",
+    (_case, columnName) => {
+      // The snapshot reads `pg_attribute` raw; the schema runs the name through
+      // `quote_ident` and then `PgIdentifier`, which escapes it again. Any name
+      // the two sides can't agree on is a full dump every 60 seconds, forever.
+      const baseline = baselineFromDump([
+        table("users", BIG, { columns: ["id", columnName] }),
+      ]);
+
+      const verdict = detectDrift(baseline, {
+        reltuples: reltuples({ users: BIG }),
+        schema: schema([{ name: "users", columns: ["id", columnName] }]),
+      });
+
+      expect(verdict.drifted).toBe(false);
+    },
+  );
+
+  it("ignores a column flagged dropped, whichever side filters it", () => {
+    // Both dumps filter `attisdropped` today, so this state does not reach us
+    // in practice. The schema carries the flag, and a column missing by
+    // construction would ask for a dump it can never be satisfied by.
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([
+        { name: "users", columns: ["id", { name: "legacy", dropped: true }] },
+      ]),
+    });
+
+    expect(verdict.drifted).toBe(false);
+  });
+
+  it("ignores columns on a relation the snapshot never covered", () => {
+    // The table checks own an uncovered table, and they read the `pg_class`
+    // probe rather than the schema. The two disagree on materialized views:
+    // the schema carries them, the probe and the statistics dump don't. Firing
+    // here would ask for a dump that can never satisfy it.
+    const baseline = baselineFromDump([table("users", BIG, { columns: ["id"] })]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([
+        { name: "users", columns: ["id"] },
+        { name: "mv_active_users", columns: ["id", "last_seen_at"] },
+      ]),
+    });
+
+    expect(verdict.drifted).toBe(false);
+  });
+
+  it("does not fire when a column is dropped from a covered table", () => {
+    // Deliberate. Restore matches the snapshot against the live relation by
+    // name, so a column that no longer exists matches nothing and costs
+    // nothing. Spending a full dump to delete unread rows is the noise this
+    // signal exists to avoid.
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id", "email", "legacy_flag"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([{ name: "users", columns: ["id", "email"] }]),
+    });
+
+    expect(verdict.drifted).toBe(false);
+  });
+
+  it("takes precedence over a simultaneous size change", () => {
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG * 10 }),
+      schema: schema([{ name: "users", columns: ["id", "email"] }]),
+    });
+
+    if (!verdict.drifted) throw new Error("expected drift");
+    expect(verdict.kind).toBe("shape");
+  });
+
+  it("reports an uncovered table ahead of an uncovered column", () => {
+    // Both are true at once: `teams` is new, and `users` gained a column. Only
+    // an order that checks tables first can report the table, so this pins the
+    // order rather than restating it.
+    const baseline = baselineFromDump([table("users", BIG, { columns: ["id"] })]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG, teams: 0 }),
+      schema: schema([
+        { name: "users", columns: ["id", "email"] },
+        { name: "teams", columns: ["id", "name"] },
+      ]),
+    });
+
+    if (!verdict.drifted) throw new Error("expected drift");
+    expect(verdict.reason).toContain("table(s)");
+    expect(verdict.reason).toContain("public.teams");
+    expect(verdict.reason).not.toContain("public.users.email");
+  });
+
+  it("checks nothing when the poll has produced no schema yet", () => {
+    const baseline = baselineFromDump([
+      table("users", BIG, { columns: ["id", "email"] }),
+    ]);
+
+    const verdict = detectDrift(baseline, { reltuples: reltuples({ users: BIG }) });
+
+    expect(verdict.drifted).toBe(false);
   });
 });
 
