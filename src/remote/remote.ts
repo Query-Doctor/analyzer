@@ -420,7 +420,10 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * baseline for it would push someone else's numbers as this project's
    * production statistics.
    */
-  private async refreshStatsIfStale(source: Connectable): Promise<void> {
+  private async refreshStatsIfStale(
+    source: Connectable,
+    schema?: FullSchema,
+  ): Promise<void> {
     if (!this.statsBaseline) {
       this.noteSkippedRefresh(
         "no drift baseline, so nothing can trigger a dump",
@@ -448,7 +451,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     }
     const connector = this.sourceManager.getConnectorFor(source);
     const reltuples = await connector.getReltuplesByTable();
-    const verdict = detectDrift(this.statsBaseline, { reltuples });
+    const verdict = detectDrift(this.statsBaseline, { reltuples, schema });
     const now = Date.now();
     const pastFloor = isPastRefreshFloor(this.lastStatsPushAt, now);
     if (!verdict.drifted && !pastFloor) {
@@ -630,9 +633,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
       this.emit("schemaDiffed", diffs, schema);
     });
     // The schema poll is also the drift tick: it already runs every 60s, so
-    // checking here costs one `pg_class` read and no extra schedule.
-    this.schemaLoader.on("polled", () => {
-      this.refreshStatsIfStale(source).catch((error) => {
+    // checking here costs one `pg_class` read and no extra schedule. The schema
+    // it just dumped comes along for the same reason — Shape Drift reads the
+    // columns and indexes off it, which no other signal can see.
+    this.schemaLoader.on("polled", (schema) => {
+      this.refreshStatsIfStale(source, schema).catch((error) => {
         log.error("Failed to check statistics drift", "remote");
         console.error(error);
       });
