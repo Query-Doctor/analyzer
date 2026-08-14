@@ -1,4 +1,5 @@
 import type { ExportedStats, FullSchema } from "@query-doctor/core";
+import { PgIdentifier } from "@query-doctor/core";
 
 /**
  * Decides when the production-statistics snapshot the server holds has fallen
@@ -20,41 +21,37 @@ import type { ExportedStats, FullSchema } from "@query-doctor/core";
  * planner's no-statistics defaults, which nothing synthesizes and nothing
  * reports.
  *
- * Every comparison here is presence-only, and in one direction: the source has
- * something the snapshot lacks.
+ * Columns are compared on presence, never on type. A column's type reaches the
+ * schema through `format_type` (`character varying(255)`) and the snapshot
+ * through `pg_type.typname` (`varchar`), so comparing types would call every
+ * column changed on every poll. Catching a type change needs the dump to export
+ * `format_type` first.
  *
- * Presence-only because the two sides don't speak the same dialect anywhere
- * else. A column's type reaches the schema through `format_type` (`character
- * varying(255)`) and the snapshot through `pg_type.typname` (`varchar`), so
- * comparing types would call every column changed on every poll. Catching a
- * type change needs the dump to export `format_type` first.
+ * A dropped column is not drift, where a dropped table is. Restore matches the
+ * snapshot to the live database by name, so a column the source no longer has
+ * matches nothing and costs nothing, and spending a full dump to delete rows no
+ * query reads is the noise this signal exists to avoid. A dropped table is
+ * cheap to notice and rare enough to be worth a dump.
  *
- * One direction because a relation the snapshot covers and the source has
- * dropped costs nothing: the restore matches the snapshot to the live database
- * by name, so the extra entry matches nothing. Spending a full dump to delete
- * rows no query reads is the noise this signal exists to avoid.
- *
- * Indexes are deliberately not compared, though the snapshot carries their
- * names. `DUMP_STATS_SQL` collects them in a CTE filtered by
- * `relname NOT LIKE 'pg_%'` — where `_` is a wildcard, so a table called
- * `pgmigrations` or `pgbench_accounts` is exported with its columns and an
- * empty index list. That table's indexes would read as uncovered after the very
- * dump that was meant to cover them, which is a full dump every 60 seconds
- * forever. The same CTE groups by `relname` alone, so same-named tables in
- * different schemas share one index list and a genuinely new index is masked
- * anyway. Both are fixable only in the dump.
+ * Indexes are not compared, though the snapshot carries their names, because
+ * `DUMP_STATS_SQL`'s index list is not a sound baseline: its CTE filters
+ * `relname NOT LIKE 'pg_%'`, where `_` is a wildcard, and groups by `relname`
+ * alone. See Query-Doctor/Site#4005 and Query-Doctor/Site#3959.
  */
 
 /** A table's identity in a dump, as `"schema.table"`. */
 export type TableKey = string;
 
 export interface StatsBaseline {
-  /** Tables the last pushed dump covered. */
-  tables: Set<TableKey>;
-  /** Their `reltuples` at that moment, for the Size Drift comparison. */
-  reltuples: Map<TableKey, number>;
-  /** The column names it covered on each of them, unquoted. */
-  columns: Map<TableKey, Set<string>>;
+  /** What the last pushed dump covered, per table it covered. */
+  tables: Map<TableKey, CoveredTable>;
+}
+
+interface CoveredTable {
+  /** Its `reltuples` at that moment, for the Size Drift comparison. */
+  reltuples: number;
+  /** Its column names, as Postgres reports them. */
+  columns: Set<string>;
 }
 
 /** The current cheap reading from the source, for comparison against a baseline. */
@@ -62,9 +59,8 @@ export interface SourceReading {
   reltuples: Map<TableKey, number>;
   /**
    * The live schema from the same poll tick, which carries the columns
-   * `reltuples` alone can't see. Optional: a caller that has no schema yet gets
-   * the table and size checks and skips the rest, rather than reading an absent
-   * schema as an empty database.
+   * `reltuples` alone can't see. Omit it to run only the table and size checks;
+   * an absent schema is never read as an empty database.
    */
   schema?: FullSchema;
 }
@@ -104,13 +100,8 @@ export const DEFAULT_SIZE_DRIFT_RATIO = 0.2;
 export const SIZE_DRIFT_MIN_ROWS = 1_000;
 
 export function baselineFromDump(stats: ExportedStats[]): StatsBaseline {
-  const tables = new Set<TableKey>();
-  const reltuples = new Map<TableKey, number>();
-  const columns = new Map<TableKey, Set<string>>();
+  const tables = new Map<TableKey, CoveredTable>();
   for (const table of stats) {
-    const key = tableKey(table.schemaName, table.tableName);
-    tables.add(key);
-    reltuples.set(key, table.reltuples);
     // Every live column, whether or not Postgres has analyzed it — the dump
     // reads `pg_attribute` and left-joins `pg_statistic`. So a column that has
     // never been analyzed still lands here, and asking for a dump on its
@@ -120,49 +111,38 @@ export function baselineFromDump(stats: ExportedStats[]): StatsBaseline {
     // stored, which for an old enough capture may carry no columns key at all.
     // Reading that as "covers no columns" earns one re-dump and then converges,
     // where trusting the type throws inside the poll and no refresh ever runs.
-    columns.set(
-      key,
-      new Set((table.columns ?? []).map((c) => unquote(c.columnName))),
-    );
+    tables.set(tableKey(table.schemaName, table.tableName), {
+      reltuples: table.reltuples,
+      columns: new Set((table.columns ?? []).map((c) => c.columnName)),
+    });
   }
-  return { tables, reltuples, columns };
+  return { tables };
 }
 
-export function tableKey(
-  schemaName: string | { toString(): string },
-  tableName: string | { toString(): string },
+function tableKey(
+  schemaName: string | PgIdentifier,
+  tableName: string | PgIdentifier,
 ): TableKey {
-  return `${unquote(String(schemaName))}.${unquote(String(tableName))}`;
+  return `${rawName(schemaName)}.${rawName(tableName)}`;
 }
 
 /**
- * Undo `quote_ident`, collapsing escaped quotes until the name stops changing.
+ * The raw name Postgres reports, from either side of the comparison.
  *
- * The two sides of a comparison reach us in different dialects. The statistics
- * dump reads `pg_attribute` raw; the schema poll runs `quote_ident` and then
- * `PgIdentifier` escapes that result a second time, so a column named `we"ird`
- * arrives as `"we""""ird"` against a raw `we"ird`. Undoing one level leaves
- * them unequal, and a name that never matches asks for a full dump on every
- * poll, forever.
+ * The capture reads `pg_attribute` and `pg_class` directly, so its identifiers
+ * are already raw strings. The schema poll's went through `quote_ident` before
+ * `PgIdentifier` wrapped them, and `unquoted()` returns the value as
+ * `fromString` recorded it, which leaves that one level of doubling in place.
+ * A name compared in the wrong dialect never matches, and a relation that never
+ * matches asks for a full dump on every poll, forever.
  *
- * Collapsing to a fixed point lands both dialects on the raw name. It also
- * makes two names that differ only in how many quotes they contain compare
- * equal, so a deliberately hostile identifier can read as covered when it
- * isn't. That costs one missed refresh; the loop it replaces costs a full dump
- * every 60 seconds.
+ * Same pairing, for the same reason, as `parentTableKey` in core's
+ * `sql/foreign-keys.ts`.
  */
-function unquote(identifier: string): string {
-  if (
-    identifier.length < 2 || !identifier.startsWith('"') ||
-    !identifier.endsWith('"')
-  ) {
-    return identifier;
-  }
-  let value = identifier.slice(1, -1);
-  while (value.includes('""')) {
-    value = value.replaceAll('""', '"');
-  }
-  return value;
+function rawName(identifier: string | PgIdentifier): string {
+  return identifier instanceof PgIdentifier
+    ? identifier.unquoted().replaceAll('""', '"')
+    : identifier;
 }
 
 /**
@@ -184,38 +164,23 @@ export function detectDrift(
   for (const key of current.reltuples.keys()) {
     if (!baseline.tables.has(key)) added.push(key);
   }
-  if (added.length > 0) {
-    return {
-      drifted: true,
-      kind: "shape",
-      reason: `${added.length} table(s) not covered by the snapshot: ${
-        summarize(added)
-      }`,
-    };
-  }
 
   const dropped: TableKey[] = [];
-  for (const key of baseline.tables) {
+  for (const key of baseline.tables.keys()) {
     if (!current.reltuples.has(key)) dropped.push(key);
   }
-  if (dropped.length > 0) {
-    return {
-      drifted: true,
-      kind: "shape",
-      reason: `${dropped.length} table(s) in the snapshot no longer exist: ${
-        summarize(dropped)
-      }`,
-    };
-  }
 
-  const uncovered = uncoveredColumns(baseline, current.schema);
-  if (uncovered) {
-    return { drifted: true, kind: "shape", reason: uncovered };
-  }
+  const shapeDrift = shape(added, "table(s) not covered by the snapshot") ??
+    shape(dropped, "table(s) in the snapshot no longer exist") ??
+    shape(
+      uncoveredColumns(baseline, current.schema),
+      "column(s) not covered by the snapshot",
+    );
+  if (shapeDrift) return shapeDrift;
 
   let closest: { table: TableKey; ratio: number } | undefined;
   for (const [key, now] of current.reltuples) {
-    const before = baseline.reltuples.get(key);
+    const before = baseline.tables.get(key)?.reltuples;
     if (before === undefined) continue;
     // Exempt tables that are small on both sides. A table that grew past the
     // floor is a real change even if it started tiny.
@@ -239,26 +204,37 @@ export function detectDrift(
   return { drifted: false, closest };
 }
 
+/** A Shape Drift verdict over whatever was found missing, or undefined if none was. */
+function shape(items: string[], phrase: string): DriftVerdict | undefined {
+  if (items.length === 0) return undefined;
+  return {
+    drifted: true,
+    kind: "shape",
+    reason: `${items.length} ${phrase}: ${summarize(items)}`,
+  };
+}
+
 /**
  * Columns the live schema has on a table the snapshot covers, and the snapshot
- * doesn't. Returns the reason to re-dump, or undefined for none.
+ * doesn't, as `schema.table.column`.
  *
  * Tables the snapshot doesn't cover at all are skipped: the checks above own
  * them, and they read the `pg_class` probe rather than the schema. The two
- * disagree on purpose — the probe is `relkind = 'r'`, while the schema also
- * carries materialized views, which no statistics dump will ever cover.
- * Reporting those here would ask for a dump that cannot satisfy it.
+ * disagree on purpose. The probe is `relkind = 'r'`; the schema is
+ * `relkind in ('r','m') AND relispartition = false`, so it adds materialized
+ * views, which no statistics dump will ever cover, and omits every partition of
+ * a partitioned table, which get no column check at all today.
  */
 function uncoveredColumns(
   baseline: StatsBaseline,
   schema: FullSchema | undefined,
-): string | undefined {
-  if (!schema) return undefined;
+): string[] {
+  if (!schema) return [];
 
   const columns: string[] = [];
   for (const table of schema.tables) {
     const key = tableKey(table.schemaName, table.tableName);
-    const covered = baseline.columns.get(key);
+    const covered = baseline.tables.get(key)?.columns;
     if (!covered) continue;
     for (const column of table.columns) {
       // Belt and braces: both dumps filter `attisdropped` today, so a dropped
@@ -266,20 +242,16 @@ function uncoveredColumns(
       // flag, and a column that is missing by construction would never stop
       // asking for a dump.
       if (column.dropped) continue;
-      const name = unquote(String(column.name));
+      const name = rawName(column.name);
       if (!covered.has(name)) columns.push(`${key}.${name}`);
     }
   }
-  if (columns.length === 0) return undefined;
-
-  return `${columns.length} column(s) not covered by the snapshot: ${
-    summarize(columns)
-  }`;
+  return columns;
 }
 
-function summarize(keys: TableKey[]): string {
-  const shown = keys.slice(0, 5);
-  const rest = keys.length - shown.length;
+function summarize(items: string[]): string {
+  const shown = items.slice(0, 5);
+  const rest = items.length - shown.length;
   return rest > 0 ? `${shown.join(", ")}, and ${rest} more` : shown.join(", ");
 }
 

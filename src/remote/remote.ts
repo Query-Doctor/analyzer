@@ -422,7 +422,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
    */
   private async refreshStatsIfStale(
     source: Connectable,
-    schema?: FullSchema,
+    schema: FullSchema,
   ): Promise<void> {
     if (!this.statsBaseline) {
       this.noteSkippedRefresh(
@@ -635,7 +635,7 @@ export class Remote extends EventEmitter<RemoteEvents> {
     // The schema poll is also the drift tick: it already runs every 60s, so
     // checking here costs one `pg_class` read and no extra schedule. The schema
     // it just dumped comes along for the same reason — Shape Drift reads the
-    // columns and indexes off it, which no other signal can see.
+    // columns off it, which no other signal can see.
     this.schemaLoader.on("polled", (schema) => {
       this.refreshStatsIfStale(source, schema).catch((error) => {
         log.error("Failed to check statistics drift", "remote");

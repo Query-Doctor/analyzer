@@ -11,7 +11,7 @@ import {
 function table(
   name: string,
   reltuples: number,
-  covers?: { columns?: string[] },
+  columns?: string[],
 ): ExportedStats {
   return {
     schemaName: "public",
@@ -20,48 +20,40 @@ function table(
     relpages: Math.max(1, Math.round(reltuples / 100)),
     relallvisible: 0,
     // `DUMP_STATS_SQL` reads these from `pg_attribute`, unquoted.
-    columns: (covers?.columns ?? []).map((columnName) => ({ columnName })),
+    columns: (columns ?? []).map((columnName) => ({ columnName })),
     indexes: [],
   } as unknown as ExportedStats;
 }
 
 /**
- * A live schema as the 60s poll delivers it: names go through the same
- * `quote_ident` → `PgIdentifier` path the real dump uses, so a test written
+ * A live schema as the 60s poll delivers it. Names take the same
+ * `quote_ident` → `PgIdentifier` path the real dump does, so a case written
  * with a raw name exercises whatever escaping that path applies.
  */
 function schema(
-  tables: {
-    name: string;
-    columns?: (string | { name: string; dropped: boolean })[];
-  }[],
+  tables: { name: string; columns?: string[]; dropped?: string[] }[],
 ): FullSchema {
+  // `PgIdentifier.toString()` is `quote_ident`, per its own docstring; the zod
+  // codec then wraps that in a second `fromString`.
   const identifier = (raw: string) =>
-    PgIdentifier.fromString(quoteIdent(raw)) as unknown as string;
+    PgIdentifier.fromString(PgIdentifier.fromString(raw).toString());
+  const column = (raw: string, dropped: boolean) => ({
+    type: "column",
+    name: identifier(raw),
+    dropped,
+  });
   return {
     tables: tables.map((t) => ({
       type: "table",
       schemaName: identifier("public"),
       tableName: identifier(t.name),
-      columns: (t.columns ?? []).map((column) =>
-        typeof column === "string"
-          ? { type: "column", name: identifier(column), dropped: false }
-          : {
-            type: "column",
-            name: identifier(column.name),
-            dropped: column.dropped,
-          }
-      ),
+      columns: [
+        ...(t.columns ?? []).map((c) => column(c, false)),
+        ...(t.dropped ?? []).map((c) => column(c, true)),
+      ],
     })),
     indexes: [],
   } as unknown as FullSchema;
-}
-
-/** `quote_ident`, as the schema dump applies it before we ever see the name. */
-function quoteIdent(raw: string): string {
-  return /^[a-z_][a-z0-9_]*$/.test(raw)
-    ? raw
-    : `"${raw.replaceAll('"', '""')}"`;
 }
 
 function reltuples(entries: Record<string, number>): Map<string, number> {
@@ -136,7 +128,7 @@ describe("detectDrift — Shape Drift", () => {
 describe("detectDrift — Shape Drift on columns", () => {
   it("fires when the live schema has a column the snapshot doesn't cover", () => {
     const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id", "email"] }),
+      table("users", BIG, ["id", "email"]),
     ]);
 
     const verdict = detectDrift(baseline, {
@@ -154,7 +146,7 @@ describe("detectDrift — Shape Drift on columns", () => {
     // The steady state, and the one that has to hold: a signal that stays lit
     // after the dump it asked for would re-dump on every 60s poll forever.
     const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id", "email"] }),
+      table("users", BIG, ["id", "email"]),
     ]);
 
     const verdict = detectDrift(baseline, {
@@ -172,11 +164,9 @@ describe("detectDrift — Shape Drift on columns", () => {
   ])(
     "converges on a name needing quotes: %s",
     (_case, columnName) => {
-      // The snapshot reads `pg_attribute` raw; the schema runs the name through
-      // `quote_ident` and then `PgIdentifier`, which escapes it again. Any name
-      // the two sides can't agree on is a full dump every 60 seconds, forever.
+      // Pins `rawName` against every escaping level the two sides apply.
       const baseline = baselineFromDump([
-        table("users", BIG, { columns: ["id", columnName] }),
+        table("users", BIG, ["id", columnName]),
       ]);
 
       const verdict = detectDrift(baseline, {
@@ -188,30 +178,36 @@ describe("detectDrift — Shape Drift on columns", () => {
     },
   );
 
-  it("ignores a column flagged dropped, whichever side filters it", () => {
-    // Both dumps filter `attisdropped` today, so this state does not reach us
-    // in practice. The schema carries the flag, and a column missing by
-    // construction would ask for a dump it can never be satisfied by.
-    const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id"] }),
-    ]);
+  it("keeps names apart that differ only in how many quotes they hold", () => {
+    // `we""ird` and `we"ird` are different columns. Undoing exactly one level
+    // of escaping per side keeps them so; collapsing until the name stops
+    // changing folds them together and reports the second as covered.
+    const baseline = baselineFromDump([table("users", BIG, ['we"ird'])]);
 
     const verdict = detectDrift(baseline, {
       reltuples: reltuples({ users: BIG }),
-      schema: schema([
-        { name: "users", columns: ["id", { name: "legacy", dropped: true }] },
-      ]),
+      schema: schema([{ name: "users", columns: ['we"ird', 'we""ird'] }]),
+    });
+
+    expect(verdict.drifted).toBe(true);
+    if (!verdict.drifted) return;
+    expect(verdict.reason).toContain('public.users.we""ird');
+  });
+
+  it("ignores a column flagged dropped", () => {
+    const baseline = baselineFromDump([table("users", BIG, ["id"])]);
+
+    const verdict = detectDrift(baseline, {
+      reltuples: reltuples({ users: BIG }),
+      schema: schema([{ name: "users", columns: ["id"], dropped: ["legacy"] }]),
     });
 
     expect(verdict.drifted).toBe(false);
   });
 
   it("ignores columns on a relation the snapshot never covered", () => {
-    // The table checks own an uncovered table, and they read the `pg_class`
-    // probe rather than the schema. The two disagree on materialized views:
-    // the schema carries them, the probe and the statistics dump don't. Firing
-    // here would ask for a dump that can never satisfy it.
-    const baseline = baselineFromDump([table("users", BIG, { columns: ["id"] })]);
+    // A materialized view: in the schema, in neither the probe nor the dump.
+    const baseline = baselineFromDump([table("users", BIG, ["id"])]);
 
     const verdict = detectDrift(baseline, {
       reltuples: reltuples({ users: BIG }),
@@ -225,12 +221,9 @@ describe("detectDrift — Shape Drift on columns", () => {
   });
 
   it("does not fire when a column is dropped from a covered table", () => {
-    // Deliberate. Restore matches the snapshot against the live relation by
-    // name, so a column that no longer exists matches nothing and costs
-    // nothing. Spending a full dump to delete unread rows is the noise this
-    // signal exists to avoid.
+    // Deliberate, and the asymmetry with a dropped table is the point.
     const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id", "email", "legacy_flag"] }),
+      table("users", BIG, ["id", "email", "legacy_flag"]),
     ]);
 
     const verdict = detectDrift(baseline, {
@@ -243,7 +236,7 @@ describe("detectDrift — Shape Drift on columns", () => {
 
   it("takes precedence over a simultaneous size change", () => {
     const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id"] }),
+      table("users", BIG, ["id"]),
     ]);
 
     const verdict = detectDrift(baseline, {
@@ -259,7 +252,7 @@ describe("detectDrift — Shape Drift on columns", () => {
     // Both are true at once: `teams` is new, and `users` gained a column. Only
     // an order that checks tables first can report the table, so this pins the
     // order rather than restating it.
-    const baseline = baselineFromDump([table("users", BIG, { columns: ["id"] })]);
+    const baseline = baselineFromDump([table("users", BIG, ["id"])]);
 
     const verdict = detectDrift(baseline, {
       reltuples: reltuples({ users: BIG, teams: 0 }),
@@ -277,7 +270,7 @@ describe("detectDrift — Shape Drift on columns", () => {
 
   it("checks nothing when the poll has produced no schema yet", () => {
     const baseline = baselineFromDump([
-      table("users", BIG, { columns: ["id", "email"] }),
+      table("users", BIG, ["id", "email"]),
     ]);
 
     const verdict = detectDrift(baseline, { reltuples: reltuples({ users: BIG }) });
