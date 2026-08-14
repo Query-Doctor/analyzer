@@ -1,4 +1,4 @@
-import type { PostgresExplainStage } from "@query-doctor/core";
+import type { Improvement, PostgresExplainStage } from "@query-doctor/core";
 import z from "zod";
 
 const IndexRecommendation = z.object({
@@ -33,12 +33,14 @@ export const LiveQueryOptimization = z.discriminatedUnion("state", [
     indexesUsed: z.array(z.string()),
     explainPlan: z.custom<PostgresExplainStage>(),
     optimizedExplainPlan: z.custom<PostgresExplainStage>(),
+    improvements: z.array(z.custom<Improvement>()).optional(),
   }),
   z.object({
     state: z.literal("no_improvement_found"),
     cost: z.number(),
     indexesUsed: z.array(z.string()),
     explainPlan: z.custom<PostgresExplainStage>(),
+    improvements: z.array(z.custom<Improvement>()).optional(),
   }),
   z.object({
     state: z.literal("timeout"),

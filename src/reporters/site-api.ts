@@ -3,7 +3,7 @@ import { gzip } from "node:zlib";
 import { promisify } from "node:util";
 import * as github from "@actions/github";
 import { isTestOriginQuery } from "@query-doctor/core";
-import type { ComputedStats, FullSchema, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
+import type { ComputedStats, FullSchema, Improvement, IndexRecommendation, Nudge, SQLCommenterTag, StatisticsMode, TableReference } from "@query-doctor/core";
 import { DEFAULT_CONFIG, type AnalyzerConfig } from "../config.ts";
 import { originsCompatible, shapeKey } from "./query-shape.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
@@ -50,12 +50,14 @@ export type CiOptimization =
     indexesUsed: string[];
     explainPlan?: object;
     optimizedExplainPlan?: object;
+    improvements?: Improvement[];
   }
   | {
     state: "no_improvement_found";
     cost: number;
     indexesUsed: string[];
     explainPlan?: object;
+    improvements?: Improvement[];
   }
   | {
     state: "error";

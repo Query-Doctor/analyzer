@@ -5,9 +5,14 @@ import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Sema } from "async-sema";
 import {
   Analyzer,
+  costRewrites,
+  deriveRewrites,
   dropIndex,
   FullSchema,
   FullSchemaIndex,
+  type Improvement,
+  type ImprovementCandidate,
+  indexCandidates,
   IndexOptimizer,
   IndexRecommendation,
   OptimizeResult,
@@ -17,6 +22,8 @@ import {
   PostgresQueryBuilder,
   PostgresTransaction,
   PostgresVersion,
+  rankImprovements,
+  type RewriteCandidate,
   Statistics,
   StatisticsMode,
   type ExportedStats,
@@ -487,7 +494,29 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
       }
     }
 
-    return this.onOptimizeReady(result, recent);
+    if (result.kind === "zero_cost_plan") {
+      return this.onZeroCostPlan(recent, result.explainPlan);
+    }
+    // A flat budget, not `options.timeoutMs`, which the retry ladder grows to
+    // 80s. Reusing it would let one query hold the single worker for twice
+    // that; spending only what the index search left over would starve the
+    // expensive queries a rewrite is the only fix for. Flat costs a first
+    // attempt 5s it did not spend before, and caps the worst case at the
+    // attempt's own budget plus 5s rather than twice the attempt's.
+    const indexRecommendations = mapIndexRecommandations(result);
+    const improvements = await deriveImprovements(
+      recent.query,
+      target.optimizer,
+      result,
+      indexRecommendations,
+      this.queryTimeoutMs,
+    );
+    return this.onOptimizeReady(
+      result,
+      recent,
+      indexRecommendations,
+      improvements,
+    );
   }
 
   private async dropDisabledIndexes(tx: PostgresTransaction): Promise<void> {
@@ -497,62 +526,47 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
   }
 
   private onOptimizeReady(
-    result: OptimizeResult,
+    result: Extract<OptimizeResult, { kind: "ok" }>,
     recent: OptimizedQuery,
+    indexRecommendations: IndexRecommendation[],
+    improvements: Improvement[],
   ): LiveQueryOptimization {
-    switch (result.kind) {
-      case "ok": {
-        const indexRecommendations = mapIndexRecommandations(result);
-        const indexesUsed = Array.from(result.existingIndexes);
-        const reduction = costReductionPercentage(result.baseCost, result.finalCost);
-        if (reduction < MINIMUM_COST_CHANGE_PERCENTAGE) {
-          this.onNoImprovements(
-            recent,
-            result.baseCost,
-            indexesUsed,
-            result.baseExplainPlan,
-          );
-          return {
-            state: "no_improvement_found",
-            cost: result.baseCost,
-            indexesUsed,
-            explainPlan: result.baseExplainPlan,
-          };
-        } else {
-          this.onImprovementsAvailable(recent, result, result.baseExplainPlan);
-          return {
-            state: "improvements_available",
-            cost: result.baseCost,
-            optimizedCost: result.finalCost,
-            costReductionPercentage: reduction,
-            indexRecommendations,
-            indexesUsed,
-            explainPlan: result.baseExplainPlan,
-            optimizedExplainPlan: result.explainPlan,
-          };
-        }
-      }
-      // unlikely to hit if we've already checked the base plan for zero cost
-      case "zero_cost_plan":
-        return this.onZeroCostPlan(recent, result.explainPlan);
+    const indexesUsed = Array.from(result.existingIndexes);
+    const reduction = costReductionPercentage(result.baseCost, result.finalCost);
+    // Each branch builds its optimization once and both emits and returns it.
+    // `withOptimization` mutates the query in place, so a listener reads the
+    // object handed to the emit, and a second literal is a second answer.
+    if (reduction < MINIMUM_COST_CHANGE_PERCENTAGE) {
+      const optimization = {
+        state: "no_improvement_found",
+        cost: result.baseCost,
+        indexesUsed,
+        explainPlan: result.baseExplainPlan,
+        improvements,
+      } as const;
+      this.onNoImprovements(recent, optimization);
+      return optimization;
     }
+    const optimization = {
+      state: "improvements_available",
+      cost: result.baseCost,
+      optimizedCost: result.finalCost,
+      costReductionPercentage: reduction,
+      indexRecommendations,
+      indexesUsed,
+      explainPlan: result.baseExplainPlan,
+      optimizedExplainPlan: result.explainPlan,
+      improvements,
+    } as const;
+    this.onImprovementsAvailable(recent, optimization);
+    return optimization;
   }
 
   private onNoImprovements(
     recent: OptimizedQuery,
-    cost: number,
-    indexesUsed: string[],
-    explainPlan: PostgresExplainStage,
+    optimization: Extract<LiveQueryOptimization, { state: "no_improvement_found" }>,
   ) {
-    this.emit(
-      "noImprovements",
-      recent.withOptimization({
-        state: "no_improvement_found",
-        cost,
-        indexesUsed,
-        explainPlan,
-      }),
-    );
+    this.emit("noImprovements", recent.withOptimization(optimization));
   }
 
   private getPotentialIndexCandidates(
@@ -577,38 +591,14 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
 
   private onImprovementsAvailable(
     recent: OptimizedQuery,
-    result: Extract<OptimizeResult, { kind: "ok" }>,
-    explainPlan: PostgresExplainStage,
+    optimization: Extract<
+      LiveQueryOptimization,
+      { state: "improvements_available" }
+    >,
   ) {
-    const optimized = recent.withOptimization(
-      this.resultToImprovementsAvailable(result, explainPlan),
-    );
+    const optimized = recent.withOptimization(optimization);
     this.emit("improvementsAvailable", optimized);
-    this.queries.set(
-      optimized.hash,
-      optimized,
-    );
-  }
-
-  private resultToImprovementsAvailable(
-    result: Extract<OptimizeResult, { kind: "ok" }>,
-    explainPlan: PostgresExplainStage,
-  ): LiveQueryOptimization {
-    const indexesUsed = Array.from(result.existingIndexes);
-    const indexRecommendations = Array.from(result.newIndexes)
-      .map((n) => result.triedIndexes.get(n))
-      .filter((n) => n !== undefined);
-    const reduction = costReductionPercentage(result.baseCost, result.finalCost);
-    return {
-      state: "improvements_available",
-      cost: result.baseCost,
-      optimizedCost: result.finalCost,
-      costReductionPercentage: reduction,
-      indexRecommendations,
-      indexesUsed,
-      explainPlan,
-      optimizedExplainPlan: result.explainPlan,
-    };
+    this.queries.set(optimized.hash, optimized);
   }
 
   private onZeroCostPlan(
@@ -644,6 +634,60 @@ export class QueryOptimizer extends EventEmitter<EventMap> {
     this.emit("timeout", recent, waitedMs);
     return { state: "timeout", waitedMs, retries };
   }
+}
+
+/**
+ * Every proven way to make this query cheaper, ranked together: the index set
+ * the optimizer already costed, and each rewrite the query's shape allows,
+ * planned under the same statistics. Without the rewrites a query whose only
+ * real fix is one reports `no_improvement_found`, a state that has only ever
+ * meant the index search came back empty.
+ *
+ * Rewrites are derived from the query the optimizer costed, not from the
+ * analysis, which ran before the LIMIT substitution and the pg_stat_statements
+ * rewrite. Costing a rewrite of a different string compares two queries rather
+ * than two shapes.
+ */
+async function deriveImprovements(
+  query: string,
+  optimizer: IndexOptimizer,
+  result: Extract<OptimizeResult, { kind: "ok" }>,
+  indexRecommendations: IndexRecommendation[],
+  timeoutMs: number,
+): Promise<Improvement[]> {
+  const indexes = indexCandidates(indexRecommendations, result.finalCost);
+  const rewrites = await costCandidates(query, optimizer, timeoutMs);
+  return rankImprovements(result.baseCost, [...indexes, ...rewrites]);
+}
+
+/**
+ * Most queries match no rule, so the deadline is armed only once there is
+ * something to plan. Deriving first also keeps a parse failure from reading as
+ * a costing failure.
+ */
+async function costCandidates(
+  query: string,
+  optimizer: IndexOptimizer,
+  timeoutMs: number,
+): Promise<ImprovementCandidate[]> {
+  try {
+    const candidates = await rewritesFor(query);
+    if (candidates.length === 0) return [];
+    return await withTimeout(costRewrites(candidates, optimizer), timeoutMs);
+  } catch (error) {
+    console.error("[query-optimizer] could not cost rewrites", error);
+    return [];
+  }
+}
+
+/**
+ * The rewrites this query's own shape allows. A parse that yields no first
+ * statement yields nothing to rewrite.
+ */
+async function rewritesFor(query: string): Promise<RewriteCandidate[]> {
+  const ast = await parse(query);
+  const stmt = ast.stmts?.[0]?.stmt;
+  return stmt ? deriveRewrites(stmt) : [];
 }
 
 export class TimeoutError extends Error {
