@@ -239,9 +239,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
       fullSchema.status === "fulfilled" ? fullSchema.value : undefined,
     );
 
-    // After the sync, not before: a sync that failed half way through has not
-    // established what production looks like, and publishing from it would set
-    // a baseline the next drift check measures against.
+    // After `optimizer.start`, so a failed start doesn't leave a baseline armed
+    // for a drift check that will never run.
     if (statsResult.dump) {
       this.recordSourceStatistics(statsResult.dump);
     }
@@ -401,15 +400,19 @@ export class Remote extends EventEmitter<RemoteEvents> {
     tables: FullSchemaTable[],
   ): Promise<StatsResult> {
     const connector = this.sourceManager.getConnectorFor(source);
-    const totalRows = await connector.getTotalRowCount(tables);
 
     // Dump either way. The threshold decides what the optimizer plans against,
-    // which is a costing decision — on two hundred rows a sequential scan is
-    // genuinely the right plan, and real statistics would hide every index the
-    // table will need once it grows. It is not a reason to withhold what
-    // production measures: the published snapshot is a record of this database,
-    // and a small database has one just as much as a large one does.
-    const dumped = await this.dumpSourceStats(source);
+    // which is a costing decision: on two hundred rows a sequential scan is the
+    // right plan, and real statistics would hide every index the table needs
+    // once it grows. It does not decide whether production's numbers reach the
+    // server. A small database has a snapshot worth publishing too.
+    //
+    // Concurrent because the row count no longer gates the dump, and the two
+    // read different catalogs.
+    const [totalRows, dumped] = await Promise.all([
+      connector.getTotalRowCount(tables),
+      this.dumpSourceStats(source),
+    ]);
 
     if (totalRows < Remote.STATS_ROWS_THRESHOLD) {
       log.info(
@@ -610,10 +613,8 @@ export class Remote extends EventEmitter<RemoteEvents> {
    * baseline, and it reaches the server.
    *
    * Both halves matter. Publishing is how a project gets a snapshot at all, and
-   * the baseline is what lets the drift check re-dump later — without it,
-   * `refreshStatsIfStale` returns on its first line forever. Since the only
-   * thing that used to call this was a push, and a push only happened on drift,
-   * an analyzer that had never pushed never could.
+   * the baseline is what lets the drift check re-dump later: without it,
+   * `refreshStatsIfStale` returns on its first line forever.
    *
    * Callers pass what they measured from production, never the optimizer's own
    * metadata: the optimizing database is restored with
@@ -748,13 +749,8 @@ type StatsResult = {
   mode: StatisticsMode;
   strategy: InferredStatsStrategy;
   /**
-   * The statistics measured from the source on this sync, when there are any.
-   *
-   * Separate from `mode` because the two answer different questions: `mode` is
-   * what the optimizer costs against, `dump` is what production actually
-   * reports. They diverge below the row threshold, and only a dump is honest
-   * enough to publish — a `static` mode came from a file someone handed us, not
-   * from this database.
+   * What production measured, when this sync measured it. Absent for a static
+   * mode: those numbers came from a file, not from this database.
    */
   dump?: ExportedStats[];
 };
