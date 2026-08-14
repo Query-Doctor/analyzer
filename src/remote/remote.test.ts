@@ -6,32 +6,12 @@ import { RemoteController } from "./remote-controller.ts";
 import { Pool } from "pg";
 
 import { ConnectionManager } from "../sync/connection-manager.ts";
-import { normalizeQuery } from "./test-utils.ts";
+import { normalizeQuery, testSpawnTarget } from "./test-utils.ts";
 
 import { type Op } from "jsondiffpatch/formatters/jsonpatch";
 
-const TEST_TARGET_CONTAINER_NAME = "postgres:17";
 const TEST_TARGET_CONTAINER_TIMESCALEDB_NAME =
   "timescale/timescaledb:latest-pg17";
-
-export function testSpawnTarget(
-  options: { content?: string; containerName?: string } = {
-    containerName: TEST_TARGET_CONTAINER_NAME,
-  },
-) {
-  let pg = new PostgreSqlContainer(
-    options.containerName ?? TEST_TARGET_CONTAINER_NAME,
-  );
-  if (options.content) {
-    pg = pg.withCopyContentToContainer([
-      {
-        content: options.content,
-        target: "/docker-entrypoint-initdb.d/init.sql",
-      },
-    ]);
-  }
-  return pg.start();
-}
 
 function assertOk<T>(
   result: { type: string; value?: T },

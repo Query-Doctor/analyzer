@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
-import { testSpawnTarget } from "./remote/remote.test.ts";
+import { testSpawnTarget } from "./remote/test-utils.ts";
 import { Connectable } from "./sync/connectable.ts";
 import { ConnectionManager } from "./sync/connection-manager.ts";
 import { Remote } from "./remote/remote.ts";
