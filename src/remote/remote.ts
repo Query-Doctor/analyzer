@@ -239,6 +239,13 @@ export class Remote extends EventEmitter<RemoteEvents> {
       fullSchema.status === "fulfilled" ? fullSchema.value : undefined,
     );
 
+    // After the sync, not before: a sync that failed half way through has not
+    // established what production looks like, and publishing from it would set
+    // a baseline the next drift check measures against.
+    if (statsResult.dump) {
+      this.recordSourceStatistics(statsResult.dump);
+    }
+
     return {
       meta: {
         version: databaseInfo.status === "fulfilled"
@@ -396,28 +403,41 @@ export class Remote extends EventEmitter<RemoteEvents> {
     const connector = this.sourceManager.getConnectorFor(source);
     const totalRows = await connector.getTotalRowCount(tables);
 
+    // Dump either way. The threshold decides what the optimizer plans against,
+    // which is a costing decision — on two hundred rows a sequential scan is
+    // genuinely the right plan, and real statistics would hide every index the
+    // table will need once it grows. It is not a reason to withhold what
+    // production measures: the published snapshot is a record of this database,
+    // and a small database has one just as much as a large one does.
+    const dumped = await this.dumpSourceStats(source);
+
     if (totalRows < Remote.STATS_ROWS_THRESHOLD) {
       log.info(
         `Total rows (${totalRows}) below threshold, using default stats`,
         "remote",
       );
-      return { mode: Statistics.defaultStatsMode, strategy: "default" };
+      return {
+        mode: Statistics.defaultStatsMode,
+        strategy: "default",
+        dump: dumped.stats,
+      };
     }
 
     log.info(
       `Total rows (${totalRows}) above threshold, pulling source stats`,
       "remote",
     );
-    return { mode: await this.dumpSourceStats(source), strategy: "fromSource" };
+    return { mode: dumped, strategy: "fromSource", dump: dumped.stats };
   }
 
   /**
    * Re-dump and push the source's statistics when they've drifted far enough
    * from what we last pushed (ADR 0007 §2). Runs on the schema poll tick.
    *
-   * No-ops until a `fromSource` dump has established a baseline: a synthetic or
-   * imported snapshot has nothing meaningful to drift against, and inventing a
-   * baseline for it would push someone else's numbers as this project's
+   * No-ops until a dump from the source has established a baseline. The sync at
+   * boot establishes one, so in practice this is armed from the first sync
+   * onwards; the guard is what stops an imported or synthetic snapshot standing
+   * in for a baseline and pushing someone else's numbers as this project's
    * production statistics.
    */
   private async refreshStatsIfStale(
@@ -515,7 +535,9 @@ export class Remote extends EventEmitter<RemoteEvents> {
     log.info(`Statistics refresh skipped: ${reason}`, "remote");
   }
 
-  private async dumpSourceStats(source: Connectable): Promise<StatisticsMode> {
+  private async dumpSourceStats(
+    source: Connectable,
+  ): Promise<Extract<StatisticsMode, { kind: "fromStatisticsExport" }>> {
     const pg = this.sourceManager.getOrCreateConnection(
       source,
     );
@@ -546,11 +568,11 @@ export class Remote extends EventEmitter<RemoteEvents> {
   /**
    * Adopt the server's stored snapshot as the drift baseline, without pushing.
    *
-   * Drift is measured against the last dump this process pushed, so an analyzer
-   * that has never pushed has no baseline and never drifts — which is every
-   * project whose snapshot was seeded by hand. Seeding on connect closes that
-   * gap: the first schema poll can then compare the live schema against what
-   * the server holds and re-dump if it has fallen behind.
+   * Drift is measured against the last dump this process recorded. The sync at
+   * boot records one, so this is not the only way a baseline appears — but it
+   * arrives first, and it covers a connection that reconnects without syncing
+   * again. Either way the first schema poll can compare the live schema against
+   * a baseline and re-dump if it has fallen behind.
    *
    * Deliberately does not push. These numbers came from the server; echoing
    * them back would republish a stale snapshot as if it were fresh.
@@ -563,32 +585,50 @@ export class Remote extends EventEmitter<RemoteEvents> {
       return;
     }
     this.statsBaseline = baselineFromDump(stats);
-    // Arm the daily floor too. The sync path reaches the optimizer directly
-    // rather than through `applyStatistics`, so without this `lastStatsPushAt`
-    // stays undefined and the floor never fires for a seeded analyzer — which
-    // is every analyzer that hasn't happened to drift. Dated from now rather
-    // than the snapshot's capture time, which the RPC doesn't carry: the floor
-    // then fires 24h after connect instead of immediately.
+    // Arm the daily floor too, so a connection that seeds and then never syncs
+    // still refreshes eventually. Dated from now rather than the snapshot's
+    // capture time, which the RPC doesn't carry: the floor then fires 24h after
+    // connect instead of immediately.
     this.lastStatsPushAt = Date.now();
   }
 
   async applyStatistics(statsMode: StatisticsMode): Promise<void> {
     await this.optimizer.setStatistics(statsMode);
-    // Push the statistics we were handed, not `optimizer.ownMetadata`. That is
-    // a dump of the *optimizing* database, which is restored with
-    // `--exclude-table-data-and-children` and never durably analyzed, so every
-    // table in it reports `reltuples = -1` and every column `stats: null`.
-    // Sending it would overwrite the project's real snapshot with an empty one.
-    //
-    // `fromAssumption` carries no real numbers at all, so it pushes nothing —
+    // Record the statistics we were handed, not `optimizer.ownMetadata` — see
+    // recordSourceStatistics for why that would publish an empty snapshot.
+    // `fromAssumption` carries no real numbers at all, so it records nothing:
     // synthetic defaults are not this project's production statistics.
-    if (statsMode.kind === "fromStatisticsExport" && statsMode.stats.length > 0) {
-      this.statsBaseline = baselineFromDump(statsMode.stats);
-      this.lastStatsPushAt = Date.now();
-      this.emit("statsApplied", statsMode.stats);
+    if (statsMode.kind === "fromStatisticsExport") {
+      this.recordSourceStatistics(statsMode.stats);
     }
     // don't block the reply by awaiting all optimizations
     this.optimizer.restart();
+  }
+
+  /**
+   * Adopt a dump the analyzer took from the source: it becomes the drift
+   * baseline, and it reaches the server.
+   *
+   * Both halves matter. Publishing is how a project gets a snapshot at all, and
+   * the baseline is what lets the drift check re-dump later — without it,
+   * `refreshStatsIfStale` returns on its first line forever. Since the only
+   * thing that used to call this was a push, and a push only happened on drift,
+   * an analyzer that had never pushed never could.
+   *
+   * Callers pass what they measured from production, never the optimizer's own
+   * metadata: the optimizing database is restored with
+   * `--exclude-table-data-and-children` and never durably analyzed, so every
+   * table in it reports `reltuples = -1` and every column `stats: null`.
+   * Publishing that would overwrite the project's real snapshot with an empty
+   * one.
+   */
+  private recordSourceStatistics(stats: ExportedStats[]): void {
+    if (stats.length === 0) {
+      return;
+    }
+    this.statsBaseline = baselineFromDump(stats);
+    this.lastStatsPushAt = Date.now();
+    this.emit("statsApplied", stats);
   }
 
   async resetPgStatStatements(source: Connectable): Promise<void> {
@@ -707,6 +747,16 @@ export type InferredStatsStrategy = "default" | "fromSource" | "imported";
 type StatsResult = {
   mode: StatisticsMode;
   strategy: InferredStatsStrategy;
+  /**
+   * The statistics measured from the source on this sync, when there are any.
+   *
+   * Separate from `mode` because the two answer different questions: `mode` is
+   * what the optimizer costs against, `dump` is what production actually
+   * reports. They diverge below the row threshold, and only a dump is honest
+   * enough to publish — a `static` mode came from a file someone handed us, not
+   * from this database.
+   */
+  dump?: ExportedStats[];
 };
 
 const PgStatStatementsStatus = {
