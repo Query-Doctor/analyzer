@@ -324,6 +324,25 @@ export function buildViewModel(ctx: ReportContext) {
   };
 }
 
+/**
+ * Where this run's report lands, and the previous report to update in place
+ * when one exists. Reviews are the primary surface; `issue-comment` is the
+ * fallback for repos where the workflow token cannot list reviews (#4067).
+ */
+interface ReportTarget {
+  surface: "review" | "issue-comment";
+  existingId?: number;
+}
+
+function errorStatus(err: unknown): number | undefined {
+  const status = (err as { status?: unknown } | null)?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class GithubReporter implements Reporter {
   // This might be much longer https://github.com/dead-claudia/github-limits?tab=readme-ov-file#pr-body
   private static MAX_REVIEW_BODY_LENGTH = 65536;
@@ -345,8 +364,12 @@ export class GithubReporter implements Reporter {
     return "GitHub";
   }
 
+  private static hasReportMarker(item: { body?: string | null }): boolean {
+    return !!item.body?.startsWith(GithubReporter.REVIEW_COMMENT_PREFIX);
+  }
+
   async report(ctx: ReportContext) {
-    const existingReview = await this.findExistingReview();
+    const target = await this.findReportTarget();
     // we don't want to create a "something went wrong" review
     // if we can't render properly. Letting this step crash if needed
     const viewModel = buildViewModel(ctx);
@@ -357,35 +380,68 @@ export class GithubReporter implements Reporter {
       renderExplain,
       formatCost,
     });
-    return this.createReview(output, existingReview);
+    return this.publishReport(output, target);
   }
 
-  private async findExistingReview() {
+  /**
+   * On forked repositories GitHub returns 403 on review listing for workflow
+   * tokens even with `pull-requests: write` (observed live on
+   * veksen/qd-oss-listmonk#1), while issue comments on the same PR stay
+   * listable and writable under that same permission. Creating a fresh review
+   * on that 403 would duplicate the report on every run (#4067), so the whole
+   * upsert moves to the issue-comment surface instead.
+   */
+  private async findReportTarget(): Promise<ReportTarget> {
     if (
       typeof this.octokit === "undefined" ||
       typeof this.prNumber === "undefined"
     ) {
-      return;
+      return { surface: "review" };
     }
     try {
       const reviews = await this.octokit.rest.pulls.listReviews({
-        owner: github.context.repo.owner,
-        repo: github.context.repo.repo,
+        ...github.context.repo,
         pull_number: this.prNumber,
       });
-      return reviews.data.find(
-        (r) =>
-          r.body && r.body.startsWith(GithubReporter.REVIEW_COMMENT_PREFIX),
-      );
+      const existing = reviews.data.find(GithubReporter.hasReportMarker);
+      return { surface: "review", existingId: existing?.id };
     } catch (err) {
-      console.error(err);
-      return;
+      if (errorStatus(err) !== 403) {
+        console.warn(
+          `Listing PR reviews failed (${errorMessage(err)}); creating a fresh review, which may duplicate an earlier report`,
+        );
+        return { surface: "review" };
+      }
+      console.warn(
+        "Listing PR reviews returned 403 (GitHub restricts it for workflow tokens on forked repos); posting the report as an issue comment instead",
+      );
+      return this.findIssueCommentTarget(this.octokit, this.prNumber);
     }
   }
 
-  private async createReview(review: string, existingReview?: { id: number }) {
+  private async findIssueCommentTarget(
+    octokit: ReturnType<typeof github.getOctokit>,
+    prNumber: number,
+  ): Promise<ReportTarget> {
+    try {
+      const comments = await octokit.rest.issues.listComments({
+        ...github.context.repo,
+        issue_number: prNumber,
+        per_page: 100,
+      });
+      const existing = comments.data.find(GithubReporter.hasReportMarker);
+      return { surface: "issue-comment", existingId: existing?.id };
+    } catch (err) {
+      console.warn(
+        `Listing PR comments failed (${errorMessage(err)}); creating a fresh comment, which may duplicate an earlier report`,
+      );
+      return { surface: "issue-comment" };
+    }
+  }
+
+  private async publishReport(report: string, target: ReportTarget) {
     if (this.isInGithubActions) {
-      await core.summary.addRaw(review, true).write();
+      await core.summary.addRaw(report, true).write();
     }
     if (
       typeof this.octokit === "undefined" ||
@@ -395,31 +451,44 @@ export class GithubReporter implements Reporter {
         "No GitHub token or PR number provided, review will not be created",
       );
       console.log("\n--- Rendered Report ---\n");
-      console.log(review);
+      console.log(report);
       console.log("\n--- End Report ---\n");
       return;
     }
-    if (review.length > GithubReporter.MAX_REVIEW_BODY_LENGTH) {
+    if (report.length > GithubReporter.MAX_REVIEW_BODY_LENGTH) {
       console.log(
-        `Review body is possibly too long? ${review.length} > ${GithubReporter.MAX_REVIEW_BODY_LENGTH}`,
+        `Review body is possibly too long? ${report.length} > ${GithubReporter.MAX_REVIEW_BODY_LENGTH}`,
       );
     }
+    const body = GithubReporter.REVIEW_COMMENT_PREFIX + "\n" + report;
     try {
-      if (typeof existingReview === "undefined") {
+      if (target.surface === "issue-comment") {
+        if (typeof target.existingId === "undefined") {
+          await this.octokit.rest.issues.createComment({
+            ...github.context.repo,
+            issue_number: this.prNumber,
+            body,
+          });
+        } else {
+          await this.octokit.rest.issues.updateComment({
+            ...github.context.repo,
+            comment_id: target.existingId,
+            body,
+          });
+        }
+      } else if (typeof target.existingId === "undefined") {
         await this.octokit.rest.pulls.createReview({
-          owner: github.context.repo.owner,
-          repo: github.context.repo.repo,
+          ...github.context.repo,
           pull_number: this.prNumber,
           event: "COMMENT",
-          body: GithubReporter.REVIEW_COMMENT_PREFIX + "\n" + review,
+          body,
         });
       } else {
         await this.octokit.rest.pulls.updateReview({
-          owner: github.context.repo.owner,
-          repo: github.context.repo.repo,
+          ...github.context.repo,
           pull_number: this.prNumber,
-          review_id: existingReview.id,
-          body: GithubReporter.REVIEW_COMMENT_PREFIX + "\n" + review,
+          review_id: target.existingId,
+          body,
         });
       }
     } catch (err) {
