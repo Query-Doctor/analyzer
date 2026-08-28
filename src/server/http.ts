@@ -12,7 +12,10 @@ import { SyncResult } from "../sync/syncer.ts";
 import * as errors from "../sync/errors.ts";
 import { RemoteController } from "../remote/remote-controller.ts";
 import { Connectable } from "../sync/connectable.ts";
-import { RemoteSyncRequest } from "../remote/remote.dto.ts";
+import {
+  InstallPgStatStatementsRequest,
+  RemoteSyncRequest,
+} from "../remote/remote.dto.ts";
 import { ConnectionManager } from "../sync/connection-manager.ts";
 import { Remote } from "../remote/remote.ts";
 
@@ -170,14 +173,18 @@ export async function createServer(
 
   fastify.post("/postgres/extensions/pg_stat_statements", async (request, reply) => {
     log.info(`[POST] /postgres/extensions/pg_stat_statements`, "http");
-    const body = RemoteSyncRequest.safeDecode(JSON.stringify(request.body));
+    const body = InstallPgStatStatementsRequest.safeDecode(
+      JSON.stringify(request.body),
+    );
     if (!body.success) {
       return reply.status(400).send(body.error);
     }
     try {
       const db = await body.data.db.resolveDockerHost();
       const connector = sourceConnectionManager.getConnectorFor(db);
-      const result = await connector.installPgStatStatements();
+      const result = await connector.installPgStatStatements({
+        schema: body.data.schema,
+      });
       return reply.status(200).send({ success: true, ...result });
     } catch (error) {
       return reply.status(500).send(makeUnexpectedErrorResult(error).body);

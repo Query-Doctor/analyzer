@@ -1,4 +1,4 @@
-import { test, expect } from "vitest";
+import { test, expect, vi } from "vitest";
 import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { ConnectionManager } from "./connection-manager.ts";
 import { Connectable } from "./connectable.ts";
@@ -308,6 +308,147 @@ test("getTotalRowCount does not double-count when a table appears twice in the i
 
     expect(total).toBe(5000);
   } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+// Installing into `public` breaks any project whose migration tool reconciles
+// that schema: the extension owns `pg_stat_statements_info`, and a reconciler
+// that tries to drop it aborts half-applied with SQLSTATE 2BP01. The one path
+// where we choose the placement must not choose `public`.
+test("installPgStatStatements creates the extension outside public", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const db = manager.getOrCreateConnection(conn);
+  const connector = manager.getConnectorFor(db);
+
+  try {
+    const result = await connector.installPgStatStatements();
+
+    expect(result.schema).toBe("query_doctor");
+
+    const [placement] = await db.exec<{ schema: string }>(`
+      SELECT n.nspname AS schema
+      FROM pg_extension e
+      JOIN pg_namespace n ON n.oid = e.extnamespace
+      WHERE e.extname = 'pg_stat_statements'
+    `);
+    expect(placement?.schema).toBe("query_doctor");
+
+    const [leftInPublic] = await db.exec<{ count: string }>(`
+      SELECT count(*) AS count
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'public' AND c.relname LIKE 'pg_stat_statements%'
+    `);
+    expect(leftInPublic?.count).toBe("0");
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+test("installPgStatStatements installs into a caller-supplied schema", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const db = manager.getOrCreateConnection(conn);
+  const connector = manager.getConnectorFor(db);
+
+  try {
+    const result = await connector.installPgStatStatements({ schema: "ext" });
+
+    expect(result.schema).toBe("ext");
+
+    const [placement] = await db.exec<{ schema: string }>(`
+      SELECT n.nspname AS schema
+      FROM pg_extension e
+      JOIN pg_namespace n ON n.oid = e.extnamespace
+      WHERE e.extname = 'pg_stat_statements'
+    `);
+    expect(placement?.schema).toBe("ext");
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+// The verify step used to probe an unqualified `pg_stat_statements`, which
+// resolves through the search_path and so returns 42P01 for exactly the
+// placement the install step now produces: a working install reported as a
+// failure.
+test("installPgStatStatements verifies an extension that sits off the search_path", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCopyContentToContainer([
+      {
+        content: `
+          CREATE SCHEMA monitoring;
+          CREATE EXTENSION pg_stat_statements SCHEMA monitoring;
+        `,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ])
+    .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const connector = manager.getConnectorFor(conn);
+
+  try {
+    const result = await connector.installPgStatStatements();
+
+    expect(result.schema).toBe("monitoring");
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+// Today the user finds out about a `public` install through unrelated migration
+// failures. The resolver already knows, so say it where we read the extension.
+test("getRecentQueries warns when the extension sits in public", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCopyContentToContainer([
+      {
+        content: `
+          CREATE EXTENSION pg_stat_statements;
+          CREATE TABLE users(id int, name text);
+          SELECT * FROM users WHERE id = 1;
+        `,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ])
+    .withCommand(["-c", "shared_preload_libraries=pg_stat_statements"])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const connector = manager.getConnectorFor(conn);
+  const logged = vi.spyOn(console, "log").mockImplementation(() => {});
+
+  try {
+    await connector.getRecentQueries();
+
+    const messages = logged.mock.calls.map((call) => String(call[0]));
+    expect(
+      messages.some((message) =>
+        message.includes("pg_stat_statements") &&
+        message.includes("public") &&
+        message.includes("SET SCHEMA")
+      ),
+      `Expected a warning naming the fix. Logged:\n${messages.join("\n")}`,
+    ).toBe(true);
+  } finally {
+    logged.mockRestore();
     await manager.closeAll();
     await pg.stop();
   }

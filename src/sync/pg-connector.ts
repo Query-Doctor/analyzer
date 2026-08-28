@@ -83,8 +83,15 @@ export type ResetPgStatStatementsResult =
  */
 export class PostgresConnector implements DatabaseConnector<PostgresTuple>, RecentQuerySource {
   private static readonly QUERY_DOCTOR_USER = "query_doctor_db_link";
+  /**
+   * Where {@link installPgStatStatements} puts the extension when the caller
+   * doesn't say. Never `public`: the extension owns views a migration tool
+   * reconciling `public` will try to drop, and fail on.
+   */
+  public static readonly EXTENSION_SCHEMA = "query_doctor";
   private readonly tupleEstimates = new Map<TableName, number>();
   private querySource: QuerySourceExtension | null = null;
+  private warnedAboutPublicSchema = false;
   private static extensionNotInstalledError = new ExtensionNotInstalledError([
     "pg_stat_statements",
     "pg_stat_monitor"
@@ -503,7 +510,25 @@ ORDER BY
       extensionName: PgIdentifier.fromString(firstResult.extension),
       schema: PgIdentifier.fromString(firstResult.schema)
     };
+    this.warnIfExtensionIsInPublic(this.querySource);
     return this.querySource;
+  }
+
+  /**
+   * An extension in `public` is a landmine for any migration tool that
+   * reconciles that schema, and nothing at the point of failure names it. We
+   * resolve the schema on every read, so this is the one place that knows.
+   */
+  private warnIfExtensionIsInPublic(source: QuerySourceExtension): void {
+    if (source.schema.unquoted() !== "public" || this.warnedAboutPublicSchema) {
+      return;
+    }
+    this.warnedAboutPublicSchema = true;
+    const extension = source.extensionName.unquoted();
+    log.warn(
+      `${extension} is installed in the public schema. A migration tool that reconciles public cannot drop its extension-owned views and will abort mid-run (SQLSTATE 2BP01). Move it with: CREATE SCHEMA IF NOT EXISTS ${PostgresConnector.EXTENSION_SCHEMA}; ALTER EXTENSION ${extension} SET SCHEMA ${PostgresConnector.EXTENSION_SCHEMA};`,
+      "postgres",
+    );
   }
 
   /**
@@ -578,8 +603,25 @@ ORDER BY
     }
   }
 
-  public async installPgStatStatements(): Promise<{ preloadUpdated: boolean }> {
+  /**
+   * Installs `pg_stat_statements` into {@link options.schema}, defaulting to
+   * {@link PostgresConnector.EXTENSION_SCHEMA}.
+   *
+   * An extension already installed elsewhere is left where it is — relocating
+   * it needs an ownership we may not hold, and moving a schema object out from
+   * under whoever put it there is not ours to decide. The resolver warns about
+   * a `public` placement on every read instead.
+   *
+   * @throws {PostgresError}
+   * @throws {ExtensionNotInstalledError} - the install ran but left nothing behind
+   */
+  public async installPgStatStatements(
+    options: { schema?: string } = {},
+  ): Promise<{ preloadUpdated: boolean; schema: string }> {
     let preloadUpdated = false;
+    const targetSchema = PgIdentifier.fromString(
+      options.schema ?? PostgresConnector.EXTENSION_SCHEMA,
+    );
 
     const [preload] = await this.db.exec<{ setting: string }>(`
       SELECT setting FROM pg_settings WHERE name = 'shared_preload_libraries'; -- @qd_introspection
@@ -603,19 +645,28 @@ ORDER BY
     `);
     if (!result?.exists) {
       try {
-        await this.db.exec(`CREATE EXTENSION pg_stat_statements;`);
+        await this.db.exec(`CREATE SCHEMA IF NOT EXISTS ${targetSchema};`);
+        await this.db.exec(
+          `CREATE EXTENSION pg_stat_statements SCHEMA ${targetSchema};`,
+        );
       } catch (err) {
         throw new PostgresError(err instanceof Error ? err.message : String(err));
       }
     }
 
+    // Resolve the schema rather than assume it. The extension may predate this
+    // call, and an unqualified probe reads through the search_path — which
+    // reports 42P01 for the very placement the branch above just produced.
+    const source = await this.getQuerySource();
     try {
-      await this.db.exec(`SELECT 1 FROM pg_stat_statements LIMIT 1; -- @qd_introspection`);
+      await this.db.exec(
+        `SELECT 1 FROM ${source.schema}.${source.extensionName} LIMIT 1; -- @qd_introspection`,
+      );
     } catch (err) {
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
 
-    return { preloadUpdated };
+    return { preloadUpdated, schema: source.schema.unquoted() };
   }
 
   public async checkPrivilege(): Promise<{

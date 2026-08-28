@@ -17,6 +17,29 @@ export const RemoteSyncRequest = z.codec(
   },
 );
 
+/**
+ * `schema` is where the extension gets created. Omitting it takes the
+ * connector's default, which is deliberately not `public`.
+ */
+export const InstallPgStatStatementsRequest = z.codec(
+  z.string(),
+  z.object({
+    db: z.custom<Connectable>(),
+    schema: z.string().optional(),
+  }),
+  {
+    encode: (value) =>
+      JSON.stringify({ db: value.db.toString(), schema: value.schema }),
+    decode: (value) => {
+      const parsed = JSON.parse(value);
+      return {
+        db: Connectable.fromString(parsed.db),
+        schema: typeof parsed.schema === "string" ? parsed.schema : undefined,
+      };
+    },
+  },
+);
+
 export const RemoteSyncFullSchemaResponse = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ok"), value: z.custom<FullSchema>() }),
   z.object({ type: z.literal("error"), error: z.string() }),
