@@ -3,6 +3,7 @@ import { PostgreSqlContainer } from "@testcontainers/postgresql";
 import { ConnectionManager } from "./connection-manager.ts";
 import { Connectable } from "./connectable.ts";
 import { PgIdentifier } from "@query-doctor/core";
+import { isMissingExtensionObject } from "./pg-connector.ts";
 
 test("getRecentQueries resolves pg_stat_statements in a non-default schema", async () => {
     const pg = await new PostgreSqlContainer("postgres:17")
@@ -459,4 +460,78 @@ test("getRecentQueries warns when the extension sits in public", async () => {
     await manager.closeAll();
     await pg.stop();
   }
+});
+
+// The catch blocks in getRecentQueries/resetPgStatStatements used to match the
+// literal `relation "pg_stat_statements" does not exist`. Every query that
+// reaches them is schema-qualified, so Postgres names the schema too and the
+// match never fired: a missing extension surfaced as a generic PostgresError
+// rather than ExtensionNotInstalledError, and the UI showed raw SQL text
+// instead of its install panel.
+test("a qualified read of a missing extension reports 42P01, not the bare relation name", async () => {
+  const pg = await new PostgreSqlContainer("postgres:17")
+    .withCopyContentToContainer([
+      {
+        content: `CREATE SCHEMA monitoring;`,
+        target: "/docker-entrypoint-initdb.d/init.sql",
+      },
+    ])
+    .start();
+
+  const manager = ConnectionManager.forLocalDatabase();
+  const conn = Connectable.fromString(pg.getConnectionUri());
+  const db = manager.getOrCreateConnection(conn);
+
+  try {
+    const err = await db
+      .exec("SELECT 1 FROM monitoring.pg_stat_statements LIMIT 1")
+      .then(() => null, (e: unknown) => e as { code?: string; message: string });
+
+    expect(err).toBeTruthy();
+    expect(err!.code).toBe("42P01");
+    expect(err!.message).not.toContain(
+      'relation "pg_stat_statements" does not exist',
+    );
+
+    const fnErr = await db
+      .exec("SELECT monitoring.pg_stat_statements_reset()")
+      .then(() => null, (e: unknown) => e as { code?: string; message: string });
+
+    expect(fnErr).toBeTruthy();
+    expect(fnErr!.code).toBe("42883");
+    expect(fnErr!.message).not.toContain(
+      "function pg_stat_statements_reset() does not exist",
+    );
+
+    // A function call through a schema that is gone entirely reports the
+    // schema rather than the function, so that code has to be recognised too.
+    const schemaErr = await db
+      .exec("SELECT absent_schema.pg_stat_statements_reset()")
+      .then(() => null, (e: unknown) => e as { code?: string });
+
+    expect(schemaErr?.code).toBe("3F000");
+  } finally {
+    await manager.closeAll();
+    await pg.stop();
+  }
+});
+
+test("isMissingExtensionObject classifies the codes Postgres uses, and nothing else", () => {
+  expect(isMissingExtensionObject({ code: "42P01" })).toBe(true);
+  expect(isMissingExtensionObject({ code: "42883" })).toBe(true);
+  expect(isMissingExtensionObject({ code: "3F000" })).toBe(true);
+
+  // Insufficient privilege and a syntax error are real failures the caller
+  // must see, not "the extension isn't installed".
+  expect(isMissingExtensionObject({ code: "42501" })).toBe(false);
+  expect(isMissingExtensionObject({ code: "42601" })).toBe(false);
+
+  // The message text the old check matched carries no code of its own.
+  expect(
+    isMissingExtensionObject(
+      new Error('relation "pg_stat_statements" does not exist'),
+    ),
+  ).toBe(false);
+  expect(isMissingExtensionObject(null)).toBe(false);
+  expect(isMissingExtensionObject(undefined)).toBe(false);
 });

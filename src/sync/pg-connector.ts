@@ -24,6 +24,20 @@ import { RawRecentQuery, RecentQuery } from "../sql/recent-query.ts";
 import type { RecentQuerySource } from "../sql/recent-query.ts";
 
 
+/**
+ * Whether an error means the extension's table or function isn't there.
+ *
+ * Matching the message text does not work: every statement we send is
+ * schema-qualified, so Postgres names the schema in the message and a check for
+ * the bare `pg_stat_statements` never fires. The SQLSTATE is stable — 42P01 for
+ * a missing relation, 42883 for a missing function, and 3F000 when the schema
+ * itself is gone, which is what a qualified function call reports.
+ */
+export function isMissingExtensionObject(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === "42P01" || code === "42883" || code === "3F000";
+}
+
 const ctidSymbol = Symbol("ctid");
 type Row = NonNullable<unknown> & {
   [ctidSymbol]: string;
@@ -520,6 +534,12 @@ ORDER BY
       extensionName: PgIdentifier.fromString(firstResult.extension),
       schema: PgIdentifier.fromString(firstResult.schema)
     };
+    // A run that reads the statistics and a run that silently found nothing
+    // used to look identical in the logs. Name what was resolved.
+    log.debug(
+      `query source: ${firstResult.extension} in schema ${firstResult.schema}`,
+      "postgres",
+    );
     this.warnIfExtensionIsInPublic(this.querySource);
     return this.querySource;
   }
@@ -591,10 +611,7 @@ ORDER BY
         return await syncQueries(results);
       }
     } catch (err) {
-      if (
-        err instanceof Error &&
-        err.message.includes('relation "pg_stat_statements" does not exist')
-      ) {
+      if (isMissingExtensionObject(err)) {
         throw PostgresConnector.extensionNotInstalledError;
       }
       console.error(err);
@@ -621,11 +638,7 @@ ORDER BY
         `);
       }
     } catch (err) {
-      if (
-        err instanceof Error &&
-        (err.message.includes("function pg_stat_statements_reset() does not exist") ||
-          err.message.includes("function pg_stat_monitor_reset() does not exist"))
-      ) {
+      if (isMissingExtensionObject(err)) {
         throw PostgresConnector.extensionNotInstalledError;
       }
       throw new PostgresError(err instanceof Error ? err.message : String(err));
