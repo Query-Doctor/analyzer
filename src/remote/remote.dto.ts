@@ -25,7 +25,7 @@ export const InstallPgStatStatementsRequest = z.codec(
   z.string(),
   z.object({
     db: z.custom<Connectable>(),
-    schema: z.string().optional(),
+    schema: z.string().min(1).optional(),
   }),
   {
     encode: (value) =>

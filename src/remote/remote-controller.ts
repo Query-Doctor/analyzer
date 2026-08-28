@@ -1,7 +1,10 @@
 import { WebSocket } from "ws";
 import { env } from "../env.ts";
 import { log } from "../log.ts";
-import { RemoteSyncRequest } from "./remote.dto.ts";
+import {
+  InstallPgStatStatementsRequest,
+  RemoteSyncRequest,
+} from "./remote.dto.ts";
 import { Remote } from "./remote.ts";
 import * as errors from "../sync/errors.ts";
 import type { OptimizedQuery } from "../sql/recent-query.ts";
@@ -251,14 +254,24 @@ export class RemoteController {
   }
 
   async onInstallPgStatStatements(rawBody: string): Promise<HandlerResult> {
-    const body = RemoteSyncRequest.safeDecode(rawBody);
+    const body = InstallPgStatStatementsRequest.safeDecode(rawBody);
     if (!body.success) {
       return { status: 400, body: body.error };
     }
 
     try {
-      const result = await this.remote.installPgStatStatements(body.data.db);
-      return { status: 200, body: { success: true, preloadUpdated: result.preloadUpdated } };
+      const result = await this.remote.installPgStatStatements(
+        body.data.db,
+        body.data.schema,
+      );
+      return {
+        status: 200,
+        body: {
+          success: true,
+          preloadUpdated: result.preloadUpdated,
+          schema: result.schema,
+        },
+      };
     } catch (error) {
       console.error(error);
       if (error instanceof errors.PostgresError) {

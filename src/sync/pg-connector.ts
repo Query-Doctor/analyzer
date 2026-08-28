@@ -91,7 +91,17 @@ export class PostgresConnector implements DatabaseConnector<PostgresTuple>, Rece
   public static readonly EXTENSION_SCHEMA = "query_doctor";
   private readonly tupleEstimates = new Map<TableName, number>();
   private querySource: QuerySourceExtension | null = null;
-  private warnedAboutPublicSchema = false;
+  /**
+   * Keyed by connection, because the connector is rebuilt on every poll — an
+   * instance flag would re-warn every ten seconds for the whole run — while a
+   * process-wide flag would silence every source database after the first.
+   * ConnectionManager caches one Postgres per database, so it is the identity
+   * that matches "warn once about this database".
+   */
+  private static readonly warnedAboutPublicSchema = new WeakMap<
+    Postgres,
+    Set<string>
+  >();
   private static extensionNotInstalledError = new ExtensionNotInstalledError([
     "pg_stat_statements",
     "pg_stat_monitor"
@@ -520,15 +530,45 @@ ORDER BY
    * resolve the schema on every read, so this is the one place that knows.
    */
   private warnIfExtensionIsInPublic(source: QuerySourceExtension): void {
-    if (source.schema.unquoted() !== "public" || this.warnedAboutPublicSchema) {
+    const extension = source.extensionName.unquoted();
+    if (source.schema.unquoted() !== "public") {
       return;
     }
-    this.warnedAboutPublicSchema = true;
-    const extension = source.extensionName.unquoted();
+    let warned = PostgresConnector.warnedAboutPublicSchema.get(this.db);
+    if (!warned) {
+      warned = new Set();
+      PostgresConnector.warnedAboutPublicSchema.set(this.db, warned);
+    }
+    if (warned.has(extension)) {
+      return;
+    }
+    warned.add(extension);
     log.warn(
       `${extension} is installed in the public schema. A migration tool that reconciles public cannot drop its extension-owned views and will abort mid-run (SQLSTATE 2BP01). Move it with: CREATE SCHEMA IF NOT EXISTS ${PostgresConnector.EXTENSION_SCHEMA}; ALTER EXTENSION ${extension} SET SCHEMA ${PostgresConnector.EXTENSION_SCHEMA};`,
       "postgres",
     );
+  }
+
+  /**
+   * The schema one named extension lives in. {@link getQuerySource} answers the
+   * broader "where do the queries come from", which can resolve to
+   * `pg_stat_monitor`; a caller that installed a specific extension needs to
+   * probe that one.
+   *
+   * @throws {ExtensionNotInstalledError}
+   */
+  private async getExtensionSchema(extension: string): Promise<PgIdentifier> {
+    const [row] = await this.db.exec<{ schema: string }>(
+      `SELECT n.nspname AS schema
+       FROM pg_extension e
+       JOIN pg_namespace n ON n.oid = e.extnamespace
+       WHERE e.extname = $1 -- @qd_introspection`,
+      [extension],
+    );
+    if (!row) {
+      throw new ExtensionNotInstalledError([extension]);
+    }
+    return PgIdentifier.fromString(row.schema);
   }
 
   /**
@@ -657,16 +697,20 @@ ORDER BY
     // Resolve the schema rather than assume it. The extension may predate this
     // call, and an unqualified probe reads through the search_path — which
     // reports 42P01 for the very placement the branch above just produced.
-    const source = await this.getQuerySource();
+    const schema = await this.getExtensionSchema("pg_stat_statements");
+    this.warnIfExtensionIsInPublic({
+      extensionName: PgIdentifier.fromString("pg_stat_statements"),
+      schema,
+    });
     try {
       await this.db.exec(
-        `SELECT 1 FROM ${source.schema}.${source.extensionName} LIMIT 1; -- @qd_introspection`,
+        `SELECT 1 FROM ${schema}.pg_stat_statements LIMIT 1; -- @qd_introspection`,
       );
     } catch (err) {
       throw new PostgresError(err instanceof Error ? err.message : String(err));
     }
 
-    return { preloadUpdated, schema: source.schema.unquoted() };
+    return { preloadUpdated, schema: schema.unquoted() };
   }
 
   public async checkPrivilege(): Promise<{

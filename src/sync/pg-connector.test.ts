@@ -437,8 +437,15 @@ test("getRecentQueries warns when the extension sits in public", async () => {
 
   try {
     await connector.getRecentQueries();
+    // A fresh connector over the same connection, which is what every poll
+    // does. The warning dedupes per connection, so this must stay silent.
+    await manager.getConnectorFor(conn).getRecentQueries();
 
     const messages = logged.mock.calls.map((call) => String(call[0]));
+    const warnings = messages.filter((message) =>
+      message.includes("public schema")
+    );
+    expect(warnings).toHaveLength(1);
     expect(
       messages.some((message) =>
         message.includes("pg_stat_statements") &&
