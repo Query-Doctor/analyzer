@@ -1110,6 +1110,19 @@ describe("heading wording", () => {
     expect(output).not.toContain("0 failing");
   });
 
+  // A run carrying a warning announced fewer checks than it printed (Site #4201).
+  test("counts a warning beside the rest", () => {
+    const ctx = makeContext({
+      gates: [
+        { condition: "new-query-index", label: "New query with index recommendation", fired: true, conclusion: "failure", found: "2 new queries ship a high-impact index recommendation" },
+        { condition: "new-query", label: "New query", fired: true, conclusion: "neutral", found: "2 new queries, none with a prior baseline" },
+        { condition: "schema-drift", label: "Schema drift", fired: false, conclusion: "success", found: "No schema changes" },
+      ],
+    });
+
+    expect(renderTemplate(ctx)).toContain("Query Doctor — 1 failing, 1 warning and 1 successful check");
+  });
+
   test("keeps both halves when something failed", () => {
     const ctx = makeContext({
       gates: [

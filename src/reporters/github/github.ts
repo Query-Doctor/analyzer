@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const success = readFileSync(join(__dirname, "success.md.j2"), "utf-8");
 import n from "nunjucks";
-import { summarizeGates } from "../../gate/evaluate.ts";
+import { summarizeGates, type GateSummary } from "../../gate/evaluate.ts";
 import {
   deriveIndexStatistics,
   isQueryLong,
@@ -214,6 +214,39 @@ export function callSite(
   return funcName ? { name: funcName, file } : { name: file!, file: undefined };
 }
 
+/**
+ * The sentence above the roster: what the conditions concluded.
+ *
+ * Every outcome is named. Assembled in the template, it read "N failing and M
+ * successful checks", which had no room for a warning: a run with 1 FAIL, 1 WARN
+ * and 1 PASS announced two of its three rows (Site #4201). An outcome nothing
+ * concluded is left out rather than counted as a zero.
+ *
+ * DUPLICATED from `heading` in Site's `apps/api/src/ci/capture/capture-comment.ts`,
+ * which renders this same comment for repositories on the platform's ingest path.
+ * Both post onto one pull request, so a change to one is a change to both.
+ *
+ * Site's version also appends "· N not run". This one cannot: the
+ * `summarizeGates` beside it has no `unevaluated` count. Collapsing the two
+ * summaries is what would let the sentence be shared rather than copied.
+ */
+function formatGateHeading(summary: GateSummary): string {
+  const counted = [
+    { count: summary.failing, word: "failing" },
+    { count: summary.neutral, word: "warning" },
+    { count: summary.successful, word: "successful" },
+  ].filter((outcome) => outcome.count > 0);
+
+  const last = counted.at(-1);
+  if (!last) return "no checks ran";
+
+  // Everything before the last outcome is a comma list. The last one carries
+  // the "and" and the noun, so the noun agrees with the count beside it.
+  const lead = counted.slice(0, -1).map(({ count, word }) => `${count} ${word}`);
+  const tail = `${last.count} ${last.word} check${last.count === 1 ? "" : "s"}`;
+  return lead.length > 0 ? `${lead.join(", ")} and ${tail}` : tail;
+}
+
 export function buildViewModel(ctx: ReportContext) {
   const hasComparison = !!ctx.comparison;
   const queryLinks = buildQueryLinks(ctx);
@@ -222,6 +255,7 @@ export function buildViewModel(ctx: ReportContext) {
   // The roster the comment leads with. Derived from the same array the check
   // annotations read, so the heading cannot contradict the check (ADR-0009).
   const gateSummary = ctx.gates ? summarizeGates(ctx.gates) : undefined;
+  const gateHeading = gateSummary ? formatGateHeading(gateSummary) : undefined;
   // Failing first: the reader's question is what is blocking them, and the
   // roster otherwise reads in catalogue order regardless of what happened.
   const RANK = { failure: 0, neutral: 1, success: 2 } as const;
@@ -251,6 +285,7 @@ export function buildViewModel(ctx: ReportContext) {
       schemaChangeLabel,
       modeledTablesNotice,
       gateSummary,
+      gateHeading,
       gateIconBase,
       brandMark,
       gates,
@@ -318,6 +353,7 @@ export function buildViewModel(ctx: ReportContext) {
     schemaChangeLabel,
     modeledTablesNotice,
     gateSummary,
+    gateHeading,
     gateIconBase,
     brandMark,
     gates,
